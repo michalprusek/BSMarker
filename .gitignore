@@ -1,1 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# virtual environment
+venv/
+
+# Project-specific
 data/
