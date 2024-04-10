@@ -5,4 +5,7 @@
 - The program will also show the counted statistics according to the segmentation (surface, boundary roughness, etc.). 
 - Use Python and its libraries as the programming language.
 
+GUI proposal:
+https://docs.google.com/presentation/d/1a3ZllFTRoUSfedMhkf0hxFd6ZVnBzSaCM1NdvH3is-o/edit?usp=sharing
+
 
