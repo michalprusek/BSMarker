@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ object }}{% endblock %}
+
+{% block body %}
+	<h1>{{ object }}</h1>
+	<ul>
+		{% for frame in object.frames.all %}
+			<li><a href="{{ frame.image.url }}">{{ frame }}</a></li>
+		{% endfor %}
+	</ul>
+{% endblock %}
