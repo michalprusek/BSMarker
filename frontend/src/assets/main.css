@@ -1,0 +1,8 @@
+html, body {
+	margin: 0;
+}
+
+.image-display {
+	width: 50vw;
+	height: 100vh;
+}
