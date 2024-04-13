@@ -2,66 +2,111 @@
     import { ref, reactive, computed } from 'vue';
 
     const points = reactive([
-    	{'x': 0.1, 'y': 0.1}, 
-    	{'x': 0.2, 'y': 0.1}, 
-    	{'x': 0.2, 'y': 0.2}, 
-    	{'x': 0.1, 'y': 0.2}
+        {"id": 1, "x": 0.1, "y": 0.1}, 
+        {"id": 2, "x": 0.2, "y": 0.1}, 
+        {"id": 3, "x": 0.2, "y": 0.2}, 
+        {"id": 4, "x": 0.1, "y": 0.2}
     ]);
 
-	const svg_polygon_points = computed(() => {
-		return points.map(p => p.x + "," + p.y).join(" ");
-	});
+    const lines = computed(() => {
+        let res = [];
 
-	const active_drag = ref(null);
+        for (let i = 1; i < points.length; i++) {
+            res.push([points[i-1], points[i]]);
+        }
+        res.push([points[points.length-1], points[0]]);
+        return res;
+    });
 
-	function calc_point(event) {
-		const svg = document.getElementsByTagName("svg")[0];
-		const pt = svg.createSVGPoint();
-		pt.x = event.offsetX;
-		pt.y = event.offsetY;
-		return pt.matrixTransform(svg.getScreenCTM().inverse());
-	}
+    const svg_polygon_points = computed(() => {
+        return points.map(p => p.x + "," + p.y).join(" ");
+    });
 
-	function drag_start(event) {
-		if (event.target.tagName == "circle") {
-			let point = points[event.target.dataset.index];
-			active_drag.value = point;
-		}
-	}
+    const active_drag = ref(null);
 
-	function drag(event) {
-		if (active_drag) {
-			const svg_pt = calc_point(event);
-			active_drag.value.x = svg_pt.x;
-			active_drag.value.y = svg_pt.y;
-		}
-	}
+    function calc_point(event) {
+        const svg = document.getElementsByTagName("svg")[0];
+        const pt = svg.createSVGPoint();
+        pt.x = event.offsetX;
+        pt.y = event.offsetY;
+        return pt.matrixTransform(svg.getScreenCTM().inverse());
+    }
 
-	function drag_end(event) {
-		active_drag.value = null;
-	}
+    function add_point(event) {
+        let pt = calc_point(event);
+        points.splice(parseInt(event.target.dataset.index)+1, 0, {"x": pt.x, "y": pt.y});
+    }
+
+    function point_click(event) {
+        if (event.target.tagName == "circle") {
+            let idx = event.target.dataset.index;
+
+            if (event.button == 2 && points.length > 3) {
+                points.splice(idx, 1);
+            } else {
+                let point = points[idx];
+                active_drag.value = point;
+            }
+        }
+    }
+
+    function ctxmenu(event) {
+        event.preventDefault();
+        return false;
+    }
+
+    function drag(event) {
+        if (active_drag.value) {
+            const svg_pt = calc_point(event);
+            active_drag.value.x = svg_pt.x;
+            active_drag.value.y = svg_pt.y;
+        }
+    }
+
+    function drag_end(event) {
+        active_drag.value = null;
+    }
 </script>
 
 <template>
-	<svg 
-		@mousedown="drag_start" 
-		@mousemove="drag" 
-		@onmouseleave="drag_end" 
-		@mouseup="drag_end" 
-		viewBox="0 0 1 1" 
-		width="100%"
-		xmlns="http://www.w3.org/2000/svg"
-	>
-		<image x="0" y="0" width="1" height="1" xlink:href="/test.jpg"></image>
-		<polygon
-			@click="add_point"
-			v-bind:points="svg_polygon_points"
-			fill="rgba(120, 50, 100, 0.2)"
-			stroke="rgb(120, 50, 100)"
-			stroke-width="0.005"
-		/>
-		<circle v-bind:data-index="index" v-for="(point, index) in points" r="0.01" v-bind:cx="point.x" v-bind:cy="point.y" fill="rgb(120, 50, 100)" :key="index" />
-	</svg>
+    <svg 
+        @contextmenu="ctxmenu"
+        @mousedown="point_click" 
+        @mousemove="drag" 
+        @onmouseleave="drag_end" 
+        @mouseup="drag_end" 
+        viewBox="0 0 1 1" 
+        width="100%"
+        xmlns="http://www.w3.org/2000/svg"
+    >
+        <image x="0" y="0" width="1" height="1" xlink:href="/test.jpg"></image>
+        <polygon
+            v-bind:points="svg_polygon_points"
+            fill="rgba(120, 50, 100, 0.2)"
+            stroke="rgba(120, 50, 100, 0.7)"
+            stroke-width="0.01"
+        />
+        <line 
+            @click="add_point"
+            v-for="(line, index) in lines" 
+            :key="line[0].id + ',' + line[1].id"
+            v-bind:x1="line[0].x" 
+            v-bind:y1="line[0].y" 
+            v-bind:x2="line[1].x" 
+            v-bind:y2="line[1].y"
+            stroke="rgba(120, 50, 100, 0.2)"
+            stroke-width="0.02"
+            v-bind:data-index="index" 
+        />
+        <circle 
+            v-for="(point, index) in points" 
+            :key="point.id" 
+            r="0.015"
+            fill="rgba(120, 50, 100, 0.9)"
+            v-bind:cx="point.x" v-bind:cy="point.y"
+            v-bind:data-index="index" 
+        />
+    </svg>
 </template>
 
 <style scoped>
