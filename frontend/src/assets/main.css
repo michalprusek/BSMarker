@@ -1,8 +1,27 @@
+:root {
+	--nav-height: 3vh;
+	--main-height: calc(100vh - var(--nav-height));
+}
+
 html, body {
+	margin: 0;
+	padding: 0;
+}
+
+#app nav {
+	width: 100vw;
+	height: var(--nav-height);
+}
+
+#app nav h1 {
 	margin: 0;
 }
 
-.image-display {
+#app main {
+	display: flex;
+	height: var(--main-height);
+}
+
+.split {
 	width: 50vw;
-	height: 100vh;
 }

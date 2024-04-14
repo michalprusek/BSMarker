@@ -23,13 +23,23 @@
     });
 
     const active_drag = ref(null);
+    const svg_size = ref(null);
+
+    function set_size() {
+        const svg = document.getElementById("editor-svg");
+        const rect = svg.getBoundingClientRect();
+        svg_size.value = {x: rect.width, y: rect.height};
+    }
 
     function calc_point(event) {
-        const svg = document.getElementsByTagName("svg")[0];
-        const pt = svg.createSVGPoint();
-        pt.x = event.offsetX;
-        pt.y = event.offsetY;
-        return pt.matrixTransform(svg.getScreenCTM().inverse());
+        if (!svg_size.value) {
+            set_size();
+        }
+        const svg = document.getElementById("editor-svg");
+        return {
+            "x": event.offsetX/svg_size.value.x,
+            "y": event.offsetY/svg_size.value.y
+        };
     }
 
     function add_point(event) {
@@ -58,25 +68,27 @@
     function drag(event) {
         if (active_drag.value) {
             const svg_pt = calc_point(event);
-            active_drag.value.x = svg_pt.x;
-            active_drag.value.y = svg_pt.y;
+            active_drag.value.x = Math.min(Math.max(svg_pt.x, 0), 1);
+            active_drag.value.y = Math.min(Math.max(svg_pt.y, 0), 1);
         }
     }
 
     function drag_end(event) {
         active_drag.value = null;
     }
+
+    window.addEventListener("resize", set_size);
 </script>
 
 <template>
     <svg 
+        id="editor-svg"
         @contextmenu="ctxmenu"
         @mousedown="point_click" 
         @mousemove="drag" 
         @onmouseleave="drag_end" 
         @mouseup="drag_end" 
         viewBox="0 0 1 1" 
-        width="100%"
         xmlns="http://www.w3.org/2000/svg"
     >
         <image x="0" y="0" width="1" height="1" xlink:href="/test.jpg"></image>
@@ -110,4 +122,7 @@
 </template>
 
 <style scoped>
+    svg {
+        height: 100%;
+    }
 </style>
