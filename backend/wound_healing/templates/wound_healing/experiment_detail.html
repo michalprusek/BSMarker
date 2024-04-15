@@ -1,12 +1,14 @@
 {% extends 'base.html' %}
+{% load django_vite %}
+
+{% block extrahead %}
+	{% vite_hmr_client %}
+	{% vite_asset 'src/main.js' %}
+	{{ object.pk|json_script:"experiment" }}
+{% endblock %}
 
 {% block title %}{{ object }}{% endblock %}
 
 {% block body %}
-	<h1>{{ object }}</h1>
-	<ul>
-		{% for frame in object.frames.all %}
-			<li><a href="{{ frame.image.url }}">{{ frame }}</a></li>
-		{% endfor %}
-	</ul>
+	<div id="app"></div>
 {% endblock %}

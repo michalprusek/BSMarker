@@ -1,6 +1,7 @@
 from django.db import models
 
 from django.template.defaultfilters import slugify
+from django.forms.models import model_to_dict
 
 
 class Project(models.Model):
