@@ -23,22 +23,29 @@
     });
 
     const active_drag = ref(null);
-    const svg_size = ref(null);
+    const image_pos = ref(null);
 
     function set_size() {
-        const svg = document.getElementById("editor-svg");
-        const rect = svg.getBoundingClientRect();
-        svg_size.value = {x: rect.width, y: rect.height};
+        const svg = document.querySelector("#editor-svg")
+        const image = document.querySelector("#editor-svg image");
+        const svg_rect = svg.getBoundingClientRect();
+        const image_rect = image.getBoundingClientRect();
+        image_pos.value = {
+            width: image_rect.width,
+            height: image_rect.height,
+            offset_top: image_rect.y-svg_rect.y,
+            offset_left: image_rect.x-svg_rect.x,
+        }
     }
 
     function calc_point(event) {
-        if (!svg_size.value) {
+        if (!image_pos.value) {
             set_size();
         }
         const svg = document.getElementById("editor-svg");
         return {
-            "x": event.offsetX/svg_size.value.x,
-            "y": event.offsetY/svg_size.value.y
+            "x": (event.offsetX-image_pos.value.offset_left)/image_pos.value.width,
+            "y": (event.offsetY-image_pos.value.offset_top)/image_pos.value.height
         };
     }
 
@@ -68,12 +75,14 @@
     function drag(event) {
         if (active_drag.value) {
             const svg_pt = calc_point(event);
-            active_drag.value.x = Math.min(Math.max(svg_pt.x, 0), 1);
-            active_drag.value.y = Math.min(Math.max(svg_pt.y, 0), 1);
+            active_drag.value.x = svg_pt.x;
+            active_drag.value.y = svg_pt.y;
         }
     }
 
     function drag_end(event) {
+        active_drag.value.x = Math.min(Math.max(active_drag.value.x, 0), 1);
+        active_drag.value.y = Math.min(Math.max(active_drag.value.y, 0), 1);
         active_drag.value = null;
     }
 
@@ -96,7 +105,7 @@
             v-bind:points="svg_polygon_points"
             fill="rgba(120, 50, 100, 0.2)"
             stroke="rgba(120, 50, 100, 0.7)"
-            stroke-width="0.01"
+            stroke-width="0.005"
         />
         <line 
             @click="add_point"
@@ -106,7 +115,7 @@
             v-bind:y1="line[0].y" 
             v-bind:x2="line[1].x" 
             v-bind:y2="line[1].y"
-            stroke="rgba(120, 50, 100, 0.2)"
+            stroke="rgba(120, 50, 100, 0.1)"
             stroke-width="0.02"
             v-bind:data-index="index" 
         />
@@ -114,6 +123,14 @@
             v-for="(point, index) in points" 
             :key="point.id" 
             r="0.015"
+            fill="rgba(120, 50, 100, 0.2)"
+            v-bind:cx="point.x" v-bind:cy="point.y"
+            v-bind:data-index="index" 
+        />
+        <circle 
+            v-for="(point, index) in points" 
+            :key="point.id" 
+            r="0.01"
             fill="rgba(120, 50, 100, 0.9)"
             v-bind:cx="point.x" v-bind:cy="point.y"
             v-bind:data-index="index" 
@@ -124,5 +141,6 @@
 <style scoped>
     svg {
         height: 100%;
+        width: 100%;
     }
 </style>

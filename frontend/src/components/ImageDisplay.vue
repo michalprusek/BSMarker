@@ -26,6 +26,8 @@
         display: flex;
         flex-direction: column;
         text-align: center;
+
+        background: var(--primary-color);
     }
 
     .blank {
@@ -33,7 +35,7 @@
     }
 
     .image-view {
-        max-height: 98%;
+        max-height: 95%;
     }
 
     .controls {

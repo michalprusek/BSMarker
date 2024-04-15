@@ -1,9 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,200..900;1,8..60,200..900&display=swap');
+
 :root {
-	--nav-height: 3vh;
+	--nav-height: 5vh;
 	--main-height: calc(100vh - var(--nav-height));
+
+	--primary-color: rgb(40, 40, 40);
+	--text-color: rgb(230, 225, 229);
 }
 
 html, body {
+	margin: 0;
+	padding: 0;
+	background: var(--primary-color);
+	color: var(--text-color);
+
+	font-family: "Source Serif 4", serif;
+	font-optical-sizing: auto;
+	overflow-y: hidden;
+}
+
+h1, h2, h3, h4, h5, h6 {
 	margin: 0;
 	padding: 0;
 }
@@ -11,17 +27,35 @@ html, body {
 #app nav {
 	width: 100vw;
 	height: var(--nav-height);
+	border-bottom: 2px solid var(--text-color);
 }
 
 #app nav h1 {
-	margin: 0;
+	padding-left: 0.5rem;
 }
 
 #app main {
+	position: absolute;
+	left: 0;
+	right: var(--nav-height);
 	display: flex;
 	height: var(--main-height);
+	width: 100vw;
 }
 
 .split {
 	width: 50vw;
+}
+
+.grid {
+	display: grid;
+	gap: 2px;
+	height: 100%;
+}
+
+.grid > * {
+	display: inline-grid;
+
+	padding: 0.5rem;
+	outline: 2px solid var(--text-color);
 }
