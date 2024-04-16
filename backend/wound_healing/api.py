@@ -27,6 +27,8 @@ class Experiment:
 class Frame:
     id: auto
     image: auto
+    histogram: list[int]
+
     experiment: Experiment
 
 

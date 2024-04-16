@@ -1,23 +1,19 @@
 <script setup>
-    import { ref } from 'vue';
     import Button from "./Button.vue";
     import Polygon from "./Polygon.vue";
     import KeyboardEvents from "./KeyboardEvents.vue";
 
-    const props = defineProps(["frames"]);
-
-    const current = ref(0);
+    const props = defineProps(["state"]);
+    const state = props.state;
 
     function left() {
-        const l = props.frames.length;
-
-        current.value = (current.value-1 + l)%l;
+        const l = state.experiment.frames.length;
+        state.frame_num = (state.frame_num-1 + l)%l;
     }
 
     function right() {
-        const l = props.frames.length;
-
-        current.value = (current.value+1)%l;
+        const l = state.experiment.frames.length;
+        state.frame_num = (state.frame_num+1)%l;
     }
 
     function move(event) {
@@ -34,11 +30,11 @@
     <div class="image-display">
         <div class="blank">
         </div>
-        <div class="image-view">
-            <Polygon v-bind:frame="frames[current]" />
+        <div class="image-view"> 
+            <Polygon :frame="state.current_frame()" />
         </div>
         <div class="controls">
-            <span class="frame-info">Frame {{ current+1 }}/{{ frames.length }}</span>
+            <span class="frame-info">Frame {{ state.frame_num+1 }}/{{ state.experiment.frames.length }}</span>
             <Button @click="left" icon="bi-skip-backward" />
             <Button icon="bi-play" />
             <Button @click="right" icon="bi-skip-forward" />

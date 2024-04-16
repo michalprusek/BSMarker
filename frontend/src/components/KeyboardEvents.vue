@@ -1,7 +1,3 @@
-<template>
-    <div></div>
-</template>
-  
 <script setup>
     import { defineEmits } from 'vue'
 
@@ -13,3 +9,7 @@
 
     window.addEventListener("keyup", keyup);
 </script>
+
+<template>
+    <div></div>
+</template>

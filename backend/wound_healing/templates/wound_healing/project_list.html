@@ -11,12 +11,17 @@
 	<ul>
 		{% for project in object_list %}
 		<li>
-			<h3>{{project.name}}</h3>
-			<ul>
-				{% for experiment in project.experiments.all %}
-				<li><a href="{{ experiment.get_absolute_url }}">{{experiment.name}}</a></li>
-				{% endfor %}
-			</ul>
+			<details>
+				<summary>
+					<h3>{{project.name}}</h3>
+				</summary>
+				<ul>
+					{% for experiment in project.experiments.all %}
+					<li><a href="{{ experiment.get_absolute_url }}">{{experiment.name}}</a></li>
+					{% endfor %}
+					{#<li><a href="{% url 'experiment-create' project=project.slug %}" role="button">Add new</a></li>#}
+				</ul>
+			</details>
 		</li>
 		{% endfor %}
 	</ul>

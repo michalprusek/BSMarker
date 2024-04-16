@@ -43,3 +43,13 @@ class Frame(models.Model):
     number = models.PositiveIntegerField()
     image = models.ImageField(upload_to=upload_to)
     polygon = models.JSONField(null=True, editable=False)
+
+    @property
+    def histogram(self):
+        import numpy as np
+        import cv2 as cv
+
+        img = cv.imdecode(np.frombuffer(self.image.read(), np.uint8), cv.IMREAD_UNCHANGED)
+
+        hist = np.bincount(img.ravel(), minlength=256)
+        return hist
