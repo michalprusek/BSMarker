@@ -17,11 +17,17 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 from django.conf import settings
+
 from wound_healing import views
+from strawberry.django.views import GraphQLView
+from wound_healing.api import schema
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('experiment/<slug:project>/<slug:experiment>/', views.ExperimentView.as_view(), name="experiment-view"),
+    path('', views.ProjectList.as_view(), name="project-list"),
+    path('experiment/<slug:project>/<slug:experiment>/', views.ExperimentView.as_view(), name="experiment-detail"),
+    path("graphql/", GraphQLView.as_view(schema=schema)),
 ]
 
 if settings.DEBUG:

@@ -1,19 +1,47 @@
 <script setup>
+    import { ref } from 'vue';
     import Button from "./Button.vue";
     import Polygon from "./Polygon.vue";
+    import KeyboardEvents from "./KeyboardEvents.vue";
+
+    const props = defineProps(["frames"]);
+
+    const current = ref(0);
+
+    function left() {
+        const l = props.frames.length;
+
+        current.value = (current.value-1 + l)%l;
+    }
+
+    function right() {
+        const l = props.frames.length;
+
+        current.value = (current.value+1)%l;
+    }
+
+    function move(event) {
+        if (event.keyCode == 37) {
+            left();
+        } else if (event.keyCode == 39) {
+            right();
+        }
+    }
 </script>
 
 <template>
+    <KeyboardEvents @keyup="move" />
     <div class="image-display">
         <div class="blank">
         </div>
         <div class="image-view">
-            <Polygon />
+            <Polygon v-bind:frame="frames[current]" />
         </div>
         <div class="controls">
-            <Button icon="bi-skip-backward" />
+            <span class="frame-info">Frame {{ current+1 }}/{{ frames.length }}</span>
+            <Button @click="left" icon="bi-skip-backward" />
             <Button icon="bi-play" />
-            <Button icon="bi-skip-forward" />
+            <Button @click="right" icon="bi-skip-forward" />
         </div>
         <div class="blank">
         </div>
@@ -40,5 +68,9 @@
 
     .controls {
         text-align: center;
+    }
+
+    .frame-info {
+        float: left;
     }
 </style>

@@ -1,7 +1,7 @@
 from django.db import models
 
 from django.template.defaultfilters import slugify
-from django.forms.models import model_to_dict
+from django.urls import reverse
 
 
 class Project(models.Model):
@@ -27,6 +27,9 @@ class Experiment(models.Model):
     def save(self, *args, **kwargs):
         self.slug = slugify(self.name)
         super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        return reverse("experiment-detail", kwargs={"experiment": self.slug, "project": self.project.slug})
 
 
 class Frame(models.Model):

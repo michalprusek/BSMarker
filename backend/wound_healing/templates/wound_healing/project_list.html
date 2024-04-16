@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ object }}{% endblock %}
+
+{% block body %}
+<header>
+	<h1>Wound healing</h1>
+</header>
+<main>
+	<h2>Projects</h2>
+	<ul>
+		{% for project in object_list %}
+		<li>
+			<h3>{{project.name}}</h3>
+			<ul>
+				{% for experiment in project.experiments.all %}
+				<li><a href="{{ experiment.get_absolute_url }}">{{experiment.name}}</a></li>
+				{% endfor %}
+			</ul>
+		</li>
+		{% endfor %}
+	</ul>
+</main>
+{% endblock %}
