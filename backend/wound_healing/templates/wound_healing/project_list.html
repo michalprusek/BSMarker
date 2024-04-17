@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ object }}{% endblock %}
+{% block title %}Projects{% endblock %}
 
 {% block body %}
 <header>
@@ -19,7 +19,7 @@
 					{% for experiment in project.experiments.all %}
 					<li><a href="{{ experiment.get_absolute_url }}">{{experiment.name}}</a></li>
 					{% endfor %}
-					{#<li><a href="{% url 'experiment-create' project=project.slug %}" role="button">Add new</a></li>#}
+					<li><a href="{% url 'experiment-create' project=project.slug %}" role="button">Add new</a></li>
 				</ul>
 			</details>
 		</li>

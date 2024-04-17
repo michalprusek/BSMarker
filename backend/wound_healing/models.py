@@ -49,7 +49,8 @@ class Frame(models.Model):
         import numpy as np
         import cv2 as cv
 
-        img = cv.imdecode(np.frombuffer(self.image.read(), np.uint8), cv.IMREAD_UNCHANGED)
+        with self.image.open() as f:
+            img = cv.imdecode(np.frombuffer(f.read(), np.uint8), cv.IMREAD_UNCHANGED)
 
         hist = np.bincount(img.ravel(), minlength=256)
         return hist

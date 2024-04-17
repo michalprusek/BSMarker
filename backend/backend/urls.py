@@ -27,7 +27,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', views.ProjectList.as_view(), name="project-list"),
     path('proj/<slug:project>/experiment/<slug:experiment>/', views.ExperimentView.as_view(), name="experiment-detail"),
-    #path('proj/<slug:project>/experiment/new', views.ExperimentCreate.as_view(), name="experiment-create"),
+    path('proj/<slug:project>/experiment/new', views.ExperimentCreate.as_view(), name="experiment-create"),
     path("graphql/", GraphQLView.as_view(schema=schema)),
 ]
 

@@ -131,6 +131,8 @@ STATICFILES_DIRS = [
     BASE_DIR.parent / "frontend" / "dist"
 ]
 
+DATA_UPLOAD_MAX_NUMBER_FILES = None
+
 # Media files
 
 MEDIA_ROOT = 'data/'
