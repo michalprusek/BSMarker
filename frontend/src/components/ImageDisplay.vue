@@ -7,10 +7,19 @@
     import { useExperimentStore } from "../state.js";
     let state = useExperimentStore();
 
+    const FRAME_INTERVAL = 100;
+
     let paused = ref(true);
+    let handle = null;
 
     function play() {
+        paused.value = !paused.value;
+        handle = setInterval(right, FRAME_INTERVAL);
+    }
 
+    function pause() {
+        paused.value = !paused.value;
+        clearInterval(handle);
     }
 
     function left() {
@@ -42,7 +51,7 @@
             <span class="frame-info">Frame {{ state.frame_idx+1 }}/{{ state.frames.length }}</span>
             <Button @click="left" icon="bi-skip-backward" />
             <Button @click="play" v-if="paused" icon="bi-play" />
-            <Button v-else icon="bi-pause" />
+            <Button @click="pause" v-else icon="bi-pause" />
             <Button @click="right" icon="bi-skip-forward" />
         </div>
         <div class="blank">
