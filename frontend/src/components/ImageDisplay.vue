@@ -10,16 +10,16 @@
     const FRAME_INTERVAL = 100;
 
     let paused = ref(true);
-    let handle = null;
+    let play_handle = null;
 
     function play() {
         paused.value = !paused.value;
-        handle = setInterval(right, FRAME_INTERVAL);
+        play_handle = setInterval(right, FRAME_INTERVAL);
     }
 
     function pause() {
         paused.value = !paused.value;
-        clearInterval(handle);
+        clearInterval(play_handle);
     }
 
     function left() {
@@ -37,6 +37,11 @@
             right();
         }
     }
+
+    function set_frame(event) {
+        const l = state.frames.length;
+        state.frame_idx = (event.target.value-1+l)%l;
+    }
 </script>
 
 <template>
@@ -48,11 +53,20 @@
             <Polygon v-if="state.current_frame" :frame="state.current_frame" />
         </div>
         <div class="controls">
-            <span class="frame-info">Frame {{ state.frame_idx+1 }}/{{ state.frames.length }}</span>
-            <Button @click="left" icon="bi-skip-backward" />
-            <Button @click="play" v-if="paused" icon="bi-play" />
-            <Button @click="pause" v-else icon="bi-pause" />
-            <Button @click="right" icon="bi-skip-forward" />
+            <span class="frame-info">Frame 
+                <input 
+                    type="number" 
+                    @change="set_frame"
+                    :value="state.frame_idx+1"
+                />
+                /{{ state.frames.length }}
+            </span>
+            <span class="buttons">
+                <Button @click="left" icon="bi-skip-backward" />
+                <Button @click="play" v-if="paused" icon="bi-play" />
+                <Button @click="pause" v-else icon="bi-pause" />
+                <Button @click="right" icon="bi-skip-forward" />
+            </span>
         </div>
         <div class="blank">
         </div>
@@ -81,7 +95,11 @@
         text-align: center;
     }
 
+    .frame-info input {
+        width: 4em;
+    }
+
     .frame-info {
-        float: left;
+        margin-right: 1rem;
     }
 </style>

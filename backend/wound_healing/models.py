@@ -1,5 +1,6 @@
 from django.db import models
 
+from django.utils.functional import cached_property
 from django.template.defaultfilters import slugify
 from django.urls import reverse
 
@@ -44,7 +45,7 @@ class Frame(models.Model):
     image = models.ImageField(upload_to=upload_to)
     polygon = models.JSONField(null=True, editable=False)
 
-    @property
+    @cached_property
     def histogram(self):
         import numpy as np
         import cv2 as cv

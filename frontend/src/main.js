@@ -9,10 +9,11 @@ import { OhVueIcon, addIcons } from "oh-vue-icons";
 import { BiSkipBackward, BiSkipForward, BiPlay, BiPause } from "oh-vue-icons/icons";
 addIcons(BiSkipBackward, BiSkipForward, BiPlay, BiPause);
 
-const pinia = createPinia();
 const app = createApp(App);
-
+const pinia = createPinia();
 app.use(pinia);
+
 app.component("v-icon", OhVueIcon);
+app.config.performance = true;
 
 app.mount("#app");
