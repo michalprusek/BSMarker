@@ -1,56 +1,19 @@
 <script setup>
-    import { reactive } from 'vue';
     import ImageDisplay from "./components/ImageDisplay.vue";
     import Histogram from "./components/Histogram.vue"
 
-    const query = `
-query getExperiment($id: ID!) {
-  experiment(id: $id) {
-    url,
-    frames {
-      histogram,
-      image {
-        url
-      }
-    }
-  }
-}
-`;
-    let state = reactive({
-        experiment: null,
-        frame_num: 0,
-
-        current_frame: function() {
-            return this.experiment.frames[this.frame_num]
-        }
-    });
-
-    let experiment_id = JSON.parse(document.getElementById("experiment").textContent);
-
-    fetch("/graphql/", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            query: query,
-            operationName: "getExperiment",
-            variables: {
-                id: experiment_id
-            }
-        }),
-    }).then(res => res.json()).then(res => {
-        state.experiment = res.data.experiment;
-    });
+    import { useExperimentStore } from "./state.js";
+    let state = useExperimentStore();
+    state.setup();
 </script>
 
 <template>
     <nav>
         <h1>Wound healing</h1>
     </nav>
-    <main>
+    <main v-if="state.loaded">
         <div class="left split">
-            <ImageDisplay v-if="state.experiment" :state="state" />
+            <ImageDisplay v-if="state.frames" />
         </div>
         <div class="right split grid">
             <div class="properties">
@@ -62,7 +25,9 @@ query getExperiment($id: ID!) {
             </div>
             <div class="image-enhancement">
                 <h3>Image enhancement</h3>
-                <Histogram v-if="state.experiment" :state="state" />
+                <template v-if="state.current_frame">
+                    <Histogram v-if="state.current_frame.histogram" />
+                </template>
             </div>
             <div class="results">
                 <h3>Results</h3>
@@ -71,6 +36,12 @@ query getExperiment($id: ID!) {
                     <tr><td>Boundary roughness</td><td>N/A</td></tr>
                 </table>
             </div>
+        </div>
+    </main>
+    <main v-else>
+        <div class="loading">
+            Loading...
+            <div class="loader"></div>
         </div>
     </main>
 </template>

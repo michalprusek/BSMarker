@@ -22,8 +22,12 @@ class Experiment:
     def url(self) -> str:
         return self.get_absolute_url()
 
+    @strawberry.django.field
+    def frame_count(self) -> int:
+        return self.frames.count()
 
-@strawberry.django.type(models.Frame)
+
+@strawberry.django.type(models.Frame, pagination=True)
 class Frame:
     id: auto
     image: auto
@@ -45,6 +49,7 @@ class Query:
         if not info.context.request.user.is_authenticated:
             return None
         return models.Experiment.objects.get(id=id)
+
 
 schema = strawberry.Schema(
     query=Query,

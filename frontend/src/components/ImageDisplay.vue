@@ -1,19 +1,24 @@
 <script setup>
+    import { ref } from "vue";
     import Button from "./Button.vue";
     import Polygon from "./Polygon.vue";
     import KeyboardEvents from "./KeyboardEvents.vue";
 
-    const props = defineProps(["state"]);
-    const state = props.state;
+    import { useExperimentStore } from "../state.js";
+    let state = useExperimentStore();
+
+    let paused = ref(true);
+
+    function play() {
+
+    }
 
     function left() {
-        const l = state.experiment.frames.length;
-        state.frame_num = (state.frame_num-1 + l)%l;
+        state.prev_frame();
     }
 
     function right() {
-        const l = state.experiment.frames.length;
-        state.frame_num = (state.frame_num+1)%l;
+        state.next_frame();
     }
 
     function move(event) {
@@ -31,12 +36,13 @@
         <div class="blank">
         </div>
         <div class="image-view"> 
-            <Polygon :frame="state.current_frame()" />
+            <Polygon v-if="state.current_frame" :frame="state.current_frame" />
         </div>
         <div class="controls">
-            <span class="frame-info">Frame {{ state.frame_num+1 }}/{{ state.experiment.frames.length }}</span>
+            <span class="frame-info">Frame {{ state.frame_idx+1 }}/{{ state.frames.length }}</span>
             <Button @click="left" icon="bi-skip-backward" />
-            <Button icon="bi-play" />
+            <Button @click="play" v-if="paused" icon="bi-play" />
+            <Button v-else icon="bi-pause" />
             <Button @click="right" icon="bi-skip-forward" />
         </div>
         <div class="blank">

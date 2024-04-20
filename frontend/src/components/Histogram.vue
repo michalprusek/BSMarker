@@ -1,8 +1,9 @@
 <script setup>
-    import { computed, onMounted, watch } from 'vue'
-    import Plotly from 'plotly.js-dist-min'
+    import { computed, onMounted, watch } from 'vue';
+    import Plotly from 'plotly.js-dist-min';
 
-    const props = defineProps(["state"]);
+    import { useExperimentStore } from "../state.js";
+    let state = useExperimentStore();
 
     function cumsum(xs) {
         // https://stackoverflow.com/a/55261098/4898487
@@ -20,7 +21,7 @@
     }
 
     function plot_data() {
-        const histogram = props.state.current_frame().histogram;
+        const histogram = state.current_frame.histogram;
 
         const data = [
             {
@@ -49,7 +50,7 @@
     };
 
     onMounted(plot_data);
-    watch(props.state, plot_data);
+    watch(state, plot_data);
 </script>
 
 

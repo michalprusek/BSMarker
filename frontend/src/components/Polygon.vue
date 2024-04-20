@@ -1,6 +1,5 @@
 <script setup>
     import { ref, reactive, computed } from 'vue';
-
     const props = defineProps(["frame"]);
 
     const points = reactive([
