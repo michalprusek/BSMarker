@@ -39,8 +39,8 @@
         ];
 
         Plotly.newPlot("histogram", data, {
-            xaxis: {fixedrange: true},
-            yaxis: {fixedrange: true},
+            xaxis: { fixedrange: true, showgrid: false },
+            yaxis: { fixedrange: true, showgrid: false },
             margin: {l: 0, r: 0, t: 0, b: 0},
             showlegend: false,
         }, {

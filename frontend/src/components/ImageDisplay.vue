@@ -7,6 +7,8 @@
     import { useExperimentStore } from "../state.js";
     let state = useExperimentStore();
 
+    const editor_svg = ref(null);
+
     const FRAME_INTERVAL = 100;
 
     let paused = ref(true);
@@ -49,8 +51,11 @@
     <div class="image-display">
         <div class="blank">
         </div>
-        <div class="image-view"> 
-            <Polygon v-if="state.current_frame" :frame="state.current_frame" />
+        <div class="image-view">
+            <svg v-if="state.current_frame" id="editor-svg" ref="editor_svg" viewBox="0 0 1 1" xmlns="http://www.w3.org/2000/svg">
+                <image x="0" y="0" width="1" height="1" :xlink:href="state.current_frame.image.url"></image>
+                <Polygon v-if="editor_svg" :svg="editor_svg" />
+            </svg>
         </div>
         <div class="controls">
             <span class="frame-info">Frame 
@@ -101,5 +106,10 @@
 
     .frame-info {
         margin-right: 1rem;
+    }
+
+    svg {
+        height: 100%;
+        width: 100%;
     }
 </style>

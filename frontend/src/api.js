@@ -15,6 +15,15 @@ query experimentInfo($id: ID!) {
     },
   }
 }
+
+query modifiedImage($id: ID!, $num: Int!) {
+  experiment(id: $id) {
+    modifiedFrame(num: $num, eqhist: true) {
+      dataUrl,
+      histogram
+    },
+  }
+}
 `;
 
 function query(operation, variables) {
@@ -37,9 +46,9 @@ export function experiment_info(experiment_id) {
     }).then(res => res["data"]["experiment"]);
 }
 
-export function next_histograms(experiment_id, offset) {
-    return query("nextHistograms", {
+export function modified_image(experiment_id, num) {
+    return query("modifiedImage", {
         "id": experiment_id,
-        "offset": offset
-    }).then(res => res["data"]["experiment"]["histograms"]);
+        "num": num
+    }).then(res => res["data"]["experiment"]["modifiedFrame"]);
 }

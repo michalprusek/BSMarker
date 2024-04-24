@@ -1,6 +1,7 @@
 <script setup>
     import { ref, reactive, computed } from 'vue';
-    const props = defineProps(["frame"]);
+
+    const props = defineProps(["svg"]);
 
     const points = reactive([
         {"id": 1, "x": 0.1, "y": 0.1}, 
@@ -27,9 +28,8 @@
     const image_pos = ref(null);
 
     function set_size() {
-        const svg = document.querySelector("#editor-svg")
-        const image = document.querySelector("#editor-svg image");
-        const svg_rect = svg.getBoundingClientRect();
+        const image = props.svg.querySelector("image");
+        const svg_rect = props.svg.getBoundingClientRect();
         const image_rect = image.getBoundingClientRect();
         image_pos.value = {
             width: image_rect.width,
@@ -43,7 +43,6 @@
         if (!image_pos.value) {
             set_size();
         }
-        const svg = document.getElementById("editor-svg");
         return {
             "x": (event.offsetX-image_pos.value.offset_left)/image_pos.value.width,
             "y": (event.offsetY-image_pos.value.offset_top)/image_pos.value.height
@@ -65,6 +64,7 @@
                 let point = points[idx];
                 active_drag.value = point;
             }
+            event.stopPropagation();
         }
     }
 
@@ -90,60 +90,50 @@
     }
 
     window.addEventListener("resize", set_size);
+
+    props.svg.addEventListener("contextmenu", ctxmenu);
+    props.svg.addEventListener("mousedown", point_click);
+    props.svg.addEventListener("mousemove", drag);
+    props.svg.addEventListener("mouseleave", drag_end);
+    props.svg.addEventListener("mouseup", drag_end);
 </script>
 
 <template>
-    <svg 
-        id="editor-svg"
-        @contextmenu="ctxmenu"
-        @mousedown="point_click" 
-        @mousemove="drag" 
-        @onmouseleave="drag_end" 
-        @mouseup="drag_end" 
-        viewBox="0 0 1 1" 
-        xmlns="http://www.w3.org/2000/svg"
-    >
-        <image x="0" y="0" width="1" height="1" v-bind:xlink:href="frame.image.url"></image>
-        <polygon
-            v-bind:points="svg_polygon_points"
-            fill="rgba(120, 50, 100, 0.2)"
-            stroke="rgba(120, 50, 100, 0.7)"
-            stroke-width="0.005"
-        />
-        <line 
-            @click="add_point"
-            v-for="(line, index) in lines" 
-            :key="line[0].id + ',' + line[1].id"
-            v-bind:x1="line[0].x" 
-            v-bind:y1="line[0].y" 
-            v-bind:x2="line[1].x" 
-            v-bind:y2="line[1].y"
-            stroke="rgba(120, 50, 100, 0.1)"
-            stroke-width="0.02"
-            v-bind:data-index="index" 
-        />
-        <circle 
-            v-for="(point, index) in points" 
-            :key="point.id" 
-            r="0.015"
-            fill="rgba(120, 50, 100, 0.2)"
-            v-bind:cx="point.x" v-bind:cy="point.y"
-            v-bind:data-index="index" 
-        />
-        <circle 
-            v-for="(point, index) in points" 
-            :key="point.id" 
-            r="0.01"
-            fill="rgba(120, 50, 100, 0.9)"
-            v-bind:cx="point.x" v-bind:cy="point.y"
-            v-bind:data-index="index" 
-        />
-    </svg>
+    <polygon
+        v-bind:points="svg_polygon_points"
+        fill="rgba(120, 50, 100, 0.2)"
+        stroke="rgba(120, 50, 100, 0.7)"
+        stroke-width="0.005"
+    />
+    <line 
+        @click="add_point"
+        v-for="(line, index) in lines" 
+        :key="line[0].id + ',' + line[1].id"
+        v-bind:x1="line[0].x" 
+        v-bind:y1="line[0].y" 
+        v-bind:x2="line[1].x" 
+        v-bind:y2="line[1].y"
+        stroke="rgba(120, 50, 100, 0.1)"
+        stroke-width="0.02"
+        v-bind:data-index="index" 
+    />
+    <circle 
+        v-for="(point, index) in points" 
+        :key="point.id" 
+        r="0.015"
+        fill="rgba(120, 50, 100, 0.2)"
+        v-bind:cx="point.x" v-bind:cy="point.y"
+        v-bind:data-index="index" 
+    />
+    <circle 
+        v-for="(point, index) in points" 
+        :key="point.id" 
+        r="0.01"
+        fill="rgba(120, 50, 100, 0.9)"
+        v-bind:cx="point.x" v-bind:cy="point.y"
+        v-bind:data-index="index" 
+    />
 </template>
 
 <style scoped>
-    svg {
-        height: 100%;
-        width: 100%;
-    }
 </style>

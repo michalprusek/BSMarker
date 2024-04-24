@@ -5,6 +5,8 @@ from strawberry_django.optimizer import DjangoOptimizerExtension
 
 from . import models
 
+import base64
+
 @strawberry.django.type(models.Project)
 class Project:
     id: auto
@@ -26,6 +28,15 @@ class Experiment:
     def frame_count(self) -> int:
         return self.frames.count()
 
+    @strawberry.django.field
+    def modified_frame(self, num: int, eqhist: bool=False) -> "Frame":
+        frame = self.frames.get(number=num)
+
+        if eqhist:
+            frame.eqhist()
+
+        return frame
+
 
 @strawberry.django.type(models.Frame, pagination=True)
 class Frame:
@@ -34,6 +45,10 @@ class Frame:
     histogram: list[int]
 
     experiment: Experiment
+
+    @strawberry.django.field
+    def data_url(self) -> str:
+        return "data:image/jpeg;base64," + base64.b64encode(self.jpg).decode()
 
 
 @strawberry.type

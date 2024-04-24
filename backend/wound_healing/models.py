@@ -1,8 +1,12 @@
 from django.db import models
 
-from django.utils.functional import cached_property
+from django.core.cache import cache
+
 from django.template.defaultfilters import slugify
 from django.urls import reverse
+
+import numpy as np
+import cv2 as cv
 
 
 class Project(models.Model):
@@ -45,13 +49,43 @@ class Frame(models.Model):
     image = models.ImageField(upload_to=upload_to)
     polygon = models.JSONField(null=True, editable=False)
 
-    @cached_property
+    class Meta:
+        unique_together = [("experiment", "number")]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._img = None
+        self._original = True
+
+    @property
+    def img(self):
+        if self._img is None:
+            with self.image.open() as f:
+                self._img = cv.imdecode(np.frombuffer(f.read(), np.uint8), cv.IMREAD_UNCHANGED)
+        return self._img
+
+    @img.setter
+    def img(self, val):
+        self._img = val
+        self._original = False
+
+    def eqhist(self):
+        self.img = cv.equalizeHist(self.img)
+
+    @property
+    def jpg(self):
+        return cv.imencode(".jpg", self.img)[1]
+
+    @property
+    def hist_cache_key(self):
+        return f"histogram-{self.pk}"
+
+    @property
     def histogram(self):
-        import numpy as np
-        import cv2 as cv
+        if not self._original or (hist := cache.get(self.hist_cache_key)) is None:
+            hist = np.bincount(self.img.ravel(), minlength=256)
 
-        with self.image.open() as f:
-            img = cv.imdecode(np.frombuffer(f.read(), np.uint8), cv.IMREAD_UNCHANGED)
-
-        hist = np.bincount(img.ravel(), minlength=256)
+            if self._original:
+                cache.set(self.hist_cache_key, hist, None)
+        
         return hist

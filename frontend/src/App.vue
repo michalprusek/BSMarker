@@ -27,6 +27,7 @@
                 <h3>Image enhancement</h3>
                 <template v-if="state.current_frame">
                     <Histogram v-if="state.current_frame.histogram" />
+                    <button @click="state.modify_image">Equalize histogram</button>
                 </template>
             </div>
             <div class="results">
