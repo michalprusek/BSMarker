@@ -6,7 +6,7 @@
 <header>
 	<h1>Wound healing</h1>
 </header>
-<main>
+<main id="projects">
 	<h2>Projects</h2>
 	<ul>
 		{% for project in object_list %}
@@ -19,7 +19,7 @@
 					{% for experiment in project.experiments.all %}
 					<li><a href="{{ experiment.get_absolute_url }}">{{experiment.name}}</a></li>
 					{% endfor %}
-					<li><a href="{% url 'experiment-create' project=project.slug %}" role="button">Add new</a></li>
+					<li><a href="{% url 'experiment-create' project=project.slug %}" role="button"><button>Add new</button></a></li>
 				</ul>
 			</details>
 		</li>
