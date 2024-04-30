@@ -90,8 +90,6 @@
         display: flex;
         flex-direction: column;
         text-align: center;
-
-        background: var(--primary-color);
     }
 
     .blank {
@@ -107,7 +105,7 @@
     }
 
     .frame-info input {
-        width: 4em;
+        width: 5em;
     }
 
     .frame-info {

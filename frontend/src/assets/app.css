@@ -1,13 +1,3 @@
-#app nav {
-    width: 100vw;
-    height: var(--nav-height);
-    border-bottom: 2px solid var(--text-color);
-}
-
-#app nav h1 {
-    padding-left: 0.5rem;
-}
-
 #app main {
     position: absolute;
     left: 0;
@@ -29,10 +19,11 @@
     width: 4rem;
     height: 4rem;
     border-radius: 50%;
-    border: 1rem solid var(--text-color);
+    border: 1rem solid var(--primary-text-color);
     border-bottom-color: transparent;
     animation: load 1s infinite linear;
 }
+
 @keyframes load {
     0% {
         transform: rotate(0deg);

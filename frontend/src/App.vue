@@ -1,6 +1,8 @@
 <script setup>
     import ImageDisplay from "./components/ImageDisplay.vue";
     import Histogram from "./components/Histogram.vue"
+    import PolygonList from "./components/PolygonList.vue"
+    import Button from "./components/Button.vue";
 
     import { useExperimentStore } from "./state.js";
     let state = useExperimentStore();
@@ -8,9 +10,9 @@
 </script>
 
 <template>
-    <nav>
+    <header>
         <h1>Wound healing</h1>
-    </nav>
+    </header>
     <main v-if="state.loaded">
         <div class="left split">
             <ImageDisplay v-if="state.frames" />
@@ -18,16 +20,13 @@
         <div class="right split grid">
             <div class="properties">
                 <h3>Mask properties</h3>
-                <ul>
-                    <li>Property A <input type="checkbox" /></li>
-                    <li>Property B <input type="checkbox" /></li>
-                </ul>
+                <PolygonList />
             </div>
             <div class="image-enhancement">
                 <h3>Image enhancement</h3>
                 <template v-if="state.current_frame">
                     <Histogram v-if="state.current_frame.histogram" />
-                    <button @click="state.modify_image">Equalize histogram</button>
+                    <Button @click="state.modify_image">Equalize histogram</Button>
                 </template>
             </div>
             <div class="results">
@@ -54,13 +53,13 @@
 
     .grid {
         display: grid;
-        gap: 2px;
+        grid-gap: -1px;
         height: 100%;
     }
 
     .grid > * {
-        padding: 0.5rem;
-        outline: 2px solid var(--text-color);
+        padding: 1rem 1.5rem;
+        border-left: var(--border-thickness) solid var(--border-color);
     }
 
     .properties {
@@ -76,5 +75,7 @@
     .results {
         grid-column-start: 1;
         grid-column-end: 3;
+
+        border-top: var(--border-thickness) solid var(--border-color);
     }
 </style>

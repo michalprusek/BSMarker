@@ -3,5 +3,5 @@
 </script>
 
 <template>
-    <button><v-icon v-bind:name="icon" /></button>
+    <button><v-icon v-if="icon" v-bind:name="icon" /><slot /></button>
 </template>
