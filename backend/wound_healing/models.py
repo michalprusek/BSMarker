@@ -47,7 +47,6 @@ class Frame(models.Model):
     experiment = models.ForeignKey(Experiment, related_name="frames", on_delete=models.CASCADE)
     number = models.PositiveIntegerField()
     image = models.ImageField(upload_to=upload_to)
-    polygon = models.JSONField(null=True, editable=False)
 
     class Meta:
         unique_together = [("experiment", "number")]
@@ -89,3 +88,8 @@ class Frame(models.Model):
                 cache.set(self.hist_cache_key, hist, None)
         
         return hist
+
+
+class Polygon(models.Model):
+    frame = models.ForeignKey(Frame, related_name="polygons", on_delete=models.CASCADE)
+    data = models.JSONField()

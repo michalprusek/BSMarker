@@ -9,6 +9,10 @@
     --text-color: black; /*rgb(230, 225, 229);*/
 }
 
+* {
+    box-sizing: border-box;
+}
+
 html, body {
     margin: 0;
     padding: 0;

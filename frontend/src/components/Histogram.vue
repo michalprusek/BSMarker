@@ -61,6 +61,7 @@
 
 <style scoped>
     #histogram {
+        box-sizing: content-box;
         border: 1px solid black;
         aspect-ratio: 1;
     }

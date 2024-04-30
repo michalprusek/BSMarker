@@ -1,5 +1,7 @@
+import { watch } from 'vue';
 import { defineStore } from 'pinia';
-import { experiment_info, modified_image } from "./api.js";
+import { experiment_info, modified_image, update_polygon } from "./api.js";
+
 
 function preload_image(src) {
     const image = new Image();
@@ -26,6 +28,7 @@ export const useExperimentStore = defineStore("experiment", {
             }
             return state.frames[state.frame_idx];
         },
+        // TODO: more generic
         next_url: (state) => {
             if (!state.frames) {
                 return null;
@@ -44,22 +47,20 @@ export const useExperimentStore = defineStore("experiment", {
     	async setup() {
     		this.id = JSON.parse(document.getElementById("experiment").textContent);
 
+            // Load experiment data
     		const { frames, ...experiment } = await experiment_info(this.id);
     		this.experiment = experiment;
             this.frames = frames;
 
-            for (let i = 0; i < frames.length; i++) {
+            // Preload frames
+            for (let i = 0; i < this.frames.length; i++) {
                 this.frames[i].image.preloaded = preload_image(this.frames[i].image.url);
             }
 
             this.loaded = true;
     	},
-        async modify_image() {
-            let { dataUrl, histogram } = await modified_image(this.id, this.frame_idx);
-            this.current_frame.image.url = dataUrl;
-            this.current_frame.histogram = histogram;
-            this.current_frame.image.preloaded = null;
-        },
+
+        // Frame switching functions
         next_frame() {
             if (!this.frames) {
                 throw "invalid operation 'next_frame' at this state";
@@ -80,6 +81,19 @@ export const useExperimentStore = defineStore("experiment", {
             if (!this.current_frame.histogram) {
                 this.load_histograms(this.frame_idx);
             }
+        },
+
+        // These actions operate on the current frame
+        async modify_image() {
+            let { dataUrl, histogram } = await modified_image(this.id, this.frame_idx);
+            this.current_frame.image.url = dataUrl;
+            this.current_frame.histogram = histogram;
+            this.current_frame.image.preloaded = null;
+        },
+        
+        async save_polygon(idx) {
+            const poly = this.current_frame.polygons[idx];
+            await update_polygon(poly.id, poly.data);
         },
     }
 });

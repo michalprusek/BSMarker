@@ -54,7 +54,13 @@
         <div class="image-view">
             <svg v-if="state.current_frame" id="editor-svg" ref="editor_svg" viewBox="0 0 1 1" xmlns="http://www.w3.org/2000/svg">
                 <image x="0" y="0" width="1" height="1" :xlink:href="state.current_frame.image.url"></image>
-                <Polygon v-if="editor_svg" :svg="editor_svg" />
+                <Polygon 
+                    v-if="editor_svg" 
+                    v-for="(polygon, index) in state.current_frame.polygons" 
+                    @change="state.save_polygon(index)"
+                    :points="polygon.data" 
+                    :svg="editor_svg"
+                    :poly="index" />
             </svg>
         </div>
         <div class="controls">

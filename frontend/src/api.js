@@ -11,7 +11,11 @@ query experimentInfo($id: ID!) {
       image {
         url
       },
-      histogram
+      histogram,
+      polygons {
+        id,
+        data
+      }
     },
   }
 }
@@ -22,6 +26,12 @@ query modifiedImage($id: ID!, $num: Int!) {
       dataUrl,
       histogram
     },
+  }
+}
+
+mutation updatePolygon($id: ID!, $data: [[Float!]!]!) {
+  updatePolygon(id: $id, data: $data) {
+    id
   }
 }
 `;
@@ -51,4 +61,11 @@ export function modified_image(experiment_id, num) {
         "id": experiment_id,
         "num": num
     }).then(res => res["data"]["experiment"]["modifiedFrame"]);
+}
+
+export function update_polygon(polygon_id, data) {
+    return query("updatePolygon", {
+        "id": polygon_id,
+        "data": data
+    });
 }

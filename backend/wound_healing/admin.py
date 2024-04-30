@@ -5,3 +5,4 @@ from . import models
 admin.site.register(models.Project)
 admin.site.register(models.Experiment)
 admin.site.register(models.Frame)
+admin.site.register(models.Polygon)
