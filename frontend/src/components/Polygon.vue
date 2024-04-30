@@ -1,7 +1,7 @@
 <script setup>
     import { ref, computed } from 'vue';
 
-    const props = defineProps(["svg", "points", "poly"]);
+    const props = defineProps(["svg", "points", "poly", "pcolor"]);
     const emit = defineEmits(["change"])
 
     const lines = computed(() => {
@@ -83,8 +83,8 @@
 <template>
     <polygon
         :points="svg_polygon_points"
-        fill="rgba(120, 50, 100, 0.2)"
-        stroke="rgba(120, 50, 100, 0.7)"
+        fill="rgba(var(--poly-color), 0.2)"
+        stroke="rgba(var(--poly-color), 0.7)"
         stroke-width="0.005"
     />
     <line 
@@ -95,7 +95,7 @@
         :y1="line[0][1]" 
         :x2="line[1][0]" 
         :y2="line[1][1]"
-        stroke="rgba(120, 50, 100, 0.1)"
+        stroke="rgba(var(--poly-color), 0.1)"
         stroke-width="0.02"
         :data-index="index" 
         :data-poly="poly"
@@ -104,7 +104,7 @@
         v-for="(point, index) in points" 
         :key="point[0] + ',' + point[1]" 
         r="0.015"
-        fill="rgba(120, 50, 100, 0.2)"
+        fill="rgba(var(--poly-color), 0.2)"
         :cx="point[0]" :cy="point[1]"
         :data-index="index" 
         :data-poly="poly"
@@ -113,7 +113,7 @@
         v-for="(point, index) in points" 
         :key="point[0] + ',' + point[1]"
         r="0.01"
-        fill="rgba(120, 50, 100, 0.9)"
+        fill="rgba(var(--poly-color), 0.9)"
         :cx="point[0]" :cy="point[1]"
         :data-index="index" 
         :data-poly="poly"
@@ -121,4 +121,7 @@
 </template>
 
 <style scoped>
+    polygon, line, circle {
+        --poly-color: v-bind(pcolor);
+    }
 </style>

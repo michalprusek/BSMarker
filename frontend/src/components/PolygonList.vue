@@ -31,6 +31,11 @@
 
     details {
         margin-top: 0.75rem;
+
+        padding: 0.5rem 1rem;
+        background: var(--secondary-color);
+
+        border-radius: 2px;
     }
 
     .right {

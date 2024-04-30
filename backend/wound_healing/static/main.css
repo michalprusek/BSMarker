@@ -15,7 +15,14 @@
     --border-color: rgb(32, 38, 50);
     --border-thickness: 1px;
 
+    --highlight-color: #2e6fd1;
+
     color-scheme: dark;
+
+    /* Polygon colors */
+    --polygon-purple: 120, 50, 100;
+    --polygon-green: 100, 120, 50;
+    --polygon-blue: 50, 100, 120;
 }
 
 * {
@@ -68,7 +75,7 @@ header h1 {
 input, button {
     padding: 0.2rem 0.5rem;
 
-    background: var(--secondary-color);
+    background: var(--primary-color);
     color: var(--primary-text-color);
 
     border: var(--border-thickness) solid var(--border-color);

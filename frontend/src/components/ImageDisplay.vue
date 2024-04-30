@@ -60,7 +60,8 @@
                     @change="state.save_polygon(index)"
                     :points="polygon.data" 
                     :svg="editor_svg"
-                    :poly="index" />
+                    :poly="index" 
+                    pcolor="var(--polygon-purple)" />
             </svg>
         </div>
         <div class="controls">
