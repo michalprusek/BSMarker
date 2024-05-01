@@ -54,11 +54,14 @@
         <div class="image-view">
             <svg v-if="state.current_frame" id="editor-svg" ref="editor_svg" viewBox="0 0 1 1" xmlns="http://www.w3.org/2000/svg">
                 <image 
+                    :key="frame.id"
+                    v-for="frame in state.frames"
+                    :visibility="frame.id == state.current_frame.id ? 'visible' : 'hidden'"
                     x="0" 
                     y="0" 
                     width="1" 
                     height="1" 
-                    :xlink:href="state.current_frame.image.url"
+                    :xlink:href="frame.image.url"
                     :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
                 />
                 <Polygon 

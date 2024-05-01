@@ -29,20 +29,6 @@ export const useExperimentStore = defineStore("experiment", {
             }
             return state.frames[state.frame_idx];
         },
-        // TODO: more generic
-        next_url: (state) => {
-            if (!state.frames) {
-                return null;
-            }
-            return state.frames[(state.frame_idx+1)%state.frames.length].image.url;
-        },
-        prev_url: (state) => {
-            if (!state.frames) {
-                return null;
-            }
-            const l = state.frames.length;
-            return state.frames[(state.frame_idx-1+l)%l].image.url;
-        },
     },
     actions: {
     	async setup() {

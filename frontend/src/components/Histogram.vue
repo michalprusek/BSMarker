@@ -39,12 +39,13 @@
         ];
 
         Plotly.newPlot("histogram", data, {
-            xaxis: { fixedrange: true, showgrid: false },
+            xaxis: { showgrid: false }, // fixedrange: true, 
             yaxis: { fixedrange: true, showgrid: false },
             margin: {l: 0, r: 0, t: 0, b: 0},
             showlegend: false,
             // TODO: unhardcode
             plot_bgcolor: "rgb(24, 28, 37)",
+            paper_bgcolor: "rgb(24, 28, 37)"
         }, {
             displayModeBar: false,
             responsive: true,

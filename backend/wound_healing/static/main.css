@@ -12,6 +12,7 @@
     --primary-text-color: #c2c7d0;
     --heading-text-color: white;
 
+    --button-border-color: #3f4144;
     --border-color: rgb(32, 38, 50);
     --border-thickness: 1px;
 
@@ -78,7 +79,7 @@ input, button {
     background: var(--primary-color);
     color: var(--primary-text-color);
 
-    border: var(--border-thickness) solid var(--border-color);
+    border: var(--border-thickness) solid var(--button-border-color);
     border-radius: 2px;
 }
 
