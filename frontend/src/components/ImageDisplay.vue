@@ -55,6 +55,10 @@
         zoomer = panzoom(editor_svg.value, {
             minZoom: 1,
             smoothScroll: false,
+            filterKey: function() {
+                // Disable arrow keys for panning
+                return true;
+            }
         });
     });
 
