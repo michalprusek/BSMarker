@@ -1,5 +1,7 @@
 <script setup>
-    import { ref } from "vue";
+    import { ref, onMounted } from "vue";
+    import panzoom from "panzoom";
+
     import Button from "./Button.vue";
     import Polygon from "./Polygon.vue";
     import KeyboardEvents from "./KeyboardEvents.vue";
@@ -9,11 +11,11 @@
 
     const editor_svg = ref(null);
 
-    const FRAME_INTERVAL = 100;
-
+    /* Image playback */
     let paused = ref(true);
     let play_handle = null;
 
+    const FRAME_INTERVAL = 100;
     function play() {
         paused.value = !paused.value;
         play_handle = setInterval(right, FRAME_INTERVAL);
@@ -43,6 +45,32 @@
     function set_frame(event) {
         const l = state.frames.length;
         state.frame_idx = (event.target.value-1+l)%l;
+    }
+
+    /* Zooming */
+
+    let zoomer;
+
+    onMounted(() => {
+        zoomer = panzoom(editor_svg.value, {
+            minZoom: 1,
+            smoothScroll: false,
+        });
+    });
+
+    function reset(event) {
+        zoomer.moveTo(0, 0);
+        zoomer.zoomAbs(0, 0, 1);
+    }
+
+    function zoom_in(event) {
+        const rect = editor_svg.value.parentElement.getBoundingClientRect();
+        zoomer.zoomTo(rect.width/2, rect.height/2, 2);
+    }
+
+    function zoom_out(event) {
+        const rect = editor_svg.value.parentElement.getBoundingClientRect();
+        zoomer.zoomTo(rect.width/2, rect.height/2, 0.5);
     }
 </script>
 
@@ -78,6 +106,11 @@
             </svg>
         </div>
         <div class="controls">
+            <span class="buttons">
+                <Button @click="zoom_in" icon="bi-zoom-in" />
+                <Button @click="reset" icon="bi-back" />
+                <Button @click="zoom_out" icon="bi-zoom-out" />
+            </span>
             <span class="frame-info">Frame 
                 <input 
                     type="number" 
@@ -112,6 +145,7 @@
 
     .image-view {
         max-height: 95%;
+        overflow: hidden;
     }
 
     .controls {
@@ -123,7 +157,7 @@
     }
 
     .frame-info {
-        margin-right: 1rem;
+        margin: 0 1rem;
     }
 
     svg {
