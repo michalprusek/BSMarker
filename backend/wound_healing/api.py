@@ -89,10 +89,20 @@ class Mutation:
         return poly
 
     @strawberry.django.mutation
+    def delete_polygon(self, info: Info, id: strawberry.ID) -> bool:
+        if not info.context.request.user.is_authenticated:
+            return False
+        if not (polygon := models.Polygon.objects.filter(pk=id).first()):
+            return False
+
+        polygon.delete()
+        return True
+
+    @strawberry.django.mutation
     def update_polygon(self, info: Info, id: strawberry.ID, data: list[tuple[float, float]]) -> Polygon | None:
         if not info.context.request.user.is_authenticated:
             return None
-        if not (polygon := models.Polygon.objects.get(pk=id)):
+        if not (polygon := models.Polygon.objects.filter(pk=id).first()):
             return None
         polygon.data = data
         polygon.save()

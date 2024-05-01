@@ -1,6 +1,6 @@
 import { watch } from 'vue';
 import { defineStore } from 'pinia';
-import { experiment_info, modified_image, update_polygon, create_polygon } from "./api.js";
+import { experiment_info, modified_image, update_polygon, create_polygon, delete_polygon } from "./api.js";
 
 
 function preload_image(src) {
@@ -19,6 +19,7 @@ export const useExperimentStore = defineStore("experiment", {
             frame_idx: 0,
 
             loaded: false,
+            highlighted_poly: null,
         };
     },
     getters: {
@@ -53,9 +54,9 @@ export const useExperimentStore = defineStore("experiment", {
             this.frames = frames;
 
             // Preload frames
-            for (let i = 0; i < this.frames.length; i++) {
+            /*for (let i = 0; i < this.frames.length; i++) {
                 this.frames[i].image.preloaded = preload_image(this.frames[i].image.url);
-            }
+            }*/
 
             this.loaded = true;
     	},
@@ -96,10 +97,14 @@ export const useExperimentStore = defineStore("experiment", {
             await update_polygon(poly.id, poly.data);
         },
 
-        async new_polygon() {
+        async create_polygon() {
             const poly = await create_polygon(this.current_frame.id);
-            console.log(poly);
             this.current_frame.polygons.push(poly);
+        },
+
+        async delete_polygon(idx) {
+            await delete_polygon(this.current_frame.polygons[idx].id);
+            this.current_frame.polygons.splice(idx, 1);
         }
     }
 });

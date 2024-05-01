@@ -53,7 +53,14 @@
         </div>
         <div class="image-view">
             <svg v-if="state.current_frame" id="editor-svg" ref="editor_svg" viewBox="0 0 1 1" xmlns="http://www.w3.org/2000/svg">
-                <image x="0" y="0" width="1" height="1" :xlink:href="state.current_frame.image.url"></image>
+                <image 
+                    x="0" 
+                    y="0" 
+                    width="1" 
+                    height="1" 
+                    :xlink:href="state.current_frame.image.url"
+                    :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
+                />
                 <Polygon 
                     v-if="editor_svg" 
                     v-for="(polygon, index) in state.current_frame.polygons" 
@@ -62,7 +69,9 @@
                     :points="polygon.data" 
                     :svg="editor_svg"
                     :poly="polygon.id" 
-                    pcolor="var(--polygon-purple)" />
+                    :highlight="state.highlighted_poly == polygon.id"
+                    pcolor="var(--polygon-purple)"
+                />
             </svg>
         </div>
         <div class="controls">
@@ -117,5 +126,9 @@
     svg {
         height: 100%;
         width: 100%;
+    }
+
+    svg image {
+        transition: 100ms;
     }
 </style>

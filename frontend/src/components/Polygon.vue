@@ -1,7 +1,7 @@
 <script setup>
     import { ref, computed } from 'vue';
 
-    const props = defineProps(["svg", "points", "poly", "pcolor"]);
+    const props = defineProps(["svg", "points", "poly", "pcolor", "highlight"]);
     const emit = defineEmits(["change"])
 
     const lines = computed(() => {
@@ -83,7 +83,7 @@
 <template>
     <polygon
         :points="svg_polygon_points"
-        fill="rgba(var(--poly-color), 0.2)"
+        :fill="highlight ? 'rgba(var(--poly-color), 0.8)' : 'rgba(var(--poly-color), 0.2)'"
         stroke="rgba(var(--poly-color), 0.7)"
         stroke-width="0.005"
     />
