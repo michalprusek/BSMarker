@@ -58,7 +58,7 @@
         });
     });
 
-    function reset(event) {
+    function zoom_reset(event) {
         zoomer.moveTo(0, 0);
         zoomer.zoomAbs(0, 0, 1);
     }
@@ -108,8 +108,10 @@
         <div class="controls">
             <span class="buttons">
                 <Button @click="zoom_in" icon="bi-zoom-in" />
-                <Button @click="reset" icon="bi-back" />
+                <Button @click="zoom_reset" icon="bi-back" />
                 <Button @click="zoom_out" icon="bi-zoom-out" />
+
+                <Button @click="state.frame_idx = 0; zoom_reset()" icon="bi-skip-backward-circle" />
             </span>
             <span class="frame-info">Frame 
                 <input 
