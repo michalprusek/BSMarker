@@ -33,6 +33,7 @@
     function add_point(event) {
         let pt = calc_point(event);
         props.points.splice(parseInt(event.target.dataset.index)+1, 0, [pt.x, pt.y]);
+        emit("change");
     }
 
     function point_click(event) {
@@ -41,6 +42,7 @@
 
             if (event.button == 2 && props.points.length > 3) {
                 props.points.splice(idx, 1);
+                emit("change");
             } else {
                 let point = props.points[idx];
                 active_drag.value = point;
