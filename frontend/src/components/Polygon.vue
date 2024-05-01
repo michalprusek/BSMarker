@@ -36,9 +36,7 @@
     }
 
     function point_click(event) {
-        if (event.target.tagName == "circle" && 
-            props.poly == event.target.dataset.poly) {
-
+        if (props.poly == event.target.dataset.poly) {
             let idx = event.target.dataset.index;
 
             if (event.button == 2 && props.points.length > 3) {
@@ -74,7 +72,6 @@
     }
 
     props.svg.addEventListener("contextmenu", ctxmenu);
-    props.svg.addEventListener("mousedown", point_click);
     props.svg.addEventListener("mousemove", drag);
     //props.svg.addEventListener("mouseleave", drag_end);
     props.svg.addEventListener("mouseup", drag_end);
@@ -101,19 +98,21 @@
         :data-poly="poly"
     />
     <circle 
+        @mousedown="point_click"
         v-for="(point, index) in points" 
-        :key="point[0] + ',' + point[1]" 
-        r="0.015"
-        fill="rgba(var(--poly-color), 0.2)"
+        :key="point[0] + ',' + point[1]"
+        r="0.01"
+        fill="rgba(var(--poly-color), 0.9)"
         :cx="point[0]" :cy="point[1]"
         :data-index="index" 
         :data-poly="poly"
     />
     <circle 
+        @mousedown="point_click"
         v-for="(point, index) in points" 
-        :key="point[0] + ',' + point[1]"
-        r="0.01"
-        fill="rgba(var(--poly-color), 0.9)"
+        :key="point[0] + ',' + point[1]" 
+        r="0.015"
+        fill="rgba(var(--poly-color), 0.2)"
         :cx="point[0]" :cy="point[1]"
         :data-index="index" 
         :data-poly="poly"
