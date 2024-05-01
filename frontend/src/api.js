@@ -8,6 +8,7 @@ query experimentInfo($id: ID!) {
     name,
     frameCount,
     frames {
+      id,
       image {
         url
       },
@@ -32,6 +33,13 @@ query modifiedImage($id: ID!, $num: Int!) {
 mutation updatePolygon($id: ID!, $data: [[Float!]!]!) {
   updatePolygon(id: $id, data: $data) {
     id
+  }
+}
+
+mutation createPolygon($frame_id: ID!) {
+  createPolygon(frameId: $frame_id, data: [[0.1, 0.1], [0.2, 0.1], [0.1, 0.2]]) {
+    id,
+    data
   }
 }
 `;
@@ -68,4 +76,10 @@ export function update_polygon(polygon_id, data) {
         "id": polygon_id,
         "data": data
     });
+}
+
+export function create_polygon(frame_id) {
+    return query("createPolygon", {
+        "frame_id": frame_id,
+    }).then(res => res["data"]["createPolygon"]);
 }

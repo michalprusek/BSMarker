@@ -78,7 +78,17 @@ class Query:
 
 @strawberry.type
 class Mutation:
-    @strawberry.django.field
+    @strawberry.django.mutation
+    def create_polygon(self, info: Info, frame_id: strawberry.ID, data: list[tuple[float, float]]) -> Polygon | None:
+        if not info.context.request.user.is_authenticated:
+            return None
+        if not (frame := models.Frame.objects.get(pk=frame_id)):
+            return None
+
+        poly = models.Polygon.objects.create(frame=frame, data=data)
+        return poly
+
+    @strawberry.django.mutation
     def update_polygon(self, info: Info, id: strawberry.ID, data: list[tuple[float, float]]) -> Polygon | None:
         if not info.context.request.user.is_authenticated:
             return None

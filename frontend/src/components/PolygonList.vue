@@ -15,7 +15,7 @@
                 <td>Polygon {{ index+1 }}</td>
                 <td class="right"><Button>Remove</Button></td>
             </tr>
-            <tr><td colspan="2"><Button>Add</Button></td></tr>
+            <tr><td colspan="2"><Button @click="state.new_polygon">Add</Button></td></tr>
         </table>
     </details>
 </template>

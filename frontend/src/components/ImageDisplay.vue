@@ -57,10 +57,11 @@
                 <Polygon 
                     v-if="editor_svg" 
                     v-for="(polygon, index) in state.current_frame.polygons" 
+                    :key="polygon.id"
                     @change="state.save_polygon(index)"
                     :points="polygon.data" 
                     :svg="editor_svg"
-                    :poly="index" 
+                    :poly="polygon.id" 
                     pcolor="var(--polygon-purple)" />
             </svg>
         </div>
