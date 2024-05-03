@@ -4,6 +4,7 @@ const INITIAL_HIST_COUNT = FETCH_HIST_COUNT;
 const gql_query = `
 query experimentInfo($id: ID!) {
   experiment(id: $id) {
+    id,
     url,
     name,
     frameCount,

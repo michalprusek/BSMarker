@@ -86,6 +86,14 @@
         <div class="image-view">
             <svg v-if="state.current_frame" id="editor-svg" ref="editor_svg" viewBox="0 0 1 1" xmlns="http://www.w3.org/2000/svg">
                 <image 
+                    x="0" 
+                    y="0" 
+                    width="1" 
+                    height="1" 
+                    :xlink:href="'/preview/' + state.experiment.id"
+                    filter="url(#blur)"
+                />
+                <image 
                     :key="frame.id"
                     v-for="frame in state.frames"
                     :visibility="frame.id == state.current_frame.id ? 'visible' : 'hidden'"

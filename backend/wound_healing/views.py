@@ -1,10 +1,14 @@
 from django.views.generic import ListView, DetailView, CreateView
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django import forms 
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render, get_object_or_404
+from django.http import HttpResponse
+from django import forms
 
-from django.shortcuts import render
 from .models import Project, Experiment
 from .forms import ExperimentForm
+
+import cv2 as cv
 
 
 class ProjectList(LoginRequiredMixin, ListView):
@@ -30,3 +34,13 @@ class ExperimentCreate(LoginRequiredMixin, CreateView):
 
         kwargs["instance"].project = Project.objects.get(slug=self.kwargs["project"])
         return kwargs
+
+
+@login_required
+def preview(request, epk):
+    experiment = get_object_or_404(Experiment, pk=epk)
+
+    img = experiment.frames.first().img
+    blurred = cv.medianBlur(img, 101)
+
+    return HttpResponse(cv.imencode(".jpg", blurred)[1].tobytes(), content_type="image/jpeg")
