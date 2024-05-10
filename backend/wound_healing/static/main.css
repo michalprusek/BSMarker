@@ -73,7 +73,7 @@ header h1 {
 
 /* Buttons */
 
-input, button {
+input, button, select {
     padding: 0.2rem 0.5rem;
 
     background: var(--primary-color);

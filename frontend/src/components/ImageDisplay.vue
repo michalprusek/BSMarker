@@ -94,6 +94,7 @@
                     filter="url(#blur)"
                 />
                 <image 
+                    v-if="state.shown_version == 'original'"
                     :key="frame.id"
                     v-for="frame in state.frames"
                     :visibility="frame.id == state.current_frame.id ? 'visible' : 'hidden'"
@@ -102,6 +103,15 @@
                     width="1" 
                     height="1" 
                     :xlink:href="frame.image.url"
+                    :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
+                />
+                <image 
+                    v-else
+                    x="0" 
+                    y="0" 
+                    width="1" 
+                    height="1" 
+                    :xlink:href="'/equalized/' + state.current_frame.id"
                     :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
                 />
                 <Polygon 

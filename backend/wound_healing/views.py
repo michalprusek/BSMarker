@@ -5,7 +5,7 @@ from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse
 from django import forms
 
-from .models import Project, Experiment
+from .models import Project, Experiment, Frame
 from .forms import ExperimentForm
 
 import cv2 as cv
@@ -36,6 +36,10 @@ class ExperimentCreate(LoginRequiredMixin, CreateView):
         return kwargs
 
 
+def img_response(img):
+    return HttpResponse(cv.imencode(".jpg", img)[1].tobytes(), content_type="image/jpeg")
+
+
 @login_required
 def preview(request, epk):
     experiment = get_object_or_404(Experiment, pk=epk)
@@ -43,4 +47,12 @@ def preview(request, epk):
     img = experiment.frames.first().img
     blurred = cv.medianBlur(img, 101)
 
-    return HttpResponse(cv.imencode(".jpg", blurred)[1].tobytes(), content_type="image/jpeg")
+    return img_response(blurred)
+
+
+@login_required
+def equalized(request, frame_pk):
+    frame = get_object_or_404(Frame, pk=frame_pk)
+    frame.eqhist()
+
+    return img_response(frame.img)

@@ -20,6 +20,8 @@ export const useExperimentStore = defineStore("experiment", {
 
             loaded: false,
             highlighted_poly: null,
+
+            shown_version: "original",
         };
     },
     getters: {
@@ -71,13 +73,6 @@ export const useExperimentStore = defineStore("experiment", {
         },
 
         // These actions operate on the current frame
-        async modify_image() {
-            let { dataUrl, histogram } = await modified_image(this.id, this.frame_idx);
-            this.current_frame.image.url = dataUrl;
-            this.current_frame.histogram = histogram;
-            this.current_frame.image.preloaded = null;
-        },
-        
         async save_polygon(idx) {
             const poly = this.current_frame.polygons[idx];
             await update_polygon(poly.id, poly.data);
@@ -93,5 +88,12 @@ export const useExperimentStore = defineStore("experiment", {
             await delete_polygon(this.current_frame.polygons[idx].id);
             this.current_frame.polygons.splice(idx, 1);
         }
+
+        /*async modify_image() {
+            let { dataUrl, histogram } = await modified_image(this.id, this.frame_idx);
+            this.current_frame.image.url = dataUrl;
+            this.current_frame.histogram = histogram;
+            this.current_frame.image.preloaded = null;
+        },*/
     }
 });

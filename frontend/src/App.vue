@@ -26,7 +26,18 @@
                 <h3>Image enhancement</h3>
                 <template v-if="state.current_frame">
                     <Histogram v-if="state.current_frame.histogram" />
-                    <Button @click="state.modify_image">Equalize histogram</Button>
+                    <!--<Button @click="state.modify_image">Equalize histogram</Button>-->
+                    <table class="image-options">
+                        <tr>
+                            <td>Show</td>
+                            <td>
+                                <select v-model="state.shown_version">
+                                    <option value="original" selected>Original</option>
+                                    <option value="equalized">Equalized histogram</option>
+                                </select>
+                            </td>
+                        </tr>
+                    </table>
                 </template>
             </div>
             <div class="results">
@@ -77,5 +88,9 @@
         grid-column-end: 3;
 
         border-top: var(--border-thickness) solid var(--border-color);
+    }
+
+    .image-options {
+        width: 100%;
     }
 </style>
