@@ -89,6 +89,7 @@ export const useExperimentStore = defineStore("experiment", {
         },
 
         async delete_polygon(idx) {
+            this.highlighted_poly = null;
             await delete_polygon(this.current_frame.polygons[idx].id);
             this.current_frame.polygons.splice(idx, 1);
         }
