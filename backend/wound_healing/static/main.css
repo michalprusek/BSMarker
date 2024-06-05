@@ -109,8 +109,26 @@ main#projects li {
     list-style-type: none;
 }
 
-main#projects ul li ul li {
-    list-style-type: disc;
+.project ul {
+    padding-left: 0;
+}
+
+.project ul li {
+    list-style-type: none;
+    padding: 1rem;
+}
+
+.project ul li:not(:last-child) {
+    border-bottom: var(--border-thickness) solid var(--border-color);
+}
+
+.project ul li:not(:last-child):hover {
+    background: var(--secondary-color);
+}
+
+.project a {
+    color: var(--primary-text-color);
+    text-decoration: none;
 }
 
 summary h3 {
