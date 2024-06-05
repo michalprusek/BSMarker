@@ -76,8 +76,12 @@ class Frame(models.Model):
         return cv.imencode(".jpg", self.img)[1]
 
     @property
+    def cache_key(self):
+        return f"c-{self.pk}"
+
+    @property
     def hist_cache_key(self):
-        return f"histogram-{self.pk}"
+        return f"{self.cache_key}-histogram"
 
     @property
     def histogram(self):
