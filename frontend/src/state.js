@@ -1,4 +1,3 @@
-import { watch } from 'vue';
 import { defineStore } from 'pinia';
 import { experiment_info, modified_image, update_polygon, create_polygon, delete_polygon } from "./api.js";
 
@@ -55,10 +54,6 @@ export const useExperimentStore = defineStore("experiment", {
                 throw "invalid operation 'next_frame' at this state";
             }
             this.frame_idx = (this.frame_idx+1)%this.frames.length;
-
-            if (!this.current_frame.histogram) {
-                this.load_histograms(this.frame_idx);
-            }
         },
         prev_frame() {
             if (!this.frames) {
@@ -66,10 +61,6 @@ export const useExperimentStore = defineStore("experiment", {
             }
             const l = this.frames.length;
             this.frame_idx = (this.frame_idx-1+l)%l;
-
-            if (!this.current_frame.histogram) {
-                this.load_histograms(this.frame_idx);
-            }
         },
 
         // These actions operate on the current frame

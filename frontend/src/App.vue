@@ -24,21 +24,18 @@
             </div>
             <div class="image-enhancement">
                 <h3>Image enhancement</h3>
-                <template v-if="state.current_frame">
-                    <Histogram v-if="state.current_frame.histogram" />
-                    <!--<Button @click="state.modify_image">Equalize histogram</Button>-->
-                    <table class="image-options">
-                        <tr>
-                            <td>Show</td>
-                            <td>
-                                <select v-model="state.shown_version">
-                                    <option value="original" selected>Original</option>
-                                    <option value="equalized">Equalized histogram</option>
-                                </select>
-                            </td>
-                        </tr>
-                    </table>
-                </template>
+                <Histogram v-if="state.current_frame && state.current_frame.histogram" />
+                <table class="image-options">
+                    <tr>
+                        <td>Show</td>
+                        <td>
+                            <select @keydown.prevent v-model="state.shown_version">
+                                <option value="original">Original</option>
+                                <option value="equalized">Equalized histogram</option>
+                            </select>
+                        </td>
+                    </tr>
+                </table>
             </div>
             <div class="results">
                 <h3>Results</h3>
