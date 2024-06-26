@@ -10,9 +10,10 @@
 ## Usage
 ### Running the development version
 
-First, launch the backend server:
+First, launch the backend server and create a user:
 ```sh
 cd wound-healing/backend
+python3 manage.py createsuperuser
 python3 manage.py runserver
 ```
 Then, launch the frontend:
@@ -21,3 +22,5 @@ cd wound-healing/frontend
 npm install
 npm run dev
 ```
+
+Finally, head to [http://localhost:8000/](http://localhost:8000).
