@@ -54,44 +54,39 @@ class Frame(models.Model):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._img = None
-        self._original = True
 
     @property
-    def img(self):
+    def raw_img(self):
         if self._img is None:
             with self.image.open() as f:
                 self._img = cv.imdecode(np.frombuffer(f.read(), np.uint8), cv.IMREAD_UNCHANGED)
         return self._img
 
-    @img.setter
-    def img(self, val):
-        self._img = val
-        self._original = False
+    def get_absolute_url(self):
+        from django.urls import reverse
 
-    def eqhist(self):
-        self.img = cv.equalizeHist(self.img)
+        return reverse("frame-view", kwargs={"pk": self.pk})
 
-    @property
-    def jpg(self):
-        return cv.imencode(".jpg", self.img)[1]
+    def img(self, equalized=False):
+        res = self.raw_img
 
-    @property
-    def cache_key(self):
-        return f"c-{self.pk}"
+        if equalized:
+            res = cv.equalizeHist(res)
 
-    @property
-    def hist_cache_key(self):
-        return f"{self.cache_key}-histogram"
+        return res
 
-    @property
-    def histogram(self):
-        if not self._original or (hist := cache.get(self.hist_cache_key)) is None:
-            hist = np.bincount(self.img.ravel(), minlength=256)
+    def img_and_histogram(self, **kwargs):
+        image = self.img(**kwargs)
+        hist = np.bincount(image.ravel(), minlength=256)
+        return image, hist
 
-            if self._original:
-                cache.set(self.hist_cache_key, hist, None)
-        
-        return hist
+    def histogram(self, **kwargs):
+        return self.img_and_histogram(**kwargs)[1]
+
+    def img_url(self, **kwargs):
+        import urllib.parse
+
+        return self.get_absolute_url() + ("?" + urllib.parse.urlencode(kwargs) if kwargs else "")
 
 
 class Polygon(models.Model):

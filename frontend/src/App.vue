@@ -24,7 +24,7 @@
             </div>
             <div class="image-enhancement">
                 <h3>Image enhancement</h3>
-                <Histogram v-if="state.current_frame && state.current_frame.histogram" />
+                <Histogram v-if="state.current_frame" :histogram="state.current_frame[state.shown_version].histogram" />
                 <table class="image-options">
                     <tr>
                         <td>Show</td>

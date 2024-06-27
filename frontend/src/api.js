@@ -10,23 +10,18 @@ query experimentInfo($id: ID!) {
     frameCount,
     frames {
       id,
-      image {
-        url
+      original: data {
+        url,
+        histogram
       },
-      histogram,
+      equalized: data(equalized: true) {
+        url,
+        histogram
+      }
       polygons {
         id,
         data
       }
-    },
-  }
-}
-
-query modifiedImage($id: ID!, $num: Int!) {
-  experiment(id: $id) {
-    modifiedFrame(num: $num, eqhist: true) {
-      dataUrl,
-      histogram
     },
   }
 }
@@ -67,13 +62,6 @@ export function experiment_info(experiment_id) {
     return query("experimentInfo", {
         "id": experiment_id
     }).then(res => res["data"]["experiment"]);
-}
-
-export function modified_image(experiment_id, num) {
-    return query("modifiedImage", {
-        "id": experiment_id,
-        "num": num
-    }).then(res => res["data"]["experiment"]["modifiedFrame"]);
 }
 
 export function update_polygon(polygon_id, data) {

@@ -1,7 +1,11 @@
 from django.views.generic import ListView, DetailView, CreateView
+from django.views.decorators.cache import cache_page
+
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
+
 from django.shortcuts import render, get_object_or_404
+
 from django.http import HttpResponse
 from django import forms
 
@@ -44,15 +48,19 @@ def img_response(img):
 def preview(request, epk):
     experiment = get_object_or_404(Experiment, pk=epk)
 
-    img = experiment.frames.first().img
+    img = experiment.frames.first().raw_img
     blurred = cv.medianBlur(img, 101)
 
+    cv.putText(blurred, "Loading preview", (20, 50), cv.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 1, cv.LINE_AA)
     return img_response(blurred)
 
 
 @login_required
-def equalized(request, frame_pk):
-    frame = get_object_or_404(Frame, pk=frame_pk)
-    frame.eqhist()
+def frame(request, pk):
+    frame = get_object_or_404(Frame, pk=pk)
 
-    return img_response(frame.img)
+    params = {
+        "equalized": request.GET.get("equalized") == "True"
+    }
+
+    return img_response(frame.img(**params))

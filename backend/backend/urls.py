@@ -29,8 +29,8 @@ urlpatterns = [
     path('proj/<slug:project>/experiment/<slug:experiment>/', views.ExperimentView.as_view(), name="experiment-detail"),
     path('proj/<slug:project>/experiment/new', views.ExperimentCreate.as_view(), name="experiment-create"),
     
-    path('preview/<int:epk>/', views.preview),
-    path('equalized/<int:frame_pk>', views.equalized),
+    path('preview/<int:epk>/', views.preview, name="experiment-preview"),
+    path('frame/<int:pk>/', views.frame, name="frame-view"),
 
     path("graphql/", GraphQLView.as_view(schema=schema)),
 ]

@@ -30,28 +30,38 @@ class Experiment:
     def frame_count(self) -> int:
         return self.frames.count()
 
-    @strawberry.django.field
-    def modified_frame(self, num: int, eqhist: bool=False) -> "Frame":
-        frame = self.frames.get(number=num)
 
-        if eqhist:
-            frame.eqhist()
+@strawberry.type
+class FrameData:
+    """
+    FrameData does not have a database equivalent, 
+    it is only a part of the API
+    """
 
-        return frame
+    # get_histogram is used to calculate the histogram lazily
+    get_histogram: strawberry.Private[callable]
+    
+    url: str
+    
+    @strawberry.field
+    def histogram(self, info: Info) -> list[int]:
+        return self.get_histogram()
 
 
 @strawberry.django.type(models.Frame, pagination=True)
 class Frame:
     id: auto
     image: auto
-    histogram: list[int]
 
     experiment: Experiment
     polygons: list["Polygon"]
 
     @strawberry.django.field
-    def data_url(self) -> str:
-        return "data:image/jpeg;base64," + base64.b64encode(self.jpg).decode()
+    def data(self, info: Info, equalized: bool = False) -> FrameData:
+        return FrameData(
+            url=self.img_url(equalized=equalized), 
+            get_histogram=lambda: self.histogram(equalized=equalized)
+        )
 
 
 @strawberry.django.type(models.Polygon, pagination=True)

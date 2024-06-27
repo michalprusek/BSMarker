@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { experiment_info, modified_image, update_polygon, create_polygon, delete_polygon } from "./api.js";
+import { experiment_info, update_polygon, create_polygon, delete_polygon } from "./api.js";
 
 
 function preload_image(src) {
@@ -30,6 +30,10 @@ export const useExperimentStore = defineStore("experiment", {
             }
             return state.frames[state.frame_idx];
         },
+
+        current_histogram: (state) => {
+            return state.frames[state.frame_idx][state.shown_version].histogram;
+        }
     },
     actions: {
     	async setup() {

@@ -5,6 +5,8 @@
     import { useExperimentStore } from "../state.js";
     let state = useExperimentStore();
 
+    const props = defineProps(["histogram"])
+
     function cumsum(xs) {
         // https://stackoverflow.com/a/55261098/4898487
         return xs.map((sum => value => sum += value)(0));
@@ -21,18 +23,16 @@
     }
 
     function plot_data() {
-        const histogram = state.current_frame.histogram;
-
         const data = [
             {
                 x: [...Array(256).keys()],
-                y: histogram,
+                y: props.histogram,
                 type: "bar",
                 hoverinfo: "skip",
             },
             {
                 x: [...Array(256).keys()],
-                y: cdf(histogram),
+                y: cdf(props.histogram),
                 type: "line",
                 hoverinfo: "skip",
             }
