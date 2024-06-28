@@ -10,9 +10,11 @@
 ## Usage
 ### Running the development version
 
-First, launch the backend server and create a user:
+First, run migrations, create a user and launch the backend server:
 ```sh
 cd wound-healing/backend
+
+python3 manage.py migrate
 python3 manage.py createsuperuser
 python3 manage.py runserver
 ```
