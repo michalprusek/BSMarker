@@ -10,15 +10,25 @@
     let state = useExperimentStore();
 
     const editor_svg = ref(null);
+    const images = ref([]);
 
     /* Image playback */
     let paused = ref(true);
     let play_handle = null;
 
-    const FRAME_INTERVAL = 100;
+    const FRAME_INTERVAL = 75;
+
+    function play_skip() {
+        const img = new Image();
+        img.src = images.value[state.frame_idx].href.animVal;
+        if (img.complete) {
+            right();
+        }
+    }
+
     function play() {
         paused.value = !paused.value;
-        play_handle = setInterval(right, FRAME_INTERVAL);
+        play_handle = setInterval(play_skip, FRAME_INTERVAL);
     }
 
     function pause() {
@@ -91,11 +101,12 @@
                     width="1" 
                     height="1" 
                     :xlink:href="'/preview/' + state.experiment.id"
-                    filter="url(#blur)"
                 />
                 <image 
+                    :id="'frame-idx-' + idx"
                     :key="frame.id"
-                    v-for="frame in state.frames"
+                    v-for="(frame, idx) in state.frames"
+                    ref="images"
                     :visibility="frame.id == state.current_frame.id ? 'visible' : 'hidden'"
                     x="0" 
                     y="0" 
