@@ -14,6 +14,8 @@ First, run migrations, create a user and launch the backend server:
 ```sh
 cd wound-healing/backend
 
+pip3 install -r requirements.txt
+
 python3 manage.py migrate
 python3 manage.py createsuperuser
 python3 manage.py runserver
