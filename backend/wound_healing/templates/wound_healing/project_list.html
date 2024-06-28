@@ -1,30 +1,26 @@
-{% extends 'base.html' %}
+{% extends 'main.html' %}
 
 {% block title %}Projects{% endblock %}
 
-{% block body %}
-<header>
-	<h1>Wound healing</h1>
-</header>
-<main id="projects">
-	<h2>Projects</h2>
-	<ul>
-		{% for project in object_list %}
-		<li class="project" id="project-{{project.pk}}">
-			<details open>
-				<summary>
-					<h3>{{project.name}}</h3>
-				</summary>
-				<ul>
-					{% for experiment in project.experiments.all %}
-					<li><a href="{{ experiment.get_absolute_url }}">{{experiment.name}}</a></li>
-					{% endfor %}
-					<li><a href="{% url 'experiment-create' project=project.pk %}" role="button"><button>Add new experiment</button></a></li>
-				</ul>
-			</details>
-		</li>
-		{% endfor %}
-		<li><a href="{% url 'project-create' %}" role="button"><button>Add new project</button></a></li>
-	</ul>
-</main>
+{% block heading %}Projects{% endblock %}
+
+{% block main %}
+<ul class="projects">
+	{% for project in object_list %}
+	<li class="project" id="project-{{project.pk}}">
+		<details open>
+			<summary>
+				<h3>{{project.name}}</h3>
+			</summary>
+			<ul>
+				{% for experiment in project.experiments.all %}
+				<li><a href="{{ experiment.get_absolute_url }}">{{experiment.name}}</a></li>
+				{% endfor %}
+				<li><a href="{% url 'experiment-create' project=project.pk %}" role="button"><button>Add new experiment</button></a></li>
+			</ul>
+		</details>
+	</li>
+	{% endfor %}
+	<li><a href="{% url 'project-create' %}" role="button"><button>Add new project</button></a></li>
+</ul>
 {% endblock %}

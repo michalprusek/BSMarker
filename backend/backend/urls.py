@@ -15,7 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
 from django.conf import settings
 
 from wound_healing import views
@@ -25,6 +25,8 @@ from wound_healing.api import schema
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('accounts/', include("django.contrib.auth.urls")),
+    
     path('', views.ProjectList.as_view(), name="project-list"),
 
     path('project/new', views.ProjectCreate.as_view(), name="project-create"),

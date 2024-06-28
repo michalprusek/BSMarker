@@ -95,25 +95,25 @@ body > main {
 
 /* Project list */
 
-main#projects details {
+main .projects details {
     border: var(--border-thickness) solid var(--border-color);
     padding: 1rem;
 }
 
-main#projects > ul {
+.projects, .projects ul {
     margin: 0;
     padding: 0;
 }
 
-main#projects li {
+.projects li {
     list-style-type: none;
 }
 
-.project ul {
+.projects .project ul {
     padding-left: 0;
 }
 
-.project ul li {
+.projects .project ul li {
     list-style-type: none;
     padding: 1rem;
 }

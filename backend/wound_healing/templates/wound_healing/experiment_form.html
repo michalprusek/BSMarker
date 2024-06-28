@@ -1,17 +1,13 @@
-{% extends 'base.html' %}
+{% extends 'main.html' %}
 
 {% block title %}{{ object }}{% endblock %}
 
-{% block body %}
-<header>
-	<h1>Wound healing</h1>
-</header>
-<main>
-	<h2>New experiment</h2>
-	<form enctype="multipart/form-data" method="post">
-		{% csrf_token %}
-		{{ form.as_p }}
-		<input type="submit" />
-	</form>
-</main>
+{% block heading %}New experiment{% endblock %}
+
+{% block main %}
+<form enctype="multipart/form-data" method="post">
+	{% csrf_token %}
+	{{ form.as_p }}
+	<input type="submit" />
+</form>
 {% endblock %}

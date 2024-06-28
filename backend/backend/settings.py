@@ -113,6 +113,10 @@ USE_I18N = True
 
 USE_TZ = True
 
+# Login
+
+LOGIN_REDIRECT_URL = "/"
+
 # Frontend build
 
 DJANGO_VITE = {

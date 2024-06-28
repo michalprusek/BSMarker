@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block body %}
+<header>
+	<h1>Wound healing</h1>
+
+	<div style="float: right">
+		{% if request.user.is_authenticated %}
+			User: {{ request.user.username }}
+			<div>
+				<form action="{% url 'logout' %}" method="post">
+					{% csrf_token %}
+					<button type="submit">Logout</button>
+				</form>
+			</div>
+		{% endif %}
+	</div>
+</header>
+<main>
+	<h2>{% block heading %}{% endblock %}</h2>
+	{% block main %}
+	{% endblock %}
+</main>
+{% endblock %}
