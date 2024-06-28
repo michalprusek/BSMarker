@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ object }}{% endblock %}
+
+{% block body %}
+<header>
+	<h1>Wound healing</h1>
+</header>
+<main>
+	<h2>New project</h2>
+	<form method="post">
+		{% csrf_token %}
+		{{ form.as_p }}
+		<input type="submit" />
+	</form>
+</main>
+{% endblock %}

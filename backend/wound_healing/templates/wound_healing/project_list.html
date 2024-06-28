@@ -10,7 +10,7 @@
 	<h2>Projects</h2>
 	<ul>
 		{% for project in object_list %}
-		<li class="project">
+		<li class="project" id="project-{{project.pk}}">
 			<details open>
 				<summary>
 					<h3>{{project.name}}</h3>
@@ -19,11 +19,12 @@
 					{% for experiment in project.experiments.all %}
 					<li><a href="{{ experiment.get_absolute_url }}">{{experiment.name}}</a></li>
 					{% endfor %}
-					<li><a href="{% url 'experiment-create' project=project.slug %}" role="button"><button>Add new</button></a></li>
+					<li><a href="{% url 'experiment-create' project=project.pk %}" role="button"><button>Add new experiment</button></a></li>
 				</ul>
 			</details>
 		</li>
 		{% endfor %}
+		<li><a href="{% url 'project-create' %}" role="button"><button>Add new project</button></a></li>
 	</ul>
 </main>
 {% endblock %}

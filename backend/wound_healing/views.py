@@ -19,12 +19,17 @@ class ProjectList(LoginRequiredMixin, ListView):
     model = Project
 
 
+class ProjectCreate(LoginRequiredMixin, CreateView):
+    model = Project
+    fields = ["name"]
+
+
 class ExperimentView(LoginRequiredMixin, DetailView):
     model = Experiment
-    slug_url_kwarg = "experiment"
+    pk_url_kwarg = "experiment"
 
     def get_queryset(self):
-        return Experiment.objects.filter(project__slug=self.kwargs["project"])
+        return Experiment.objects.filter(project__pk=self.kwargs["project"])
 
 
 class ExperimentCreate(LoginRequiredMixin, CreateView):
@@ -36,7 +41,7 @@ class ExperimentCreate(LoginRequiredMixin, CreateView):
         if not kwargs.get("instance"):
             kwargs["instance"] = Experiment()
 
-        kwargs["instance"].project = Project.objects.get(slug=self.kwargs["project"])
+        kwargs["instance"].project = Project.objects.get(pk=self.kwargs["project"])
         return kwargs
 
 

@@ -83,9 +83,7 @@ input, button, select {
     border-radius: 2px;
 }
 
-/* Project list */
-
-main#projects {
+body > main {
     max-width: 50vw;
     min-height: 80vh;
 
@@ -94,6 +92,8 @@ main#projects {
     border: var(--border-thickness) solid var(--border-color);
     border-top: none;
 }
+
+/* Project list */
 
 main#projects details {
     border: var(--border-thickness) solid var(--border-color);

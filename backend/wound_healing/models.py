@@ -11,30 +11,23 @@ import cv2 as cv
 
 class Project(models.Model):
     name = models.CharField(max_length=1024)
-    slug = models.SlugField(editable=False, unique=True)
 
     def __str__(self):
         return self.name
 
-    def save(self, *args, **kwargs):
-        self.slug = slugify(self.name)
-        super().save(*args, **kwargs)
+    def get_absolute_url(self):
+        return reverse("project-list") + f"#project-{self.pk}"
 
 
 class Experiment(models.Model):
     project = models.ForeignKey(Project, related_name="experiments", on_delete=models.CASCADE)
     name = models.CharField(max_length=1024)
-    slug = models.SlugField(editable=False, unique=True)
 
     def __str__(self):
         return f"{self.project.name}_{self.name}"
 
-    def save(self, *args, **kwargs):
-        self.slug = slugify(self.name)
-        super().save(*args, **kwargs)
-
     def get_absolute_url(self):
-        return reverse("experiment-detail", kwargs={"experiment": self.slug, "project": self.project.slug})
+        return reverse("experiment-detail", kwargs={"project": self.project.pk, "experiment": self.pk})
 
 
 class Frame(models.Model):
