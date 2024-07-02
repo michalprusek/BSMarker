@@ -5,7 +5,8 @@ from strawberry_django.optimizer import DjangoOptimizerExtension
 
 from . import models
 
-import base64
+from imgproc.wound import wound_contour
+import numpy as np
 
 
 @strawberry.django.type(models.Project)
@@ -117,6 +118,22 @@ class Mutation:
         polygon.data = data
         polygon.save()
         return polygon
+
+    @strawberry.django.mutation
+    def detect(self, info: Info, frame_id: strawberry.ID) -> Polygon | None:
+        if not info.context.request.user.is_authenticated:
+            return None
+        if not (frame := models.Frame.objects.get(pk=frame_id)):
+            return None
+
+        img = frame.img()
+
+        contour = wound_contour(img, approx=2).astype(np.float64)
+        contour[:, 0] /= img.shape[0]
+        contour[:, 1] /= img.shape[1]
+
+        poly = models.Polygon.objects.create(frame=frame, data=contour.tolist())
+        return poly
 
 
 schema = strawberry.Schema(

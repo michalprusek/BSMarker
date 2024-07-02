@@ -42,6 +42,13 @@ mutation createPolygon($frame_id: ID!) {
 mutation deletePolygon($id: ID!) {
   deletePolygon(id: $id)
 }
+
+mutation detect($frame_id: ID!) {
+  detect(frameId: $frame_id) {
+    id,
+    data
+  }
+}
 `;
 
 function query(operation, variables) {
@@ -81,4 +88,10 @@ export function delete_polygon(polygon_id) {
     return query("deletePolygon", {
         "id": polygon_id,
     });
+}
+
+export function detect(frame_id) {
+    return query("detect", {
+        "frame_id": frame_id,
+    }).then(res => res["data"]["detect"]);
 }

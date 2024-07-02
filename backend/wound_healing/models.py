@@ -1,7 +1,5 @@
 from django.db import models
 
-from django.core.cache import cache
-
 from django.template.defaultfilters import slugify
 from django.urls import reverse
 

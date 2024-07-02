@@ -1,7 +1,7 @@
 <script setup>
     import { ref, computed } from 'vue';
 
-    const props = defineProps(["svg", "points", "poly", "pcolor", "highlight"]);
+    const props = defineProps(["svg", "points", "poly", "pcolor", "highlight", "zoom"]);
     const emit = defineEmits(["change"])
 
     const lines = computed(() => {
@@ -93,19 +93,9 @@
         :x1="line[0][0]" 
         :y1="line[0][1]" 
         :x2="line[1][0]" 
-        :y2="line[1][1]"
+        :y2="line[1][1]" 
         stroke="rgba(var(--poly-color), 0.1)"
-        stroke-width="0.02"
-        :data-index="index" 
-        :data-poly="poly"
-    />
-    <circle 
-        @mousedown="point_click"
-        v-for="(point, index) in points" 
-        :key="point[0] + ',' + point[1]"
-        r="0.01"
-        fill="rgba(var(--poly-color), 0.9)"
-        :cx="point[0]" :cy="point[1]"
+        stroke-width="0.01"
         :data-index="index" 
         :data-poly="poly"
     />
@@ -113,8 +103,10 @@
         @mousedown="point_click"
         v-for="(point, index) in points" 
         :key="point[0] + ',' + point[1]" 
-        r="0.015"
-        fill="rgba(var(--poly-color), 0.2)"
+        :r="0.005"
+        stroke="black"
+        stroke-width="0.001"
+        fill="rgba(var(--poly-color), 0.9)"
         :cx="point[0]" :cy="point[1]"
         :data-index="index" 
         :data-poly="poly"

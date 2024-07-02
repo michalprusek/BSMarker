@@ -39,6 +39,7 @@
             </div>
             <div class="results">
                 <h3>Results</h3>
+                <Button @click="state.detect">Detect wound</Button>
                 <table>
                     <tr><td>Surface</td><td>N/A</td></tr>
                     <tr><td>Boundary roughness</td><td>N/A</td></tr>

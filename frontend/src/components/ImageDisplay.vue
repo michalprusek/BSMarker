@@ -60,6 +60,7 @@
     /* Zooming */
 
     let zoomer;
+    let zoom_scale = ref(1);
 
     onMounted(() => {
         zoomer = panzoom(editor_svg.value, {
@@ -69,6 +70,10 @@
                 // Disable arrow keys for panning
                 return true;
             }
+        });
+
+        zoomer.on("zoom", () => {
+            zoom_scale.value = zoomer.getTransform().scale;
         });
     });
 
@@ -124,6 +129,7 @@
                     :svg="editor_svg"
                     :poly="polygon.id" 
                     :highlight="state.highlighted_poly == polygon.id"
+                    :zoom="zoom_scale"
                     pcolor="var(--polygon-purple)"
                 />
             </svg>
