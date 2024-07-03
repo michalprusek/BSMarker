@@ -1,5 +1,6 @@
 <script setup>
     import { ref, onMounted } from "vue";
+    import { SVG_COORD } from "../utils.js";
     import panzoom from "panzoom";
 
     import Button from "./Button.vue";
@@ -99,12 +100,12 @@
         <div class="blank">
         </div>
         <div class="image-view">
-            <svg v-if="state.current_frame" id="editor-svg" ref="editor_svg" viewBox="0 0 1 1" xmlns="http://www.w3.org/2000/svg">
+            <svg v-if="state.current_frame" id="editor-svg" ref="editor_svg" :viewBox="'0 0 ' + SVG_COORD + ' ' + SVG_COORD" xmlns="http://www.w3.org/2000/svg">
                 <image 
                     x="0" 
                     y="0" 
-                    width="1" 
-                    height="1" 
+                    :width="SVG_COORD" 
+                    :height="SVG_COORD" 
                     :xlink:href="'/preview/' + state.experiment.id"
                 />
                 <image 
@@ -115,8 +116,8 @@
                     :visibility="frame.id == state.current_frame.id ? 'visible' : 'hidden'"
                     x="0" 
                     y="0" 
-                    width="1" 
-                    height="1" 
+                    :width="SVG_COORD" 
+                    :height="SVG_COORD" 
                     :xlink:href="state.current_frame[state.shown_version].url"
                     :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
                 />

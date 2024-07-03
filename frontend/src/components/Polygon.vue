@@ -1,8 +1,9 @@
 <script setup>
-    import { ref, computed } from 'vue';
+    import { ref, computed, watch } from 'vue';
+    import { SVG_COORD } from "../utils.js";
 
     const props = defineProps(["svg", "points", "poly", "pcolor", "highlight", "zoom"]);
-    const emit = defineEmits(["change"])
+    const emit = defineEmits(["change"]);
 
     const lines = computed(() => {
         let res = [];
@@ -15,7 +16,7 @@
     });
 
     const svg_polygon_points = computed(() => {
-        return props.points.map(p => p[0] + "," + p[1]).join(" ");
+        return props.points.map(p => p[0]*SVG_COORD + "," + p[1]*SVG_COORD).join(" ");
     });
 
     const active_drag = ref(null);
@@ -84,18 +85,17 @@
         :points="svg_polygon_points"
         :fill="highlight ? 'rgba(var(--poly-color), 0.8)' : 'rgba(var(--poly-color), 0.2)'"
         stroke="rgba(var(--poly-color), 0.7)"
-        stroke-width="0.005"
+        :stroke-width="0.005*SVG_COORD/props.zoom"
     />
     <line 
         @click="add_point"
         v-for="(line, index) in lines" 
         :key="line[0][0] + ',' + line[0][1] + ':' + line[1][0] + ',' + line[1][1]"
-        :x1="line[0][0]" 
-        :y1="line[0][1]" 
-        :x2="line[1][0]" 
-        :y2="line[1][1]" 
-        stroke="rgba(var(--poly-color), 0.1)"
-        stroke-width="0.01"
+        :x1="line[0][0]*SVG_COORD" 
+        :y1="line[0][1]*SVG_COORD" 
+        :x2="line[1][0]*SVG_COORD" 
+        :y2="line[1][1]*SVG_COORD" 
+        stroke="rgba(var(--poly-color), 0.7)"
         :data-index="index" 
         :data-poly="poly"
     />
@@ -103,11 +103,9 @@
         @mousedown="point_click"
         v-for="(point, index) in points" 
         :key="point[0] + ',' + point[1]" 
-        :r="0.005"
         stroke="black"
-        stroke-width="0.001"
-        fill="rgba(var(--poly-color), 0.9)"
-        :cx="point[0]" :cy="point[1]"
+        fill="rgba(var(--poly-color), 0.4)"
+        :cx="point[0]*SVG_COORD" :cy="point[1]*SVG_COORD"
         :data-index="index" 
         :data-poly="poly"
     />
@@ -116,5 +114,16 @@
 <style scoped>
     polygon, line, circle {
         --poly-color: v-bind(pcolor);
+    }
+
+    line {
+        will-change: stroke-width;
+        stroke-width: v-bind(0.01*SVG_COORD/props.zoom + "px");
+    }
+
+    circle {
+        will-change: stroke-width;
+        stroke-width: v-bind(0.001*SVG_COORD/props.zoom + "px");
+        r: v-bind(0.01*SVG_COORD/props.zoom + "px");
     }
 </style>
