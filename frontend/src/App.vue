@@ -11,7 +11,7 @@
 
 <template>
     <header>
-        <h1>Wound healing</h1>
+        <h1><a href="/">Wound healing</a></h1>
     </header>
     <main v-if="state.loaded">
         <div class="left split">
