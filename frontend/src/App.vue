@@ -41,8 +41,14 @@
                 <h3>Results</h3>
                 <Button @click="state.detect">Detect wound</Button>
                 <table>
-                    <tr><td>Surface</td><td>N/A</td></tr>
+                    <tr><td>Surface</td><td>{{ state.current_frame.polygons.reduce((s, poly) => s + poly.surface, 0).toFixed(2) }}px^2</td></tr>
                     <tr><td>Boundary roughness</td><td>N/A</td></tr>
+                    <tr v-if="state.highlighted_poly != null">
+                        <td>Highlighted area</td>
+                        <td>
+                            {{ state.current_frame.polygons[state.highlighted_poly].surface.toFixed(2) }}px^2
+                        </td>
+                    </tr>
                 </table>
             </div>
         </div>

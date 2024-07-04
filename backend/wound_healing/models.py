@@ -83,3 +83,10 @@ class Frame(models.Model):
 class Polygon(models.Model):
     frame = models.ForeignKey(Frame, related_name="polygons", on_delete=models.CASCADE)
     data = models.JSONField()
+
+    @property
+    def surface(self):
+        points = np.array(self.data, dtype=np.float32)
+        points[:, 0] *= self.frame.image.width
+        points[:, 1] *= self.frame.image.height
+        return cv.contourArea(points)

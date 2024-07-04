@@ -20,7 +20,8 @@ query experimentInfo($id: ID!) {
       }
       polygons {
         id,
-        data
+        data,
+        surface
       }
     },
   }
@@ -28,14 +29,17 @@ query experimentInfo($id: ID!) {
 
 mutation updatePolygon($id: ID!, $data: [[Float!]!]!) {
   updatePolygon(id: $id, data: $data) {
-    id
+    id,
+    data,
+    surface
   }
 }
 
 mutation createPolygon($frame_id: ID!) {
   createPolygon(frameId: $frame_id, data: [[0.1, 0.1], [0.2, 0.1], [0.1, 0.2]]) {
     id,
-    data
+    data,
+    surface
   }
 }
 
@@ -46,7 +50,8 @@ mutation deletePolygon($id: ID!) {
 mutation detect($frame_id: ID!) {
   detect(frameId: $frame_id) {
     id,
-    data
+    data,
+    surface
   }
 }
 `;
@@ -75,7 +80,7 @@ export function update_polygon(polygon_id, data) {
     return query("updatePolygon", {
         "id": polygon_id,
         "data": data
-    });
+    }).then(res => res["data"]["updatePolygon"]);
 }
 
 export function create_polygon(frame_id) {

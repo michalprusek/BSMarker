@@ -70,6 +70,7 @@ class Polygon:
     id: auto
     frame: Frame
     data: list[tuple[float, float]]
+    surface: float
 
 
 @strawberry.type

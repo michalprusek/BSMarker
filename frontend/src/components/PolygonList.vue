@@ -13,7 +13,7 @@
         <table>
             <tr 
                 v-for="(polygon, index) in state.current_frame.polygons"
-                @mouseover="state.highlighted_poly = polygon.id"
+                @mouseover="state.highlighted_poly = index"
                 @mouseout="state.highlighted_poly = null"
             >
                 <td>Polygon {{ index+1 }}</td>
@@ -46,7 +46,7 @@
         text-align: right;
     }
 
-    td:hover {
+    tr:hover td {
         color: var(--heading-text-color);
     }
 </style>

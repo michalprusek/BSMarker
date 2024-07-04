@@ -129,7 +129,7 @@
                     :points="polygon.data" 
                     :svg="editor_svg"
                     :poly="polygon.id" 
-                    :highlight="state.highlighted_poly == polygon.id"
+                    :highlight="state.highlighted_poly == index"
                     :zoom="zoom_scale"
                     pcolor="var(--polygon-purple)"
                 />

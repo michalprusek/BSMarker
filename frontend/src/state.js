@@ -70,7 +70,7 @@ export const useExperimentStore = defineStore("experiment", {
         // These actions operate on the current frame
         async save_polygon(idx) {
             const poly = this.current_frame.polygons[idx];
-            await update_polygon(poly.id, poly.data);
+            this.current_frame.polygons[idx] = await update_polygon(poly.id, poly.data);
         },
 
         async create_polygon() {
