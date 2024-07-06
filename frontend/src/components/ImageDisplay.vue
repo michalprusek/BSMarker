@@ -17,7 +17,7 @@
     let paused = ref(true);
     let play_handle = null;
 
-    const FRAME_INTERVAL = 75;
+    const FRAME_INTERVAL = 50;
 
     function play_skip() {
         const img = new Image();
@@ -113,7 +113,10 @@
                     :key="frame.id"
                     v-for="(frame, idx) in state.frames"
                     ref="images"
-                    :visibility="frame.id == state.current_frame.id ? 'visible' : 'hidden'"
+                    :visibility="(
+                        frame.id == state.current_frame.id || 
+                        frame.id == state.offset_frame(1).id
+                    ) ? 'visible' : 'hidden'"
                     x="0" 
                     y="0" 
                     :width="SVG_COORD" 

@@ -3,9 +3,10 @@ from strawberry import auto
 from strawberry.types import Info
 from strawberry_django.optimizer import DjangoOptimizerExtension
 
+from django.db import transaction
+
 from . import models
 
-from imgproc.wound import wound_contour
 import numpy as np
 
 
@@ -53,6 +54,7 @@ class FrameData:
 class Frame:
     id: auto
     image: auto
+    number: auto
 
     experiment: Experiment
     polygons: list["Polygon"]
@@ -127,14 +129,34 @@ class Mutation:
         if not (frame := models.Frame.objects.get(pk=frame_id)):
             return None
 
-        img = frame.img()
+        return frame.detect()
 
-        contour = wound_contour(img, approx=2).astype(np.float64)
-        contour[:, 0] /= img.shape[0]
-        contour[:, 1] /= img.shape[1]
+    @strawberry.django.mutation
+    def detect_all(self, info: Info, experiment_id: strawberry.ID) -> list[Frame] | None:
+        if not info.context.request.user.is_authenticated:
+            return None
+        if not (experiment := models.Experiment.objects.get(pk=experiment_id)):
+            return None
 
-        poly = models.Polygon.objects.create(frame=frame, data=contour.tolist())
-        return poly
+        with transaction.atomic():
+            for frame in experiment.frames.all():
+                if not frame.polygons.exists():
+                    frame.detect()
+
+            return experiment.frames.all()
+
+    @strawberry.django.mutation
+    def clear_polys(self, info: Info, experiment_id: strawberry.ID) -> list[Frame] | None:
+        if not info.context.request.user.is_authenticated:
+            return None
+        if not (experiment := models.Experiment.objects.get(pk=experiment_id)):
+            return None
+
+        with transaction.atomic():
+            for frame in experiment.frames.all():
+                frame.polygons.all().delete()
+
+            return experiment.frames.all()
 
 
 schema = strawberry.Schema(

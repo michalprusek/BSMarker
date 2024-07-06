@@ -6,6 +6,8 @@ from django.urls import reverse
 import numpy as np
 import cv2 as cv
 
+from imgproc.wound import wound_contour
+
 
 class Project(models.Model):
     name = models.CharField(max_length=1024)
@@ -41,6 +43,7 @@ class Frame(models.Model):
 
     class Meta:
         unique_together = [("experiment", "number")]
+        ordering = ["experiment", "number"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -78,6 +81,15 @@ class Frame(models.Model):
         import urllib.parse
 
         return self.get_absolute_url() + ("?" + urllib.parse.urlencode(kwargs) if kwargs else "")
+
+    def detect(self):
+        img = self.img()
+
+        contour = wound_contour(img, approx=2).astype(np.float64)
+        contour[:, 0] /= img.shape[0]
+        contour[:, 1] /= img.shape[1]
+
+        return Polygon.objects.create(frame=self, data=contour.tolist())
 
 
 class Polygon(models.Model):

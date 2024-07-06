@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { experiment_info, update_polygon, create_polygon, delete_polygon, detect } from "./api.js";
+import { experiment_info, update_polygon, create_polygon, delete_polygon, detect, detect_all, clear_polys } from "./api.js";
 
 
 function preload_image(src) {
@@ -29,6 +29,12 @@ export const useExperimentStore = defineStore("experiment", {
                 return null;
             }
             return state.frames[state.frame_idx];
+        },
+
+        offset_frame: (state) => (offset) => {
+            const l = state.frames.length;
+
+            return state.frames[(state.frame_idx+offset+l)%l];
         },
 
         current_histogram: (state) => {
@@ -87,13 +93,28 @@ export const useExperimentStore = defineStore("experiment", {
         async detect() {
             const poly = await detect(this.current_frame.id);
             this.current_frame.polygons.push(poly);
-        }
+        },
 
-        /*async modify_image() {
-            let { dataUrl, histogram } = await modified_image(this.id, this.frame_idx);
-            this.current_frame.image.url = dataUrl;
-            this.current_frame.histogram = histogram;
-            this.current_frame.image.preloaded = null;
-        },*/
+        async detect_all() {
+            window.processing.showModal();
+            const frames = await detect_all(this.experiment.id);
+
+            for (let i = 0; i < frames.length; i++) {
+                this.frames[i].polygons = frames[i].polygons;
+            }
+            window.processing.close();
+        },
+
+        async clear_polys() {
+            if (!confirm("Are you sure you want to delete all polygons in this experiment?")) {
+                return;
+            }
+
+            const frames = await clear_polys(this.experiment.id);
+
+            for (let i = 0; i < frames.length; i++) {
+                this.frames[i].polygons = frames[i].polygons;
+            }
+        }
     }
 });

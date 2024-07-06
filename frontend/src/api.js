@@ -54,6 +54,28 @@ mutation detect($frame_id: ID!) {
     surface
   }
 }
+
+mutation detectAll($experiment_id: ID!) {
+  detectAll(experimentId: $experiment_id) {
+    id,
+    polygons {
+      id,
+      data,
+      surface
+    }
+  }
+}
+
+mutation clearPolys($experiment_id: ID!) {
+  clearPolys(experimentId: $experiment_id) {
+    id,
+    polygons {
+      id,
+      data,
+      surface
+    }
+  }
+}
 `;
 
 function query(operation, variables) {
@@ -99,4 +121,16 @@ export function detect(frame_id) {
     return query("detect", {
         "frame_id": frame_id,
     }).then(res => res["data"]["detect"]);
+}
+
+export function detect_all(experiment_id) {
+    return query("detectAll", {
+        "experiment_id": experiment_id,
+    }).then(res => res["data"]["detectAll"]);
+}
+
+export function clear_polys(experiment_id) {
+    return query("clearPolys", {
+        "experiment_id": experiment_id,
+    }).then(res => res["data"]["clearPolys"]);
 }

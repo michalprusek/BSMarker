@@ -3,6 +3,8 @@
     import Histogram from "./components/Histogram.vue"
     import PolygonList from "./components/PolygonList.vue"
     import Button from "./components/Button.vue";
+    import Card from "./components/Card.vue";
+    import Dialog from "./components/Dialog.vue";
 
     import { useExperimentStore } from "./state.js";
     let state = useExperimentStore();
@@ -10,6 +12,10 @@
 </script>
 
 <template>
+    <Dialog dialog_id="processing">
+        Processing...
+    </Dialog>
+
     <header>
         <h1><a href="/">Wound healing</a></h1>
     </header>
@@ -20,7 +26,14 @@
         <div class="right split grid">
             <div class="properties">
                 <h3>Mask properties</h3>
-                <PolygonList />
+                <Card title="Polygons">
+                    <PolygonList />
+                </Card>
+                <Card title="Wound detection">
+                    <Button @click="state.detect">Detect single</Button>
+                    <Button @click="state.detect_all">Detect all</Button>
+                    <Button @click="state.clear_polys">Clear all</Button>
+                </Card>
             </div>
             <div class="image-enhancement">
                 <h3>Image enhancement</h3>
@@ -39,14 +52,13 @@
             </div>
             <div class="results">
                 <h3>Results</h3>
-                <Button @click="state.detect">Detect wound</Button>
                 <table>
-                    <tr><td>Surface</td><td>{{ state.current_frame.polygons.reduce((s, poly) => s + poly.surface, 0).toFixed(2) }}px^2</td></tr>
+                    <tr><td>Surface</td><td>{{ state.current_frame.polygons.reduce((s, poly) => s + poly.surface, 0).toFixed(2) }}px²</td></tr>
                     <tr><td>Boundary roughness</td><td>N/A</td></tr>
                     <tr v-if="state.highlighted_poly != null">
                         <td>Highlighted area</td>
                         <td>
-                            {{ state.current_frame.polygons[state.highlighted_poly].surface.toFixed(2) }}px^2
+                            {{ state.current_frame.polygons[state.highlighted_poly].surface.toFixed(2) }}px²
                         </td>
                     </tr>
                 </table>
