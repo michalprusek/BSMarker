@@ -96,9 +96,17 @@ class Polygon(models.Model):
     frame = models.ForeignKey(Frame, related_name="polygons", on_delete=models.CASCADE)
     data = models.JSONField()
 
+    operation = models.CharField(
+        max_length=1,
+        choices=[("+", "Add"), ("-", "Subtract")],
+        default="+",
+    )
+
     @property
     def surface(self):
         points = np.array(self.data, dtype=np.float32)
         points[:, 0] *= self.frame.image.width
         points[:, 1] *= self.frame.image.height
-        return cv.contourArea(points)
+
+        sign = -1 if self.operation == "-" else 1
+        return sign * cv.contourArea(points)

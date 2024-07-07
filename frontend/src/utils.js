@@ -1,1 +1,1 @@
-export const SVG_COORD = 8192;
+export const SVG_COORD = 1024;

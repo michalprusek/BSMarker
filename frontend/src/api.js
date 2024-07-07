@@ -21,16 +21,18 @@ query experimentInfo($id: ID!) {
       polygons {
         id,
         data,
+        operation,
         surface
       }
     },
   }
 }
 
-mutation updatePolygon($id: ID!, $data: [[Float!]!]!) {
-  updatePolygon(id: $id, data: $data) {
+mutation updatePolygon($id: ID!, $data: [[Float!]!]!, $operation: String!) {
+  updatePolygon(id: $id, data: $data, operation: $operation) {
     id,
     data,
+    operation,
     surface
   }
 }
@@ -39,6 +41,7 @@ mutation createPolygon($frame_id: ID!) {
   createPolygon(frameId: $frame_id, data: [[0.1, 0.1], [0.2, 0.1], [0.1, 0.2]]) {
     id,
     data,
+    operation,
     surface
   }
 }
@@ -51,6 +54,7 @@ mutation detect($frame_id: ID!) {
   detect(frameId: $frame_id) {
     id,
     data,
+    operation,
     surface
   }
 }
@@ -61,6 +65,7 @@ mutation detectAll($experiment_id: ID!) {
     polygons {
       id,
       data,
+      operation,
       surface
     }
   }
@@ -72,6 +77,7 @@ mutation clearPolys($experiment_id: ID!) {
     polygons {
       id,
       data,
+      operation,
       surface
     }
   }
@@ -98,10 +104,11 @@ export function experiment_info(experiment_id) {
     }).then(res => res["data"]["experiment"]);
 }
 
-export function update_polygon(polygon_id, data) {
+export function update_polygon(polygon_id, data, operation) {
     return query("updatePolygon", {
         "id": polygon_id,
-        "data": data
+        "data": data,
+        "operation": operation
     }).then(res => res["data"]["updatePolygon"]);
 }
 

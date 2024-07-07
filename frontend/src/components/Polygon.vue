@@ -2,7 +2,7 @@
     import { ref, computed, watch } from 'vue';
     import { SVG_COORD } from "../utils.js";
 
-    const props = defineProps(["svg", "points", "poly", "pcolor", "highlight", "zoom"]);
+    const props = defineProps(["svg", "points", "poly", "pcolor", "highlight", "zoom", "render"]);
     const emit = defineEmits(["change"]);
 
     const lines = computed(() => {
@@ -81,13 +81,13 @@
 </script>
 
 <template>
-    <polygon
+    <polygon v-if="props.render != 'empty' || highlight"
         :points="svg_polygon_points"
         :fill="highlight ? 'rgba(var(--poly-color), 0.8)' : 'rgba(var(--poly-color), 0.2)'"
         stroke="rgba(var(--poly-color), 0.7)"
         :stroke-width="0.005*SVG_COORD/props.zoom"
     />
-    <line 
+    <line v-if="props.render != 'mask'"
         @click="add_point"
         v-for="(line, index) in lines" 
         :key="line[0][0] + ',' + line[0][1] + ':' + line[1][0] + ',' + line[1][1]"
@@ -99,7 +99,7 @@
         :data-index="index" 
         :data-poly="poly"
     />
-    <circle 
+    <circle v-if="props.render != 'mask'"
         @mousedown="point_click"
         v-for="(point, index) in points" 
         :key="point[0] + ',' + point[1]" 

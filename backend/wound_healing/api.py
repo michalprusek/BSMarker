@@ -72,6 +72,7 @@ class Polygon:
     id: auto
     frame: Frame
     data: list[tuple[float, float]]
+    operation: str
     surface: float
 
 
@@ -113,12 +114,13 @@ class Mutation:
         return True
 
     @strawberry.django.mutation
-    def update_polygon(self, info: Info, id: strawberry.ID, data: list[tuple[float, float]]) -> Polygon | None:
+    def update_polygon(self, info: Info, id: strawberry.ID, data: list[tuple[float, float]], operation: str) -> Polygon | None:
         if not info.context.request.user.is_authenticated:
             return None
         if not (polygon := models.Polygon.objects.filter(pk=id).first()):
             return None
         polygon.data = data
+        polygon.operation = operation
         polygon.save()
         return polygon
 

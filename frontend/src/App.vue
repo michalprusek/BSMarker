@@ -56,7 +56,7 @@
                     <tr><td>Surface</td><td>{{ state.current_frame.polygons.reduce((s, poly) => s + poly.surface, 0).toFixed(2) }}px²</td></tr>
                     <tr><td>Boundary roughness</td><td>N/A</td></tr>
                     <tr v-if="state.highlighted_poly != null">
-                        <td>Highlighted area</td>
+                        <td>Active polygon area</td>
                         <td>
                             {{ state.current_frame.polygons[state.highlighted_poly].surface.toFixed(2) }}px²
                         </td>

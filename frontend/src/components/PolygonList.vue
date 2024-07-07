@@ -7,12 +7,24 @@
 
 <template>
     <table>
+        <!--<tr>
+            <th>Key</th>
+            <th>Type</th>
+            <th>Actions</th>
+        </tr>-->
         <tr 
+            :key="polygon.id"
             v-for="(polygon, index) in state.current_frame.polygons"
             @mouseover="state.highlighted_poly = index"
             @mouseout="state.highlighted_poly = null"
         >
             <td>Polygon {{ index+1 }}</td>
+            <td>
+                <select @change="state.save_polygon(index)" @keydown.prevent v-model="state.current_frame.polygons[index].operation">
+                    <option value="+">+</option>
+                    <option value="-">-</option>
+                </select>
+            </td>
             <td class="right"><Button @click="state.delete_polygon(index)">Remove</Button></td>
         </tr>
         <tr><td colspan="2"><Button @click="state.create_polygon">Add</Button></td></tr>
@@ -26,6 +38,10 @@
 
     .right {
         text-align: right;
+    }
+
+    th {
+        text-align: left;
     }
 
     tr:hover td {

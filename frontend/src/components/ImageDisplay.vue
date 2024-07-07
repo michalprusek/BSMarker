@@ -101,41 +101,80 @@
         </div>
         <div class="image-view">
             <svg v-if="state.current_frame" id="editor-svg" ref="editor_svg" :viewBox="'0 0 ' + SVG_COORD + ' ' + SVG_COORD" xmlns="http://www.w3.org/2000/svg">
-                <image 
-                    x="0" 
-                    y="0" 
-                    :width="SVG_COORD" 
-                    :height="SVG_COORD" 
-                    :xlink:href="'/preview/' + state.experiment.id"
-                />
-                <image 
-                    :id="'frame-idx-' + idx"
-                    :key="frame.id"
-                    v-for="(frame, idx) in state.frames"
-                    ref="images"
-                    :visibility="(
-                        frame.id == state.current_frame.id || 
-                        frame.id == state.offset_frame(1).id
-                    ) ? 'visible' : 'hidden'"
-                    x="0" 
-                    y="0" 
-                    :width="SVG_COORD" 
-                    :height="SVG_COORD" 
-                    :xlink:href="state.current_frame[state.shown_version].url"
-                    :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
-                />
-                <Polygon 
-                    v-if="editor_svg" 
-                    v-for="(polygon, index) in state.current_frame.polygons" 
-                    :key="polygon.id"
-                    @change="state.save_polygon(index)"
-                    :points="polygon.data" 
-                    :svg="editor_svg"
-                    :poly="polygon.id" 
-                    :highlight="state.highlighted_poly == index"
-                    :zoom="zoom_scale"
-                    pcolor="var(--polygon-purple)"
-                />
+                <g>
+                    <!-- studied images -->
+                    <image 
+                        x="0" 
+                        y="0" 
+                        :width="SVG_COORD" 
+                        :height="SVG_COORD" 
+                        :xlink:href="'/preview/' + state.experiment.id"
+                    />
+                    <image 
+                        :id="'frame-idx-' + idx"
+                        :key="frame.id"
+                        v-for="(frame, idx) in state.frames"
+                        ref="images"
+                        :visibility="(
+                            frame.id == state.current_frame.id || 
+                            frame.id == state.offset_frame(1).id
+                        ) ? 'visible' : 'hidden'"
+                        x="0" 
+                        y="0" 
+                        :width="SVG_COORD" 
+                        :height="SVG_COORD" 
+                        :xlink:href="state.current_frame[state.shown_version].url"
+                        :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
+                    />
+                </g>
+                <g mask="url(#subtract)">
+                    <!-- normal polygons -->
+                    <template v-if="editor_svg" v-for="(polygon, index) in state.current_frame.polygons">
+                        <Polygon v-if="polygon.operation == '+'"
+                            :key="polygon.id"
+                            @change="state.save_polygon(index)"
+                            :points="polygon.data" 
+                            :svg="editor_svg"
+                            :poly="polygon.id" 
+                            :highlight="state.highlighted_poly == index"
+                            :zoom="zoom_scale"
+                            pcolor="var(--polygon-purple)"
+                        />
+                    </template>
+                </g>
+                <g>
+                    <!-- subtracting polygons -->
+                    <template v-if="editor_svg" v-for="(polygon, index) in state.current_frame.polygons">
+                        <Polygon v-if="polygon.operation == '-'"
+                            :key="polygon.id"
+                            @change="state.save_polygon(index)"
+                            :points="polygon.data" 
+                            :svg="editor_svg"
+                            :poly="polygon.id" 
+                            :highlight="state.highlighted_poly == index"
+                            :zoom="zoom_scale"
+                            render="empty"
+                            pcolor="var(--polygon-blue)"
+                        />
+                    </template>
+                </g>
+                <defs>
+                    <!-- subtraction polygon mask -->
+                    <mask id="subtract">
+                        <rect x="0" y="0" :width="SVG_COORD" :height="SVG_COORD" fill="white" />
+                        <template v-if="editor_svg" v-for="(polygon, index) in state.current_frame.polygons">
+                            <Polygon v-if="polygon.operation == '-'"
+                                :key="'mask-' + polygon.id"
+                                :points="polygon.data" 
+                                :svg="editor_svg"
+                                :poly="polygon.id" 
+                                :zoom="zoom_scale"
+                                render="mask"
+                                pcolor="black"
+                            />
+                        </template>
+                    </mask>
+                </defs>
             </svg>
         </div>
         <div class="controls">
