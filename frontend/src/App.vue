@@ -97,11 +97,13 @@
     .image-enhancement {
         grid-column-start: 2;
         grid-column-end: 3;
+        min-width: 20vw;
     }
 
     .results {
         grid-column-start: 1;
         grid-column-end: 3;
+        max-height: 10vh;
 
         border-top: var(--border-thickness) solid var(--border-color);
     }
