@@ -18,15 +18,25 @@ def __():
 
 
 @app.cell
-def __(mo):
-    frame_num = mo.ui.slider(1, 147, value=73)
+def __():
+    experiment_path = "../data/MRC-5/Experiment_02_C6/MRC-5_E02-C6_{val:03}.jpg"
+    frame_count = 259
+
+    #experiment_path = "../data/MiaPaca-2/Experiment_01_D5/MiaPaca-2_E01-D5_{val:03}.jpg"
+    #frame_count = 147
+    return experiment_path, frame_count
+
+
+@app.cell
+def __(frame_count, mo):
+    frame_num = mo.ui.slider(1, frame_count, value=73)
     frame_num
     return frame_num,
 
 
 @app.cell
-def __(cv, frame_num, show):
-    img = cv.imread(f"../data/MiaPaca-2/Experiment_01_D5/MiaPaca-2_E01-D5_{frame_num.value:03}.jpg", cv.IMREAD_GRAYSCALE)
+def __(cv, experiment_path, frame_num, show):
+    img = cv.imread(experiment_path.format(val=frame_num.value), cv.IMREAD_GRAYSCALE)
     show(img)
     return img,
 
@@ -121,10 +131,12 @@ def __(cv, inner, show):
 def __(cv, img, morph_inner, show):
     contours_inner, _ = cv.findContours(morph_inner, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
 
-    color_image_2 = cv.cvtColor(img, cv.COLOR_GRAY2BGR)
-    cv.drawContours(color_image_2, contours_inner, -1, (255, 0, 0), 2)
+    contours_inner_correct_size = list(filter(lambda x: cv.contourArea(x) > 100, contours_inner))
+
+    color_image_2 = cv.cvtColor(cv.equalizeHist(img), cv.COLOR_GRAY2BGR)
+    cv.drawContours(color_image_2, contours_inner_correct_size, -1, (255, 0, 0), 2)
     show(color_image_2)
-    return color_image_2, contours_inner
+    return color_image_2, contours_inner, contours_inner_correct_size
 
 
 @app.cell
@@ -133,11 +145,6 @@ def __(color_image_2, cv, largest_contour, show):
     cv.drawContours(color_image_3, [largest_contour], -1, (0, 255, 0), 2)
     show(color_image_3)
     return color_image_3,
-
-
-@app.cell
-def __():
-    return
 
 
 if __name__ == "__main__":
