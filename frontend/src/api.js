@@ -59,6 +59,15 @@ mutation detect($frame_id: ID!) {
   }
 }
 
+mutation detectFreeCells($frame_id: ID!) {
+  detectFreeCells(frameId: $frame_id) {
+    id,
+    data,
+    operation,
+    surface
+  }
+}
+
 mutation detectAll($experiment_id: ID!) {
   detectAll(experimentId: $experiment_id) {
     id,
@@ -128,6 +137,12 @@ export function detect(frame_id) {
     return query("detect", {
         "frame_id": frame_id,
     }).then(res => res["data"]["detect"]);
+}
+
+export function detect_free_cells(frame_id) {
+    return query("detectFreeCells", {
+        "frame_id": frame_id,
+    }).then(res => res["data"]["detectFreeCells"]);
 }
 
 export function detect_all(experiment_id) {

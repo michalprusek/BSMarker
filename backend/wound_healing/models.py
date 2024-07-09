@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 
 from django.template.defaultfilters import slugify
 from django.urls import reverse
@@ -6,7 +6,7 @@ from django.urls import reverse
 import numpy as np
 import cv2 as cv
 
-from imgproc.wound import wound_contour
+from imgproc.wound import wound_contour, free_cells
 
 
 class Project(models.Model):
@@ -90,6 +90,22 @@ class Frame(models.Model):
         contour[:, 1] /= img.shape[1]
 
         return Polygon.objects.create(frame=self, data=contour.tolist())
+
+    def detect_free_cells(self):
+        img = self.img()
+
+        wound = wound_contour(img, approx=2)
+        cells = free_cells(img, wound, approx=2)
+
+        with transaction.atomic():
+            res = []
+            for contour in cells:
+                contour = contour.astype(np.float64)
+                contour[:, 0] /= img.shape[0]
+                contour[:, 1] /= img.shape[1]
+
+                res.append(Polygon.objects.create(frame=self, data=contour.tolist(), operation="-"))
+            return res
 
 
 class Polygon(models.Model):

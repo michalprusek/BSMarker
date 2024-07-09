@@ -134,6 +134,15 @@ class Mutation:
         return frame.detect()
 
     @strawberry.django.mutation
+    def detect_free_cells(self, info: Info, frame_id: strawberry.ID) -> list[Polygon] | None:
+        if not info.context.request.user.is_authenticated:
+            return None
+        if not (frame := models.Frame.objects.get(pk=frame_id)):
+            return None
+
+        return frame.detect_free_cells()
+
+    @strawberry.django.mutation
     def detect_all(self, info: Info, experiment_id: strawberry.ID) -> list[Frame] | None:
         if not info.context.request.user.is_authenticated:
             return None

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { experiment_info, update_polygon, create_polygon, delete_polygon, detect, detect_all, clear_polys } from "./api.js";
+import { experiment_info, update_polygon, create_polygon, delete_polygon, detect, detect_free_cells, detect_all, clear_polys } from "./api.js";
 
 
 function preload_image(src) {
@@ -93,6 +93,11 @@ export const useExperimentStore = defineStore("experiment", {
         async detect() {
             const poly = await detect(this.current_frame.id);
             this.current_frame.polygons.push(poly);
+        },
+
+        async detect_free_cells() {
+            const polys = await detect_free_cells(this.current_frame.id);
+            this.current_frame.polygons.push(...polys);
         },
 
         async detect_all() {

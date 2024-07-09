@@ -52,4 +52,30 @@ def wound_contour(img, approx=None):
 
     if approx is not None:
         largest = cv.approxPolyDP(largest, approx, True)
+
     return largest.reshape((largest.shape[0], 2))
+
+
+def cut_out(img, contour):
+    """Convert a contour to a mask"""
+    mask = np.zeros(img.shape, np.uint8)
+    cv.drawContours(mask, [contour], 0, 255, -1)
+    return img * (mask == 255)
+
+
+def free_cells(img, contour, approx=None, min_area=240):
+    """Locate free cells inside a wound contour with area >= min_area"""
+
+    wound = cut_out(img, contour)
+    edges_inner = prewitt(wound, 10)
+    outline = cv.drawContours(np.zeros(img.shape, np.uint8), [contour], -1, 255, 2)
+
+    inner = edges_inner-outline
+    inner = cv.morphologyEx(inner, cv.MORPH_OPEN, cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3)))
+    _, inner = cv.threshold(inner, 127, 255, cv.THRESH_BINARY)
+
+    morph_inner = cv.morphologyEx(inner, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (30, 30)))
+
+    contours_inner, _ = cv.findContours(morph_inner, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+    return [(cv.approxPolyDP(c, approx, True)[:, 0] if approx else c[:, 0]) for c in contours_inner if cv.contourArea(c) > min_area]

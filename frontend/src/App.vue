@@ -34,6 +34,9 @@
                     <Button @click="state.detect_all">Detect all</Button>
                     <Button @click="state.clear_polys">Clear all</Button>
                 </Card>
+                <Card title="Cell detection">
+                    <Button @click="state.detect_free_cells">Detect free cells</Button>
+                </Card>
             </div>
             <div class="image-enhancement">
                 <h3>Image enhancement</h3>
@@ -92,6 +95,9 @@
     .properties {
         grid-column-start: 1;
         grid-column-end: 2;
+        min-height: 0;
+        max-height: 70vh;
+        overflow-y: scroll;
     }
 
     .image-enhancement {
