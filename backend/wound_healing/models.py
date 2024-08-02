@@ -61,11 +61,15 @@ class Frame(models.Model):
 
         return reverse("frame-view", kwargs={"pk": self.pk})
 
-    def img(self, equalized=False):
+    def img(self, equalized=False, lut_in=None, lut_out=None):
         res = self.raw_img
 
         if equalized:
             res = cv.equalizeHist(res)
+
+        if lut_in is not None and lut_out is not None:
+            lut_8u = np.interp(np.arange(0, 256), lut_in, lut_out).astype(np.uint8)
+            res = cv.LUT(res, lut_8u)
 
         return res
 

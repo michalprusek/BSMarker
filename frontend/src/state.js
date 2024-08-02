@@ -21,6 +21,11 @@ export const useExperimentStore = defineStore("experiment", {
             highlighted_poly: null,
 
             shown_version: "original",
+
+            adjust: {
+                x: [0, 128, 256],
+                y: [0, 128, 256]
+            },
         };
     },
     getters: {
@@ -37,8 +42,34 @@ export const useExperimentStore = defineStore("experiment", {
             return state.frames[(state.frame_idx+offset+l)%l];
         },
 
+        current_image: (state) => {
+            return state.frame_image(state.frame_idx);
+        },
+
+        frame_image: (state) => (idx) => {
+            let version = state.shown_version;
+            if (version == "adjusted") {
+                version = "original";
+            }
+            return state.frames[idx][version];
+        },
+
         current_histogram: (state) => {
-            return state.frames[state.frame_idx][state.shown_version].histogram;
+            return state.current_image.histogram;
+        },
+
+        frame_url: (state) => (idx) => {
+            let url = new URL(state.frame_image(idx).url, document.location);
+
+            if (state.shown_version == "adjusted") {
+                url.searchParams.set("lut_in", JSON.stringify(state.adjust.x));
+                url.searchParams.set("lut_out", JSON.stringify(state.adjust.y));
+            }
+            return url.toString();
+        },
+
+        current_url: (state) => {
+            return state.frame_url(state.frame_idx);
         }
     },
     actions: {

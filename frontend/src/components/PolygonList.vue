@@ -3,6 +3,16 @@
 
     import { useExperimentStore } from "../state.js";
     let state = useExperimentStore();
+
+    const THROTTLE_TIMEOUT = 1;
+
+    function highlight(index) {
+        setTimeout(() => {state.highlighted_poly = index}, THROTTLE_TIMEOUT);
+    }
+
+    function remove_highlight() {
+        setTimeout(() => {state.highlighted_poly = null}, THROTTLE_TIMEOUT);
+    }
 </script>
 
 <template>
@@ -15,8 +25,8 @@
         <tr 
             :key="polygon.id"
             v-for="(polygon, index) in state.current_frame.polygons"
-            @mouseover="state.highlighted_poly = index"
-            @mouseout="state.highlighted_poly = null"
+            @mouseover="highlight(index)"
+            @mouseout="remove_highlight()"
         >
             <td>Polygon {{ index+1 }}</td>
             <td>

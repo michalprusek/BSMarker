@@ -11,19 +11,21 @@
     let state = useExperimentStore();
 
     const editor_svg = ref(null);
-    const images = ref([]);
+    const image = ref(null);
 
     /* Image playback */
     let paused = ref(true);
     let play_handle = null;
 
-    const FRAME_INTERVAL = 50;
+    const FRAME_INTERVAL = 75;
 
     function play_skip() {
         const img = new Image();
-        img.src = images.value[state.frame_idx].href.animVal;
+        img.src = state.current_url;
         if (img.complete) {
             right();
+        } else {
+            image.value.addEventListener("SVGLoad", right);
         }
     }
 
@@ -109,23 +111,23 @@
                         :width="SVG_COORD" 
                         :height="SVG_COORD" 
                         :xlink:href="'/preview/' + state.experiment.id"
+                        ref="image"
                     />
-                    <image 
-                        :id="'frame-idx-' + idx"
-                        :key="frame.id"
-                        v-for="(frame, idx) in state.frames"
-                        ref="images"
-                        :visibility="(
-                            frame.id == state.current_frame.id || 
-                            frame.id == state.offset_frame(1).id
-                        ) ? 'visible' : 'hidden'"
-                        x="0" 
-                        y="0" 
-                        :width="SVG_COORD" 
-                        :height="SVG_COORD" 
-                        :xlink:href="state.current_frame[state.shown_version].url"
-                        :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
-                    />
+                    <template v-for="(frame, idx) in state.frames">
+                        <image 
+                            :id="'frame-idx-' + idx"
+                            :key="frame.id"
+                            v-if="frame.id == state.current_frame.id"
+                            x="0" 
+                            y="0" 
+                            :width="SVG_COORD" 
+                            :height="SVG_COORD" 
+                            :xlink:href="state.current_url"
+                            :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
+                        />
+
+                        <!--<link rel="preload" :href="state.frame_url(idx)" as="image" />-->
+                    </template>
                 </g>
                 <g mask="url(#subtract)">
                     <!-- normal polygons -->

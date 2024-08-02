@@ -9,6 +9,9 @@
     import { useExperimentStore } from "./state.js";
     let state = useExperimentStore();
     state.setup();
+
+    import { ref } from 'vue';
+    const adjustN = ref(3);
 </script>
 
 <template>
@@ -40,7 +43,7 @@
             </div>
             <div class="image-enhancement">
                 <h3>Image enhancement</h3>
-                <Histogram v-if="state.current_frame" :histogram="state.current_frame[state.shown_version].histogram" />
+                <Histogram v-if="state.current_frame" :histogram="state.current_image.histogram" :adjust-n="adjustN" />
                 <table class="image-options">
                     <tr>
                         <td>Show</td>
@@ -48,8 +51,15 @@
                             <select @keydown.prevent v-model="state.shown_version">
                                 <option value="original">Original</option>
                                 <option value="equalized">Equalized histogram</option>
+                                <option value="adjusted">Adjusted brightness</option>
                             </select>
                         </td>
+                    </tr>
+                    <tr v-if="state.shown_version == 'adjusted'">
+                        <td>N</td>
+                        <td>
+                            <input type="number" min="2" v-model="adjustN" />
+                        </td> 
                     </tr>
                 </table>
             </div>

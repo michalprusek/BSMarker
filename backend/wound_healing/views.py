@@ -14,6 +14,8 @@ from .forms import ExperimentForm
 
 import cv2 as cv
 
+import json
+
 
 class ProjectList(LoginRequiredMixin, ListView):
     model = Project
@@ -64,8 +66,13 @@ def preview(request, epk):
 def frame(request, pk):
     frame = get_object_or_404(Frame, pk=pk)
 
+    lut_in = request.GET.get("lut_in")
+    lut_out = request.GET.get("lut_out")
+
     params = {
-        "equalized": request.GET.get("equalized") == "True"
+        "equalized": request.GET.get("equalized") == "True",
+        "lut_in": json.loads(lut_in) if lut_in else None,
+        "lut_out": json.loads(lut_out) if lut_out else None,
     }
 
     return img_response(frame.img(**params))
