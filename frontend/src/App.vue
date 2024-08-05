@@ -33,7 +33,7 @@
                     <PolygonList />
                 </Card>
                 <Card title="Wound detection">
-                    <Button @click="state.detect">Detect single</Button>
+                    <Button @click="state.detect">Detect frame</Button>
                     <Button @click="state.detect_all">Detect all</Button>
                     <Button @click="state.clear_polys">Clear all</Button>
                 </Card>

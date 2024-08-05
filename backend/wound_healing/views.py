@@ -1,10 +1,11 @@
-from django.views.generic import ListView, DetailView, CreateView
+from django.views.generic import ListView, DetailView, CreateView, DeleteView
 from django.views.decorators.cache import cache_page
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
 
 from django.shortcuts import render, get_object_or_404
+from django.urls import reverse_lazy
 
 from django.http import HttpResponse
 from django import forms
@@ -45,6 +46,11 @@ class ExperimentCreate(LoginRequiredMixin, CreateView):
 
         kwargs["instance"].project = Project.objects.get(pk=self.kwargs["project"])
         return kwargs
+
+
+class ExperimentDelete(DeleteView):
+    model = Experiment
+    success_url = reverse_lazy("project-list")
 
 
 def img_response(img):

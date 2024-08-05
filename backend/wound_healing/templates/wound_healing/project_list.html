@@ -1,4 +1,15 @@
 {% extends 'main.html' %}
+{% load static %}
+
+{% block extrahead %}
+<style>
+	.icon {
+		float: right;
+    	width: 1.1em;
+    	filter: invert(100%);
+	}
+</style>
+{% endblock %}
 
 {% block title %}Projects{% endblock %}
 
@@ -14,13 +25,21 @@
 			</summary>
 			<ul>
 				{% for experiment in project.experiments.all %}
-				<li><a href="{{ experiment.get_absolute_url }}">{{experiment.name}}</a></li>
+				<li>
+					<a href="{{ experiment.get_absolute_url }}">{{experiment.name}}</a>
+					<div class="settings">
+						<img class="icon" alt="Settings" src="{% static 'settings.svg' %}" />
+						<div class="settings-expand">
+							<a href="{% url 'experiment-delete' project=project.pk pk=experiment.pk %}" role="button"><button>Delete experiment</button></a>
+						</div>
+					</div>
+				</li>
 				{% endfor %}
 				<li><a href="{% url 'experiment-create' project=project.pk %}" role="button"><button>Add new experiment</button></a></li>
 			</ul>
 		</details>
 	</li>
 	{% endfor %}
-	<li><a href="{% url 'project-create' %}" role="button"><button>Add new project</button></a></li>
+	<li class="project"><a href="{% url 'project-create' %}" role="button"><button>Add new project</button></a></li>
 </ul>
 {% endblock %}

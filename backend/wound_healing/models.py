@@ -32,7 +32,7 @@ class Experiment(models.Model):
 
 class Frame(models.Model):
     def upload_to(instance, filename):
-        return f"{instance.experiment.project.slug}/{instance.experiment.slug}/{filename}"
+        return f"{instance.experiment.project.name}/{instance.experiment.name}/{filename}"
 
     def __str__(self):
         return f"{self.experiment}_{self.number:03}"

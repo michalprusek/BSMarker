@@ -32,6 +32,7 @@ urlpatterns = [
     path('project/new', views.ProjectCreate.as_view(), name="project-create"),
 
     path('project/<int:project>/experiment/<int:experiment>', views.ExperimentView.as_view(), name="experiment-detail"),
+    path('project/<int:project>/experiment/<int:pk>/delete', views.ExperimentDelete.as_view(), name="experiment-delete"),
     path('project/<int:project>/experiment/new', views.ExperimentCreate.as_view(), name="experiment-create"),
     
     path('preview/<int:epk>/', views.preview, name="experiment-preview"),

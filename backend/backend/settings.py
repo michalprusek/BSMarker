@@ -39,6 +39,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django_vite',
     'wound_healing',
+
+    # Should be last
+    'django_cleanup.apps.CleanupConfig',
 ]
 
 MIDDLEWARE = [

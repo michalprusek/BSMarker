@@ -19,11 +19,11 @@ def __():
 
 @app.cell
 def __():
-    experiment_path = "../data/MRC-5/Experiment_02_C6/MRC-5_E02-C6_{val:03}.jpg"
-    frame_count = 259
+    #experiment_path = "../data/MRC-5/Experiment_02_C6/MRC-5_E02-C6_{val:03}.jpg"
+    #frame_count = 259
 
-    #experiment_path = "../data/MiaPaca-2/Experiment_01_D5/MiaPaca-2_E01-D5_{val:03}.jpg"
-    #frame_count = 147
+    experiment_path = "../data/MiaPaca-2/Experiment_01_D5/MiaPaca-2_E01-D5_{val:03}.jpg"
+    frame_count = 147
     return experiment_path, frame_count
 
 

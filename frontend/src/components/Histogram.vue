@@ -64,7 +64,7 @@
                 x: adjust.x,
                 y: adjust.y.map((y) => cdf_[cdf_.length-1]/256*y),
                 marker: { color: "grey" },
-                line: { color: "grey" },
+                line: { color: "grey" }, //shape: "spline", 
                 hoverinfo: "x",
             });
         }
@@ -101,8 +101,8 @@
                 return;
             }
             const rect = plot.value.getBoundingClientRect();
-            let x = Math.min(Math.max((event.clientX - rect.left)/rect.width * 256, 0), 256);
-            let y = Math.min(Math.max(1-(event.clientY - rect.top)/rect.height * 256 + 256, 0), 256);
+            let x = Math.min(Math.max((event.clientX - rect.left)/rect.width * 256, 0), 256-1e-6);
+            let y = Math.min(Math.max(1-(event.clientY - rect.top)/rect.height * 256 + 256, 0), 256-1e-6);
 
             if (drag) {
                 if (drag == 0 || drag == adjust.x.length-1) {
