@@ -17,26 +17,33 @@
     let paused = ref(true);
     let play_handle = null;
 
-    const FRAME_INTERVAL = 75;
-
     function play_skip() {
+        if (paused.value) {
+            return;
+        }
+
         const img = new Image();
-        img.src = state.current_url;
-        if (img.complete) {
+        img.src = state.frame_url(state.offset(1));
+
+        const next = () => {
             right();
+            requestAnimationFrame(play_skip);
+        }
+
+        if (img.complete) {
+            next();
         } else {
-            image.value.addEventListener("SVGLoad", right);
+            img.addEventListener("load", next);
         }
     }
 
     function play() {
         paused.value = !paused.value;
-        play_handle = setInterval(play_skip, FRAME_INTERVAL);
+        requestAnimationFrame(play_skip);
     }
 
     function pause() {
         paused.value = !paused.value;
-        clearInterval(play_handle);
     }
 
     function left() {
@@ -113,6 +120,17 @@
                         :xlink:href="'/preview/' + state.experiment.id"
                         ref="image"
                     />
+
+                    <image 
+                        x="0" 
+                        y="0" 
+                        :width="SVG_COORD" 
+                        :height="SVG_COORD" 
+                        :xlink:href="state.current_url"
+                        :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
+                    />
+
+                    <!--
                     <template v-for="(frame, idx) in state.frames">
                         <image 
                             :id="'frame-idx-' + idx"
@@ -122,12 +140,11 @@
                             y="0" 
                             :width="SVG_COORD" 
                             :height="SVG_COORD" 
-                            :xlink:href="state.current_url"
+                            :xlink:href="frame"
                             :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
                         />
-
-                        <!--<link rel="preload" :href="state.frame_url(idx)" as="image" />-->
                     </template>
+                    -->
                 </g>
                 <g mask="url(#subtract)">
                     <!-- normal polygons -->

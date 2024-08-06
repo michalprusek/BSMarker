@@ -4,14 +4,12 @@
     import { useExperimentStore } from "../state.js";
     let state = useExperimentStore();
 
-    const THROTTLE_TIMEOUT = 1;
-
     function highlight(index) {
-        setTimeout(() => {state.highlighted_poly = index}, THROTTLE_TIMEOUT);
+        setTimeout(() => {state.highlighted_poly = index}, 0);
     }
 
     function remove_highlight() {
-        setTimeout(() => {state.highlighted_poly = null}, THROTTLE_TIMEOUT);
+        setTimeout(() => {state.highlighted_poly = null}, 0);
     }
 </script>
 

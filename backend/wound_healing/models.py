@@ -129,4 +129,4 @@ class Polygon(models.Model):
         points[:, 1] *= self.frame.image.height
 
         sign = -1 if self.operation == "-" else 1
-        return sign * cv.contourArea(points)
+        return (sign * cv.contourArea(points)) / (self.frame.image.width * self.frame.image.height)

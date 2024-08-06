@@ -36,10 +36,9 @@ export const useExperimentStore = defineStore("experiment", {
             return state.frames[state.frame_idx];
         },
 
-        offset_frame: (state) => (offset) => {
+        offset: (state) => (offset) => {
             const l = state.frames.length;
-
-            return state.frames[(state.frame_idx+offset+l)%l];
+            return (state.frame_idx+offset+l)%l;
         },
 
         current_image: (state) => {

@@ -65,16 +65,21 @@
             </div>
             <div class="results">
                 <h3>Results</h3>
-                <table>
-                    <tr><td>Surface</td><td>{{ state.current_frame.polygons.reduce((s, poly) => s + poly.surface, 0).toFixed(2) }}px²</td></tr>
-                    <tr><td>Boundary roughness</td><td>N/A</td></tr>
-                    <tr v-if="state.highlighted_poly != null">
-                        <td>Active polygon area</td>
-                        <td>
-                            {{ state.current_frame.polygons[state.highlighted_poly].surface.toFixed(2) }}px²
-                        </td>
-                    </tr>
-                </table>
+                <button>
+                    Open healing results
+                </button>
+                <Card title="This frame">
+                    <table>
+                        <tr><td>Wound surface</td><td>{{ (100 * state.current_frame.polygons.reduce((s, poly) => s + poly.surface, 0)).toFixed(2) }}%</td></tr>
+                        <tr>
+                            <td>Selected surface</td>
+                            <td v-if="state.highlighted_poly != null">
+                                {{ (100 * state.current_frame.polygons[state.highlighted_poly].surface).toFixed(2) }}%
+                            </td>
+                            <td v-else>N/A</td>
+                        </tr>
+                    </table>
+                </Card>
             </div>
         </div>
     </main>
@@ -108,6 +113,8 @@
         min-height: 0;
         max-height: 70vh;
         overflow-y: scroll;
+
+        min-width: 25vw;
     }
 
     .image-enhancement {
@@ -119,7 +126,8 @@
     .results {
         grid-column-start: 1;
         grid-column-end: 3;
-        max-height: 10vh;
+
+        overflow: scroll;
 
         border-top: var(--border-thickness) solid var(--border-color);
     }
