@@ -32,13 +32,20 @@
                 <Card title="Polygons">
                     <PolygonList />
                 </Card>
-                <Card title="Wound detection">
-                    <Button @click="state.detect">Detect frame</Button>
-                    <Button @click="state.detect_all">Detect all</Button>
-                    <Button @click="state.clear_polys">Clear all</Button>
-                </Card>
-                <Card title="Cell detection">
-                    <Button @click="state.detect_free_cells">Detect free cells</Button>
+                <Card title="Image detection">
+                    <p>
+                        <h5>Wound detection</h5>
+                        <Button @click="state.detect">Detect frame</Button>
+                        <Button @click="state.detect_all">Detect all</Button>
+                    </p>
+                    <p>
+                        <h5>Free cell detection</h5>
+                        <Button @click="state.detect_free_cells">Detect frame</Button>
+                    </p>
+                    <p>
+                        <h5>Other actions</h5>
+                        <Button @click="state.clear_polys">Clear all</Button>
+                    </p>
                 </Card>
             </div>
             <div class="image-enhancement">
@@ -65,9 +72,9 @@
             </div>
             <div class="results">
                 <h3>Results</h3>
-                <button>
+                <Button>
                     Open healing results
-                </button>
+                </Button>
                 <Card title="This frame">
                     <table>
                         <tr><td>Wound surface</td><td>{{ (100 * state.current_frame.polygons.reduce((s, poly) => s + poly.surface, 0)).toFixed(2) }}%</td></tr>
