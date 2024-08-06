@@ -80,6 +80,18 @@ mutation detectAll($experiment_id: ID!) {
   }
 }
 
+mutation detectFreeCellsAll($experiment_id: ID!) {
+  detectFreeCellsAll(experimentId: $experiment_id) {
+    id,
+    polygons {
+      id,
+      data,
+      operation,
+      surface
+    }
+  }
+}
+
 mutation clearPolys($experiment_id: ID!) {
   clearPolys(experimentId: $experiment_id) {
     id,
@@ -149,6 +161,12 @@ export function detect_all(experiment_id) {
     return query("detectAll", {
         "experiment_id": experiment_id,
     }).then(res => res["data"]["detectAll"]);
+}
+
+export function detect_free_cells_all(experiment_id) {
+    return query("detectFreeCellsAll", {
+        "experiment_id": experiment_id,
+    }).then(res => res["data"]["detectFreeCellsAll"]);
 }
 
 export function clear_polys(experiment_id) {

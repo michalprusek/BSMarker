@@ -24,13 +24,11 @@
     </dialog>
 </template>
 
-<style scoped v-if="props.closeable">
+<style scoped>
     dialog {
         min-width: 20vw;
     }
-</style>
-
-<style scoped>
+    
     dialog::backdrop {
         background: repeating-linear-gradient(
             45deg,

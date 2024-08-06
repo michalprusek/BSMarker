@@ -48,6 +48,7 @@
                     <p>
                         <h5>Free cell detection</h5>
                         <Button @click="state.detect_free_cells">Detect frame</Button>
+                        <Button @click="state.detect_free_cells_all">Detect all</Button>
                     </p>
                     <p>
                         <h5>Other actions</h5>
