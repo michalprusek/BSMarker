@@ -41,18 +41,19 @@
                 </Card>
                 <Card title="Image detection">
                     <p>
+                        <h5>Actions</h5>
+                        <Button @click="state.detect_full().then(() => results.show());">Full detect + results</Button>
+                        <Button @click="state.clear_polys">Clear all polygons</Button>
+                    </p>
+                    <p>
                         <h5>Wound detection</h5>
                         <Button @click="state.detect">Detect frame</Button>
-                        <Button @click="state.detect_all">Detect all</Button>
+                        <Button @click="state.detect_all">Detect all frames</Button>
                     </p>
                     <p>
                         <h5>Free cell detection</h5>
                         <Button @click="state.detect_free_cells">Detect frame</Button>
-                        <Button @click="state.detect_free_cells_all">Detect all</Button>
-                    </p>
-                    <p>
-                        <h5>Other actions</h5>
-                        <Button @click="state.clear_polys">Clear all</Button>
+                        <Button @click="state.detect_free_cells_all">Detect all frames</Button>
                     </p>
                 </Card>
             </div>

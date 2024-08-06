@@ -5,8 +5,9 @@ from django.urls import reverse
 
 import numpy as np
 import cv2 as cv
-
 from imgproc.wound import wound_contour, free_cells
+
+import tablib
 
 
 class Project(models.Model):
@@ -28,6 +29,15 @@ class Experiment(models.Model):
 
     def get_absolute_url(self):
         return reverse("experiment-detail", kwargs={"project": self.project.pk, "experiment": self.pk})
+
+    def report(self, fmt="csv"):
+        data = tablib.Dataset(headers=["Frame", "Wound area %"])
+        for i, frame in enumerate(self.frames.all()):
+            data.append((i, frame.surface))
+
+        if fmt is None:
+            return data
+        return data.export(fmt)
 
 
 class Frame(models.Model):
@@ -110,6 +120,33 @@ class Frame(models.Model):
 
                 res.append(Polygon.objects.create(frame=self, data=contour.tolist(), operation="-"))
             return res
+
+    def detect_full(self):
+        img = self.img()
+
+        wound = wound_contour(img, approx=2)
+        cells = free_cells(img, wound, approx=2)
+
+        with transaction.atomic():
+            res = []
+
+            wound = wound.astype(np.float64)
+            wound[:, 0] /= img.shape[0]
+            wound[:, 1] /= img.shape[1]
+            res.append(Polygon.objects.create(frame=self, data=wound.tolist()))
+
+            for contour in cells:
+                contour = contour.astype(np.float64)
+                contour[:, 0] /= img.shape[0]
+                contour[:, 1] /= img.shape[1]
+
+                res.append(Polygon.objects.create(frame=self, data=contour.tolist(), operation="-"))
+            return res
+
+    @property
+    def surface(self):
+        return sum(poly.surface for poly in self.polygons.all())
+    
 
 
 class Polygon(models.Model):

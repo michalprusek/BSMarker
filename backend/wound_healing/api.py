@@ -170,6 +170,19 @@ class Mutation:
             return experiment.frames.all()
 
     @strawberry.django.mutation
+    def detect_full(self, info: Info, experiment_id: strawberry.ID) -> list[Frame] | None:
+        if not info.context.request.user.is_authenticated:
+            return None
+        if not (experiment := models.Experiment.objects.get(pk=experiment_id)):
+            return None
+
+        with transaction.atomic():
+            for frame in experiment.frames.all():
+                frame.detect_full()
+
+            return experiment.frames.all()
+
+    @strawberry.django.mutation
     def clear_polys(self, info: Info, experiment_id: strawberry.ID) -> list[Frame] | None:
         if not info.context.request.user.is_authenticated:
             return None

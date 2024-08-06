@@ -82,3 +82,15 @@ def frame(request, pk):
     }
 
     return img_response(frame.img(**params))
+
+
+@login_required
+def report(request, epk):
+    fmt = request.GET.get("format", "csv")
+    experiment = get_object_or_404(Experiment, pk=epk)
+    rep = experiment.report(fmt)
+
+    res = HttpResponse(rep)
+    res['Content-Disposition'] = f"attachment; filename=report.{fmt}"
+
+    return res

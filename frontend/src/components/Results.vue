@@ -1,5 +1,6 @@
 <script setup>
     import { ref, onMounted, watch } from 'vue';
+    import Button from "./Button.vue";
     import Plotly from 'plotly.js-dist-min';
 
     import { useExperimentStore } from "../state.js";
@@ -44,6 +45,11 @@
 
 <template>
     <h3>Results</h3>
+
+    <p>
+        <a v-if="state.experiment" :href="'/report/' + state.experiment.id + '?format=csv'"><Button icon="bi-filetype-csv"></Button></a>
+        <a v-if="state.experiment" :href="'/report/' + state.experiment.id + '?format=xlsx'"><Button icon="bi-filetype-xlsx"></Button></a>
+    </p>
 
     <div id="results-plot" ref="plot">
     </div>
