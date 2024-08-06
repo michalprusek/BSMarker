@@ -39,7 +39,7 @@
     };
 
     onMounted(plot_data);
-    watch(() => state.frames, plot_data);
+    watch(() => state.frames, plot_data, { deep: true });
 </script>
 
 <template>
