@@ -6,8 +6,8 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 
 import { OhVueIcon, addIcons } from "oh-vue-icons";
-import { BiSkipBackwardCircle, BiSkipBackward, BiSkipForward, BiPlay, BiPause, BiBack, BiZoomIn, BiZoomOut, FaDrawPolygon, MdDeleteforeverRound } from "oh-vue-icons/icons";
-addIcons(BiSkipBackwardCircle, BiSkipBackward, BiSkipForward, BiPlay, BiPause, BiBack, BiZoomIn, BiZoomOut, FaDrawPolygon, MdDeleteforeverRound);
+import { BiSkipBackwardCircle, BiSkipBackward, BiSkipForward, BiPlay, BiPause, BiBack, BiZoomIn, BiZoomOut, FaDrawPolygon, MdDeleteforeverRound, IoClose } from "oh-vue-icons/icons";
+addIcons(BiSkipBackwardCircle, BiSkipBackward, BiSkipForward, BiPlay, BiPause, BiBack, BiZoomIn, BiZoomOut, FaDrawPolygon, MdDeleteforeverRound, IoClose);
 
 const app = createApp(App);
 const pinia = createPinia();

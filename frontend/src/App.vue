@@ -5,18 +5,25 @@
     import Button from "./components/Button.vue";
     import Card from "./components/Card.vue";
     import Dialog from "./components/Dialog.vue";
+    import Results from "./components/Results.vue";
 
     import { useExperimentStore } from "./state.js";
     let state = useExperimentStore();
     state.setup();
 
-    import { ref } from 'vue';
+    import { ref, onMounted } from 'vue';
+
     const adjustN = ref(3);
+    const results = ref();
 </script>
 
 <template>
     <Dialog dialog_id="processing">
         Processing...
+    </Dialog>
+
+    <Dialog ref="results" closeable>
+        <Results />
     </Dialog>
 
     <header>
@@ -72,7 +79,7 @@
             </div>
             <div class="results">
                 <h3>Results</h3>
-                <Button>
+                <Button @click="results.show">
                     Open healing results
                 </Button>
                 <Card title="This frame">

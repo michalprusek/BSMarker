@@ -1,12 +1,34 @@
 <script setup>
-    const props = defineProps(["dialog_id"]);
+    import Button from "./Button.vue";
+    import { ref } from "vue";
+
+    const props = defineProps({
+        dialog_id: String,
+        closeable: Boolean,
+    });
+    const dialog = ref();
+
+    function show() {
+        dialog.value.showModal();
+    }
+
+    defineExpose({
+        show,
+    });
 </script>
 
 <template>
-    <dialog :id="props.dialog_id">
+    <dialog :id="props.dialog_id" ref="dialog">
+        <Button v-if="props.closeable" style="float: right;" icon="io-close" @click="dialog.close();" />
         <slot />
     </dialog>
 </template>
+
+<style scoped v-if="props.closeable">
+    dialog {
+        min-width: 20vw;
+    }
+</style>
 
 <style scoped>
     dialog::backdrop {
