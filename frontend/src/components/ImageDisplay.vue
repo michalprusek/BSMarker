@@ -127,24 +127,8 @@
                         :width="SVG_COORD" 
                         :height="SVG_COORD" 
                         :xlink:href="state.current_url"
-                        :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
                     />
-
-                    <!--
-                    <template v-for="(frame, idx) in state.frames">
-                        <image 
-                            :id="'frame-idx-' + idx"
-                            :key="frame.id"
-                            v-if="frame.id == state.current_frame.id"
-                            x="0" 
-                            y="0" 
-                            :width="SVG_COORD" 
-                            :height="SVG_COORD" 
-                            :xlink:href="frame"
-                            :style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"
-                        />
-                    </template>
-                    -->
+                    <!--:style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"-->
                 </g>
                 <g mask="url(#subtract)">
                     <!-- normal polygons -->
@@ -155,7 +139,7 @@
                             :points="polygon.data" 
                             :svg="editor_svg"
                             :poly="polygon.id" 
-                            :highlight="state.highlighted_poly == index"
+                            :highlight="polygon.selected"
                             :zoom="zoom_scale"
                             pcolor="var(--polygon-purple)"
                         />
@@ -170,7 +154,7 @@
                             :points="polygon.data" 
                             :svg="editor_svg"
                             :poly="polygon.id" 
-                            :highlight="state.highlighted_poly == index"
+                            :highlight="polygon.selected"
                             :zoom="zoom_scale"
                             render="empty"
                             pcolor="var(--polygon-blue)"

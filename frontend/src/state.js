@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { experiment_info, update_polygon, create_polygon, delete_polygon, detect, detect_free_cells, detect_all, clear_polys } from "./api.js";
+import { experiment_info, update_polygon, create_polygon, delete_polygons, detect, detect_free_cells, detect_all, clear_polys } from "./api.js";
 
 
 function preload_image(src) {
@@ -18,7 +18,6 @@ export const useExperimentStore = defineStore("experiment", {
             frame_idx: 0,
 
             loaded: false,
-            highlighted_poly: null,
 
             shown_version: "original",
 
@@ -85,6 +84,13 @@ export const useExperimentStore = defineStore("experiment", {
                 this.frames[i].image.preloaded = preload_image(this.frames[i].image.url);
             }*/
 
+            // Setup local polygon attributes
+            for (let i = 0; i < this.frames.length; i++) {
+                for (let j = 0; j < this.frames[i].polygons; j++) {
+                    this.frames[i].polygons[j].selected = false;
+                }
+            }
+
             this.loaded = true;
     	},
 
@@ -114,10 +120,15 @@ export const useExperimentStore = defineStore("experiment", {
             this.current_frame.polygons.push(poly);
         },
 
-        async delete_polygon(idx) {
-            this.highlighted_poly = null;
-            await delete_polygon(this.current_frame.polygons[idx].id);
-            this.current_frame.polygons.splice(idx, 1);
+        async delete_selected_polygons() {
+            let ids = [];
+            for (const poly of this.current_frame.polygons) {
+                if (poly.selected) {
+                    ids.push(poly.id);
+                }
+            }
+            await delete_polygons(ids);
+            this.current_frame.polygons = this.current_frame.polygons.filter((p) => !p.selected);
         },
 
         async detect() {

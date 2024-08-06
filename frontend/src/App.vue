@@ -73,10 +73,9 @@
                         <tr><td>Wound surface</td><td>{{ (100 * state.current_frame.polygons.reduce((s, poly) => s + poly.surface, 0)).toFixed(2) }}%</td></tr>
                         <tr>
                             <td>Selected surface</td>
-                            <td v-if="state.highlighted_poly != null">
-                                {{ (100 * state.current_frame.polygons[state.highlighted_poly].surface).toFixed(2) }}%
+                            <td>
+                                {{ (100 * state.current_frame.polygons.filter((p) => p.selected).reduce((s, poly) => s + poly.surface, 0)).toFixed(2) }}%
                             </td>
-                            <td v-else>N/A</td>
                         </tr>
                     </table>
                 </Card>

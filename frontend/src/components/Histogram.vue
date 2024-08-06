@@ -92,7 +92,8 @@
     };
 
     onMounted(plot_data);
-    watch(state, plot_data);
+    watch(() => state.frame_idx, plot_data);
+    watch(() => state.shown_version, plot_data);
     watch(adjust, plot_data);
 
     onMounted(() => {

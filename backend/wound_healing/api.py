@@ -104,13 +104,13 @@ class Mutation:
         return poly
 
     @strawberry.django.mutation
-    def delete_polygon(self, info: Info, id: strawberry.ID) -> bool:
+    def delete_polygons(self, info: Info, ids: list[strawberry.ID]) -> bool:
         if not info.context.request.user.is_authenticated:
             return False
-        if not (polygon := models.Polygon.objects.filter(pk=id).first()):
+        if not (polygons := models.Polygon.objects.filter(pk__in=ids)):
             return False
 
-        polygon.delete()
+        polygons.delete()
         return True
 
     @strawberry.django.mutation
