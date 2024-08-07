@@ -8,6 +8,9 @@
 **Collaborating workplace**: Ústavu biochemie a mikrobiologie VŠCHT
 
 ## Usage
+### User documentation
+Please refer to [the user manual](docs/manual.md).
+
 ### Running the development version
 
 First, run migrations, create a user and launch the backend server:
