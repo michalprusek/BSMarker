@@ -68,6 +68,21 @@ export const useExperimentStore = defineStore("experiment", {
 
         current_url: (state) => {
             return state.frame_url(state.frame_idx);
+        },
+
+        plot: (state) => {
+            let res = [];
+        
+            for (const frame of state.frames) {
+                res.push(100 * frame.polygons.reduce((s, poly) => s + poly.surface, 0));
+            }
+
+            return [
+                {
+                    x: [...Array(res.length).keys()],
+                    y: res
+                }
+            ];
         }
     },
     actions: {

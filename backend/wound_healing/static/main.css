@@ -140,6 +140,14 @@ main .projects details {
     text-decoration: none;
 }
 
+.project ul li {
+    display: flex;
+}
+
+.project ul li > a {
+    flex-grow: 1;
+}
+
 .settings {
     float: right;
     width: 1.1em;
