@@ -11,7 +11,6 @@
             xaxis: { title: "frame" },
             yaxis: { title: "wound size %" },
             automargin: true,
-            width: "40vw",
             // TODO: unhardcode
             plot_bgcolor: "rgb(24, 28, 37)",
             paper_bgcolor: "rgb(24, 28, 37)"

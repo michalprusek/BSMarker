@@ -59,6 +59,8 @@ class Frame:
     experiment: Experiment
     polygons: list["Polygon"]
 
+    surface: float
+
     @strawberry.django.field
     def data(self, info: Info, equalized: bool = False) -> FrameData:
         return FrameData(
@@ -83,6 +85,12 @@ class Query:
         if not info.context.request.user.is_authenticated:
             return None
         return models.Project.objects.all()
+
+    @strawberry.django.field
+    def project(self, info: Info, id: strawberry.ID) -> Project | None:
+        if not info.context.request.user.is_authenticated:
+            return None
+        return models.Project.objects.get(id=id)
 
     @strawberry.django.field
     def experiment(self, info: Info, id: strawberry.ID) -> Experiment | None:

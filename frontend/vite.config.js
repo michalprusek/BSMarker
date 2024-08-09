@@ -10,7 +10,8 @@ export default defineConfig({
     manifest: "manifest.json",
     rollupOptions: {
       input: {
-        "main": "src/main.js"
+        "main": "src/main.js",
+        "stats": "src/stats.js"
       }
     },
   },

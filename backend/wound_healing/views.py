@@ -27,6 +27,11 @@ class ProjectCreate(LoginRequiredMixin, CreateView):
     fields = ["name"]
 
 
+class ProjectView(LoginRequiredMixin, DetailView):
+    model = Project
+    pk_url_kwarg = "project"
+
+
 class ExperimentView(LoginRequiredMixin, DetailView):
     model = Experiment
     pk_url_kwarg = "experiment"

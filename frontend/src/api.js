@@ -115,6 +115,18 @@ mutation clearPolys($experiment_id: ID!) {
     }
   }
 }
+
+query projectStats($project_id: ID!) {
+  project(id: $project_id) {
+    name,
+    experiments {
+      name
+      frames {
+        surface
+      }
+    }
+  }
+}
 `;
 
 function query(operation, variables) {
@@ -191,4 +203,10 @@ export function clear_polys(experiment_id) {
     return query("clearPolys", {
         "experiment_id": experiment_id,
     }).then(res => res["data"]["clearPolys"]);
+}
+
+export function project_stats(project_id) {
+    return query("projectStats", {
+        "project_id": project_id,
+    }).then(res => res["data"]["project"]);
 }
