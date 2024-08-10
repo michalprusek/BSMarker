@@ -11,8 +11,8 @@
     <h3>Results</h3>
 
     <p>
-        <a v-if="state.experiment" :href="'/report/' + state.experiment.id + '?format=csv'"><Button icon="bi-filetype-csv"></Button></a>
-        <a v-if="state.experiment" :href="'/report/' + state.experiment.id + '?format=xlsx'"><Button icon="bi-filetype-xlsx"></Button></a>
+        <a v-if="state.experiment" :href="'/report/experiment/' + state.experiment.id + '?format=csv'"><Button icon="bi-filetype-csv"></Button></a>
+        <a v-if="state.experiment" :href="'/report/experiment/' + state.experiment.id + '?format=xlsx'"><Button icon="bi-filetype-xlsx"></Button></a>
     </p>
 
     <Plot v-if="state.frames" :data="state.plot" />

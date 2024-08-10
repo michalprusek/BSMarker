@@ -19,6 +19,28 @@ class Project(models.Model):
     def get_absolute_url(self):
         return reverse("project-list") + f"#project-{self.pk}"
 
+    def report(self, fmt="csv"):
+        data = tablib.Dataset()
+
+        experiments = self.experiments.all()
+        names = [e.name for e in experiments]
+        reports = [e.report(None) for e in experiments]
+
+        # The frame column from the longest experiment
+        data.append_col(max(reports, key=len).get_col(0))
+
+        # A column for each experiment
+        for rep in reports:
+            col = rep.get_col(1)
+            col += [None] * (len(data) - len(col)) # Pad to correct length
+            data.append_col(col)
+
+        data.headers = ["Frame"] + names
+
+        if fmt is None:
+            return data
+        return data.export(fmt)
+
 
 class Experiment(models.Model):
     project = models.ForeignKey(Project, related_name="experiments", on_delete=models.CASCADE)

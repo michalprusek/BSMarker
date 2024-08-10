@@ -118,6 +118,7 @@ mutation clearPolys($experiment_id: ID!) {
 
 query projectStats($project_id: ID!) {
   project(id: $project_id) {
+    id,
     name,
     experiments {
       name

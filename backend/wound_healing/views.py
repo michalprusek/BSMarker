@@ -90,10 +90,22 @@ def frame(request, pk):
 
 
 @login_required
-def report(request, epk):
+def experiment_report(request, pk):
     fmt = request.GET.get("format", "csv")
-    experiment = get_object_or_404(Experiment, pk=epk)
+    experiment = get_object_or_404(Experiment, pk=pk)
     rep = experiment.report(fmt)
+
+    res = HttpResponse(rep)
+    res['Content-Disposition'] = f"attachment; filename=report.{fmt}"
+
+    return res
+
+
+@login_required
+def project_report(request, pk):
+    fmt = request.GET.get("format", "csv")
+    project = get_object_or_404(Project, pk=pk)
+    rep = project.report(fmt)
 
     res = HttpResponse(rep)
     res['Content-Disposition'] = f"attachment; filename=report.{fmt}"

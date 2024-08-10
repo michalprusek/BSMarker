@@ -21,7 +21,10 @@
 	<li class="project" id="project-{{project.pk}}">
 		<details open>
 			<summary>
-				<h3><a href="{% url 'project-detail' project=project.pk %}">{{project.name}}</a></h3>
+				<h3>{{project.name}}</h3>
+				<span class="project-link"><a href="{% url 'project-detail' project=project.pk %}">
+					View project details
+				</a></span>
 			</summary>
 			<ul>
 				{% for experiment in project.experiments.all %}

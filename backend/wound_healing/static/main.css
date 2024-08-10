@@ -181,3 +181,7 @@ main .projects details {
 summary h3 {
     display: inline;
 }
+
+summary .project-link {
+    float: right;
+}

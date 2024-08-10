@@ -1,6 +1,7 @@
 <script setup>
     import { project_stats } from "./api.js";
     import { ref, computed, onMounted } from "vue";
+    import Button from "./components/Button.vue";
     import Plot from "./components/Plot.vue";
 
     const project = ref();
@@ -27,6 +28,10 @@
     <main v-if="project">
         <h2>{{ project.name }} – report</h2>
         <div class="content">
+            <p>
+                <a :href="'/report/project/' + project.id + '?format=csv'"><Button icon="bi-filetype-csv"></Button></a>
+                <a :href="'/report/project/' + project.id + '?format=xlsx'"><Button icon="bi-filetype-xlsx"></Button></a>
+            </p>
             <Plot :data="data" />
         </div>
     </main>
