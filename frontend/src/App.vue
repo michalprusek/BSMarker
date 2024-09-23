@@ -1,11 +1,14 @@
 <script setup>
     import ImageDisplay from "./components/ImageDisplay.vue";
-    import Histogram from "./components/Histogram.vue"
-    import PolygonList from "./components/PolygonList.vue"
+    import Histogram from "./components/Histogram.vue";
+    import PolygonList from "./components/PolygonList.vue";
     import Button from "./components/Button.vue";
     import Card from "./components/Card.vue";
     import Dialog from "./components/Dialog.vue";
     import Results from "./components/Results.vue";
+    import FrameManager from "./components/FrameManager.vue";
+
+    const fm = ref(false);
 
     import { useExperimentStore } from "./state.js";
     let state = useExperimentStore();
@@ -28,8 +31,34 @@
 
     <header>
         <h1><a href="/">Wound healing</a></h1>
+
+        <span class="menus">
+            <Button @click="fm = !fm">
+                <template v-if="fm">
+                    Go to Editor
+                </template>
+                <template v-else>
+                    Go to Frame manager
+                </template>
+            </Button>
+        </span>
     </header>
-    <main v-if="state.loaded">
+    <main v-if="fm">
+        <Suspense>
+            <FrameManager />
+        </Suspense>
+    </main>
+    <main v-else-if="state.loaded && state.frames.length <= 0">
+        <Dialog open style="text-align: center;">
+            <p>No frames yet in this experiment.</p>
+            <p>
+                <Button @click="fm = !fm">
+                    Go to Frame manager
+                </Button>
+            </p>
+        </Dialog>
+    </main>
+    <main v-else-if="state.loaded">
         <div class="left split">
             <ImageDisplay v-if="state.frames" />
         </div>
@@ -100,13 +129,17 @@
     </main>
     <main v-else>
         <div class="loading">
-            Loading...
+            Loading…
             <div class="loader"></div>
         </div>
     </main>
 </template>
 
 <style scoped>
+    .menus {
+        float: right;
+    }
+
     .split {
         width: 50vw;
     }

@@ -36,6 +36,8 @@ urlpatterns = [
     path('project/<int:project>/experiment/<int:pk>/delete', views.ExperimentDelete.as_view(), name="experiment-delete"),
     path('project/<int:project>/experiment/new', views.ExperimentCreate.as_view(), name="experiment-create"),
 
+    path('upload/<int:pk>/', views.frame_upload, name="frame-upload"),
+
     path('report/project/<int:pk>/', views.project_report, name="project-report"),
     path('report/experiment/<int:pk>/', views.experiment_report, name="experiment-report"),
 

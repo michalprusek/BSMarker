@@ -4,6 +4,8 @@ from django.views.decorators.cache import cache_page
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
 
+from django.views.decorators.http import require_POST
+
 from django.shortcuts import render, get_object_or_404
 from django.urls import reverse_lazy
 
@@ -11,7 +13,6 @@ from django.http import HttpResponse
 from django import forms
 
 from .models import Project, Experiment, Frame
-from .forms import ExperimentForm
 
 import cv2 as cv
 
@@ -42,7 +43,7 @@ class ExperimentView(LoginRequiredMixin, DetailView):
 
 class ExperimentCreate(LoginRequiredMixin, CreateView):
     model = Experiment
-    form_class = ExperimentForm
+    fields = ["name"]
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
@@ -111,3 +112,19 @@ def project_report(request, pk):
     res['Content-Disposition'] = f"attachment; filename=report.{fmt}"
 
     return res
+
+
+@login_required
+@require_POST
+def frame_upload(request, pk):
+    experiment = get_object_or_404(Experiment, pk=pk)
+
+    if "number" not in request.POST or not request.POST["number"].isdigit():
+        return HttpResponse("missing number", status_code=400)
+
+    num = int(request.POST["number"])
+    file = request.FILES["file"]
+
+    Frame.objects.create(experiment=experiment, number=num, image=file)
+
+    return HttpResponse("ok")

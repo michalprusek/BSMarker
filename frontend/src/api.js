@@ -2,6 +2,21 @@ const FETCH_HIST_COUNT = 5;
 const INITIAL_HIST_COUNT = FETCH_HIST_COUNT;
 
 const gql_query = `
+query experimentInfoQuick($id: ID!) {
+  experiment(id: $id) {
+    id,
+    url,
+    name,
+    frameCount,
+    frames {
+      id,
+      image {
+        name
+      }
+    },
+  }
+}
+
 query experimentInfo($id: ID!) {
   experiment(id: $id) {
     id,
@@ -142,6 +157,12 @@ function query(operation, variables) {
             variables: variables,
         }),
     }).then(res => res.json());
+}
+
+export function experiment_info_quick(experiment_id) {
+    return query("experimentInfoQuick", {
+        "id": experiment_id
+    }).then(res => res["data"]["experiment"]);
 }
 
 export function experiment_info(experiment_id) {

@@ -4,7 +4,7 @@ import { createApp } from 'vue'
 import Stats from './Stats.vue'
 
 import { OhVueIcon, addIcons } from "oh-vue-icons";
-import { BiSkipBackwardCircle, BiSkipBackward, BiSkipForward, BiPlay, BiPause, BiBack, BiZoomIn, BiZoomOut, FaDrawPolygon, MdDeleteforeverRound, IoClose, BiFiletypeCsv, BiFiletypeXlsx } from "oh-vue-icons/icons";
+import { BiSkipBackwardCircle, BiSkipBackward, BiSkipForward, BiPlay, BiPause, BiBack, BiZoomIn, BiZoomOut, FaDrawPolygon, MdDeleteforeverRound, IoClose, BiFiletypeCsv, BiFiletypeXlsx, IoReload } from "oh-vue-icons/icons";
 addIcons(BiFiletypeCsv, BiFiletypeXlsx);
 
 const app = createApp(Stats);

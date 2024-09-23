@@ -5,6 +5,7 @@
     const props = defineProps({
         dialog_id: String,
         closeable: Boolean,
+        open: Boolean,
     });
     const dialog = ref();
 
@@ -18,7 +19,7 @@
 </script>
 
 <template>
-    <dialog :id="props.dialog_id" ref="dialog">
+    <dialog :id="props.dialog_id" ref="dialog" :open="props.open">
         <Button v-if="props.closeable" style="float: right;" icon="io-close" @click="dialog.close();" />
         <slot />
     </dialog>
@@ -26,6 +27,7 @@
 
 <style scoped>
     dialog {
+        margin-top: 1rem;
         min-width: 20vw;
     }
     

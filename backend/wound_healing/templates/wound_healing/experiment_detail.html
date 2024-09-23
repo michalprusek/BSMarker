@@ -5,6 +5,11 @@
 	{% vite_hmr_client %}
 	{% vite_asset 'src/main.js' %}
 	{{ object.pk|json_script:"experiment" }}
+
+	{% csrf_token %}
+	<script>
+	const csrftoken = document.querySelector("[name=csrfmiddlewaretoken]").value;
+	</script>
 {% endblock %}
 
 {% block title %}{{ object }}{% endblock %}
