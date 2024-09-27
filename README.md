@@ -1,7 +1,8 @@
 # Wound Healing
 
 ## About
-**Abstract**: This study focuses on the development of an advanced imaging detection system for monitoring wound healing, employing cutting-edge techniques to provide accurate, real-time assessments of healing progress. The integration of machine learning models allows for the automatic classification of wound stages, offering valuable insights into the effectiveness of treatment protocols.
+
+This thesis will survey existing computer vision methods, focusing on object segmentation of 2D data. An initial study of the healing process will be made to understand the processed data better. A tool will be developed for the manual annotation of imaging data. Collaborating with microbiologists will prepare the training data by specifically highlighting wounds. The study will also involve selecting suitable metrics for comparing the effectiveness of different segmentation methods. Based on these comparisons, the thesis will design a final system capable of monitoring the healing process over time, such as tracking the rate of wound ingrowth. This system aims to contribute valuable insights into healing dynamics, potentially influencing future therapeutic strategies.
 
 **Supervisor**: Adam Novozámský
 
