@@ -168,7 +168,6 @@ class Frame(models.Model):
     @property
     def surface(self):
         return sum(poly.surface for poly in self.polygons.all())
-    
 
 
 class Polygon(models.Model):

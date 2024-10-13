@@ -7,6 +7,7 @@
     import Dialog from "./components/Dialog.vue";
     import Results from "./components/Results.vue";
     import FrameManager from "./components/FrameManager.vue";
+    import Loader from "./components/Loader.vue";
 
     const fm = ref(false);
 
@@ -18,6 +19,14 @@
 
     const adjustN = ref(3);
     const results = ref();
+
+    function switch_interface() {
+        if (fm.value) {
+            state.$reset();
+            state.setup();
+        }
+        fm.value = !fm.value;
+    }
 </script>
 
 <template>
@@ -33,7 +42,7 @@
         <h1><a href="/">Wound healing</a></h1>
 
         <span class="menus">
-            <Button @click="fm = !fm">
+            <Button @click="switch_interface">
                 <template v-if="fm">
                     Go to Editor
                 </template>
@@ -46,6 +55,10 @@
     <main v-if="fm">
         <Suspense>
             <FrameManager />
+
+            <template #fallback>
+                <Loader />
+            </template>
         </Suspense>
     </main>
     <main v-else-if="state.loaded && state.frames.length <= 0">
@@ -88,7 +101,9 @@
             </div>
             <div class="image-enhancement">
                 <h3>Image enhancement</h3>
-                <Histogram v-if="state.current_frame" :histogram="state.current_image.histogram" :adjust-n="adjustN" />
+                <Suspense>
+                    <Histogram v-if="state.current_frame" :adjust-n="adjustN" />
+                </Suspense>
                 <table class="image-options">
                     <tr>
                         <td>Show</td>
@@ -128,10 +143,7 @@
         </div>
     </main>
     <main v-else>
-        <div class="loading">
-            Loading…
-            <div class="loader"></div>
-        </div>
+        <Loader />
     </main>
 </template>
 

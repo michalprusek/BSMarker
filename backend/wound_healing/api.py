@@ -98,6 +98,12 @@ class Query:
             return None
         return models.Experiment.objects.get(id=id)
 
+    @strawberry.django.field
+    def frame(self, info: Info, id: strawberry.ID) -> Frame | None:
+        if not info.context.request.user.is_authenticated:
+            return None
+        return models.Frame.objects.get(id=id)
+
 
 @strawberry.type
 class Mutation:

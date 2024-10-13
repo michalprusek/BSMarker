@@ -2,10 +2,12 @@
     import { ref, computed, onMounted, watch, reactive } from 'vue';
     import Plotly from 'plotly.js-dist-min';
 
+    import { frame_histogram } from "../api.js";
+
     import { useExperimentStore } from "../state.js";
     let state = useExperimentStore();
 
-    const props = defineProps(["histogram", "adjustN"]);
+    const props = defineProps(["adjustN"]);
 
     let hovered = null;
     let drag = null;
@@ -41,13 +43,15 @@
         return cdf;
     }
 
-    function plot_data() {
-        let cdf_ = cdf(props.histogram);
+    async function plot_data() {
+        const histogram = await frame_histogram(state.current_frame.id, state.shown_version == "equalized");
+
+        let cdf_ = cdf(histogram);
 
         const data = [
             {
                 x: [...Array(256).keys()],
-                y: props.histogram,
+                y: histogram,
                 type: "bar",
                 hoverinfo: "skip",
             },

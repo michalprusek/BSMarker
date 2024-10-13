@@ -1,6 +1,3 @@
-const FETCH_HIST_COUNT = 5;
-const INITIAL_HIST_COUNT = FETCH_HIST_COUNT;
-
 const gql_query = `
 query experimentInfoQuick($id: ID!) {
   experiment(id: $id) {
@@ -27,11 +24,9 @@ query experimentInfo($id: ID!) {
       id,
       original: data {
         url,
-        histogram
       },
       equalized: data(equalized: true) {
         url,
-        histogram
       }
       polygons {
         id,
@@ -143,6 +138,15 @@ query projectStats($project_id: ID!) {
     }
   }
 }
+
+query frameHistogram($frame_id: ID!, $equalized: Boolean!) {
+  frame(id: $frame_id) {
+    id,
+    data(equalized: $equalized) {
+        histogram,
+    }
+  }
+}
 `;
 
 function query(operation, variables) {
@@ -231,4 +235,11 @@ export function project_stats(project_id) {
     return query("projectStats", {
         "project_id": project_id,
     }).then(res => res["data"]["project"]);
+}
+
+export function frame_histogram(frame_id, equalized) {
+    return query("frameHistogram", {
+        "frame_id": frame_id,
+        "equalized": equalized,
+    }).then(res => res["data"]["frame"]["data"]["histogram"]);
 }

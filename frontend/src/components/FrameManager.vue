@@ -82,7 +82,7 @@
             <tr v-for="(data, idx) in files" :key="index">
                 <td>{{ data.file.name }}</td>
                 <template v-if="data.state == 'queued'">
-                    <td class="queued">Queued for upload</td>
+                    <td class="queued">Uploading</td>
                     <td></td>
                 </template>
                 <template v-else-if="data.state == 'done'">
@@ -149,6 +149,5 @@
             rgba(0, 0, 0, 0.3) 1px,
             rgba(0, 0, 0, 0.3) 20px
         );
-        /*backdrop-filter: blur(3px);*/
     }
 </style>
