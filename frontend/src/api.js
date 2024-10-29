@@ -60,8 +60,8 @@ mutation deletePolygons($ids: [ID!]!) {
   deletePolygons(ids: $ids)
 }
 
-mutation detect($frame_id: ID!) {
-  detect(frameId: $frame_id) {
+mutation detectWound($frame_id: ID!) {
+  detectWound(frameId: $frame_id) {
     id,
     data,
     operation,
@@ -78,8 +78,17 @@ mutation detectFreeCells($frame_id: ID!) {
   }
 }
 
-mutation detectAll($experiment_id: ID!) {
-  detectAll(experimentId: $experiment_id) {
+mutation detectFull($frame_id: ID!) {
+  detectFull(frameId: $frame_id) {
+    id,
+    data,
+    operation,
+    surface
+  }
+}
+
+mutation detectWoundAll($experiment_id: ID!) {
+  detectWoundAll(experimentId: $experiment_id) {
     id,
     polygons {
       id,
@@ -102,8 +111,8 @@ mutation detectFreeCellsAll($experiment_id: ID!) {
   }
 }
 
-mutation detectFull($experiment_id: ID!) {
-  detectFull(experimentId: $experiment_id) {
+mutation detectFullAll($experiment_id: ID!) {
+  detectFullAll(experimentId: $experiment_id) {
     id,
     polygons {
       id,
@@ -114,8 +123,12 @@ mutation detectFull($experiment_id: ID!) {
   }
 }
 
-mutation clearPolys($experiment_id: ID!) {
-  clearPolys(experimentId: $experiment_id) {
+mutation clearPolys($frame_id: ID!) {
+    clearPolys(frameId: $frame_id)
+}
+
+mutation clearPolysExperiment($experiment_id: ID!) {
+  clearPolysExperiment(experimentId: $experiment_id) {
     id,
     polygons {
       id,
@@ -124,6 +137,10 @@ mutation clearPolys($experiment_id: ID!) {
       surface
     }
   }
+}
+
+mutation deleteFrame($frame_id: ID!) {
+    deleteFrame(frameId: $frame_id)
 }
 
 query projectStats($project_id: ID!) {
@@ -195,10 +212,10 @@ export function delete_polygons(ids) {
     });
 }
 
-export function detect(frame_id) {
-    return query("detect", {
+export function detect_wound(frame_id) {
+    return query("detectWound", {
         "frame_id": frame_id,
-    }).then(res => res["data"]["detect"]);
+    }).then(res => res["data"]["detectWound"]);
 }
 
 export function detect_free_cells(frame_id) {
@@ -207,10 +224,28 @@ export function detect_free_cells(frame_id) {
     }).then(res => res["data"]["detectFreeCells"]);
 }
 
-export function detect_all(experiment_id) {
-    return query("detectAll", {
+export function detect_full(frame_id) {
+    return query("detectFull", {
+        "frame_id": frame_id,
+    }).then(res => res["data"]["detectFull"]);
+}
+
+export function clear_polys(frame_id) {
+    return query("clearPolys", {
+        "frame_id": frame_id,
+    }).then(res => res["data"]["clearPolys"]);
+}
+
+export function delete_frame(frame_id) {
+    return query("deleteFrame", {
+        "frame_id": frame_id,
+    }).then(res => res["data"]["deleteFrame"]);
+}
+
+export function detect_wound_all(experiment_id) {
+    return query("detectWoundAll", {
         "experiment_id": experiment_id,
-    }).then(res => res["data"]["detectAll"]);
+    }).then(res => res["data"]["detectWoundAll"]);
 }
 
 export function detect_free_cells_all(experiment_id) {
@@ -219,16 +254,16 @@ export function detect_free_cells_all(experiment_id) {
     }).then(res => res["data"]["detectFreeCellsAll"]);
 }
 
-export function detect_full(experiment_id) {
-    return query("detectFull", {
+export function detect_full_all(experiment_id) {
+    return query("detectFullAll", {
         "experiment_id": experiment_id,
-    }).then(res => res["data"]["detectFull"]);
+    }).then(res => res["data"]["detectFullAll"]);
 }
 
-export function clear_polys(experiment_id) {
-    return query("clearPolys", {
+export function clear_polys_experiment(experiment_id) {
+    return query("clearPolysExperiment", {
         "experiment_id": experiment_id,
-    }).then(res => res["data"]["clearPolys"]);
+    }).then(res => res["data"]["clearPolysExperiment"]);
 }
 
 export function project_stats(project_id) {

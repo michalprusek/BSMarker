@@ -139,7 +139,7 @@ class Mutation:
         return polygon
 
     @strawberry.django.mutation
-    def detect(self, info: Info, frame_id: strawberry.ID) -> Polygon | None:
+    def detect_wound(self, info: Info, frame_id: strawberry.ID) -> Polygon | None:
         if not info.context.request.user.is_authenticated:
             return None
         if not (frame := models.Frame.objects.get(pk=frame_id)):
@@ -157,7 +157,30 @@ class Mutation:
         return frame.detect_free_cells()
 
     @strawberry.django.mutation
-    def detect_all(self, info: Info, experiment_id: strawberry.ID) -> list[Frame] | None:
+    def detect_full(self, info: Info, frame_id: strawberry.ID) -> list[Polygon] | None:
+        if not info.context.request.user.is_authenticated:
+            return None
+        if not (frame := models.Frame.objects.get(pk=frame_id)):
+            return None
+
+        return frame.detect_full()
+
+    @strawberry.django.mutation
+    def detect_full_all(self, info: Info, experiment_id: strawberry.ID) -> list[Frame] | None:
+        if not info.context.request.user.is_authenticated:
+            return None
+        if not (experiment := models.Experiment.objects.get(pk=experiment_id)):
+            return None
+
+        with transaction.atomic():
+            for frame in experiment.frames.all():
+                if not frame.polygons.exists():
+                    frame.detect_full()
+
+            return experiment.frames.all()
+
+    @strawberry.django.mutation
+    def detect_wound_all(self, info: Info, experiment_id: strawberry.ID) -> list[Frame] | None:
         if not info.context.request.user.is_authenticated:
             return None
         if not (experiment := models.Experiment.objects.get(pk=experiment_id)):
@@ -184,20 +207,25 @@ class Mutation:
             return experiment.frames.all()
 
     @strawberry.django.mutation
-    def detect_full(self, info: Info, experiment_id: strawberry.ID) -> list[Frame] | None:
+    def clear_polys(self, info: Info, frame_id: strawberry.ID) -> None:
         if not info.context.request.user.is_authenticated:
             return None
-        if not (experiment := models.Experiment.objects.get(pk=experiment_id)):
+        if not (frame := models.Frame.objects.get(pk=frame_id)):
             return None
 
-        with transaction.atomic():
-            for frame in experiment.frames.all():
-                frame.detect_full()
-
-            return experiment.frames.all()
+        frame.polygons.all().delete()
 
     @strawberry.django.mutation
-    def clear_polys(self, info: Info, experiment_id: strawberry.ID) -> list[Frame] | None:
+    def delete_frame(self, info: Info, frame_id: strawberry.ID) -> None:
+        if not info.context.request.user.is_authenticated:
+            return None
+        if not (frame := models.Frame.objects.get(pk=frame_id)):
+            return None
+
+        frame.delete()
+
+    @strawberry.django.mutation
+    def clear_polys_experiment(self, info: Info, experiment_id: strawberry.ID) -> list[Frame] | None:
         if not info.context.request.user.is_authenticated:
             return None
         if not (experiment := models.Experiment.objects.get(pk=experiment_id)):

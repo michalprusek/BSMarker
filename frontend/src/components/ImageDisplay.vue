@@ -13,6 +13,8 @@
     const editor_svg = ref(null);
     const image = ref(null);
 
+    const show_polygons = ref(true);
+
     /* Image playback */
     let paused = ref(true);
     let play_handle = null;
@@ -130,7 +132,7 @@
                     />
                     <!--:style="state.highlighted_poly ? 'filter: brightness(60%);' : ''"-->
                 </g>
-                <g mask="url(#subtract)">
+                <g mask="url(#subtract)" v-if="show_polygons">
                     <!-- normal polygons -->
                     <template v-if="editor_svg" v-for="(polygon, index) in state.current_frame.polygons">
                         <Polygon v-if="polygon.operation == '+'"
@@ -145,7 +147,7 @@
                         />
                     </template>
                 </g>
-                <g>
+                <g v-if="show_polygons">
                     <!-- subtracting polygons -->
                     <template v-if="editor_svg" v-for="(polygon, index) in state.current_frame.polygons">
                         <Polygon v-if="polygon.operation == '-'"
@@ -161,7 +163,7 @@
                         />
                     </template>
                 </g>
-                <defs>
+                <defs v-if="show_polygons">
                     <!-- subtraction polygon mask -->
                     <mask id="subtract">
                         <rect x="0" y="0" :width="SVG_COORD" :height="SVG_COORD" fill="white" />
@@ -201,7 +203,8 @@
                 <Button @click="play" v-if="paused" icon="bi-play" />
                 <Button @click="pause" v-else icon="bi-pause" />
                 <Button @click="right" icon="bi-skip-forward" />
-            </span>
+                <Button @click="show_polygons = !show_polygons" icon="fa-draw-polygon" />
+            </span>.
         </div>
         <div class="blank">
         </div>

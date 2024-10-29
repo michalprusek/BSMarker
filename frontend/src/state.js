@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { experiment_info, update_polygon, create_polygon, delete_polygons, detect, detect_free_cells, detect_all, detect_free_cells_all, detect_full, clear_polys } from "./api.js";
+import { experiment_info, update_polygon, create_polygon, delete_polygons, detect_wound, detect_free_cells, detect_full_all, detect_free_cells_all, detect_wound_all, clear_polys_experiment } from "./api.js";
 
 
 function preload_image(src) {
@@ -146,8 +146,8 @@ export const useExperimentStore = defineStore("experiment", {
             this.current_frame.polygons = this.current_frame.polygons.filter((p) => !p.selected);
         },
 
-        async detect() {
-            const poly = await detect(this.current_frame.id);
+        async detect_wound() {
+            const poly = await detect_wound(this.current_frame.id);
             this.current_frame.polygons.push(poly);
         },
 
@@ -156,9 +156,9 @@ export const useExperimentStore = defineStore("experiment", {
             this.current_frame.polygons.push(...polys);
         },
 
-        async detect_all() {
+        async detect_wound_all() {
             window.processing.showModal();
-            const frames = await detect_all(this.experiment.id);
+            const frames = await detect_wound_all(this.experiment.id);
 
             for (let i = 0; i < frames.length; i++) {
                 this.frames[i].polygons = frames[i].polygons;
@@ -176,9 +176,9 @@ export const useExperimentStore = defineStore("experiment", {
             window.processing.close();
         },
 
-        async detect_full() {
+        async detect_full_all() {
             window.processing.showModal();
-            const frames = await detect_full(this.experiment.id);
+            const frames = await detect_full_all(this.experiment.id);
 
             for (let i = 0; i < frames.length; i++) {
                 this.frames[i].polygons = frames[i].polygons;
@@ -186,12 +186,12 @@ export const useExperimentStore = defineStore("experiment", {
             window.processing.close();
         },
 
-        async clear_polys() {
+        async clear_polys_experiment() {
             if (!confirm("Are you sure you want to delete all polygons in this experiment?")) {
                 return;
             }
 
-            const frames = await clear_polys(this.experiment.id);
+            const frames = await clear_polys_experiment(this.experiment.id);
 
             for (let i = 0; i < frames.length; i++) {
                 this.frames[i].polygons = frames[i].polygons;

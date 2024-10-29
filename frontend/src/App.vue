@@ -81,23 +81,23 @@
                 <Card title="Polygons">
                     <PolygonList />
                 </Card>
-                <Card title="Image detection">
+                <!--<Card title="Image detection">
                     <p>
                         <h5>Actions</h5>
-                        <Button @click="state.detect_full().then(() => results.show());">Full detect + results</Button>
-                        <Button @click="state.clear_polys">Clear all polygons</Button>
+                        <Button @click="state.detect_full_all().then(() => results.show());">Full detect + results</Button>
+                        <Button @click="state.clear_polys_experiment">Clear all polygons</Button>
                     </p>
                     <p>
                         <h5>Wound detection</h5>
-                        <Button @click="state.detect">Detect frame</Button>
-                        <Button @click="state.detect_all">Detect all frames</Button>
+                        <Button @click="state.detect_wound">Detect frame</Button>
+                        <Button @click="state.detect_wound_all">Detect all frames</Button>
                     </p>
                     <p>
                         <h5>Free cell detection</h5>
                         <Button @click="state.detect_free_cells">Detect frame</Button>
                         <Button @click="state.detect_free_cells_all">Detect all frames</Button>
                     </p>
-                </Card>
+                </Card>-->
             </div>
             <div class="image-enhancement">
                 <h3>Image enhancement</h3>

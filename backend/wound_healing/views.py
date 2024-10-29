@@ -125,6 +125,6 @@ def frame_upload(request, pk):
     num = int(request.POST["number"])
     file = request.FILES["file"]
 
-    Frame.objects.create(experiment=experiment, number=num, image=file)
+    frame = Frame.objects.create(experiment=experiment, number=num, image=file)
 
-    return HttpResponse("ok")
+    return HttpResponse(frame.pk)
