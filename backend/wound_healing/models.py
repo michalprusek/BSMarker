@@ -5,7 +5,7 @@ from django.urls import reverse
 
 import numpy as np
 import cv2 as cv
-from imgproc.wound import wound_contour, free_cells
+from imgproc.wound import wound_contours, free_cells
 
 import tablib
 
@@ -121,16 +121,22 @@ class Frame(models.Model):
     def detect(self):
         img = self.img()
 
-        contour = wound_contour(img, approx=2).astype(np.float64)
-        contour[:, 0] /= img.shape[0]
-        contour[:, 1] /= img.shape[1]
+        contours = wound_contours(img, approx=2)
 
-        return Polygon.objects.create(frame=self, data=contour.tolist())
+        with transaction.atomic():
+            res = []
+            for contour in contours:
+                contour = contour.astype(np.float64)
+                contour[:, 0] /= img.shape[0]
+                contour[:, 1] /= img.shape[1]
+
+                res.append(Polygon.objects.create(frame=self, data=contour.tolist()))
+            return res
 
     def detect_free_cells(self):
         img = self.img()
 
-        wound = wound_contour(img, approx=2)
+        wound = wound_contours(img, approx=2)
         cells = free_cells(img, wound, approx=2)
 
         with transaction.atomic():
@@ -146,16 +152,17 @@ class Frame(models.Model):
     def detect_full(self):
         img = self.img()
 
-        wound = wound_contour(img, approx=2)
+        wound = wound_contours(img, approx=2)
         cells = free_cells(img, wound, approx=2)
 
         with transaction.atomic():
             res = []
 
-            wound = wound.astype(np.float64)
-            wound[:, 0] /= img.shape[0]
-            wound[:, 1] /= img.shape[1]
-            res.append(Polygon.objects.create(frame=self, data=wound.tolist()))
+            for contour in wound:
+                contour = contour.astype(np.float64)
+                contour[:, 0] /= img.shape[0]
+                contour[:, 1] /= img.shape[1]
+                res.append(Polygon.objects.create(frame=self, data=contour.tolist()))
 
             for contour in cells:
                 contour = contour.astype(np.float64)

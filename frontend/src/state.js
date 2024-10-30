@@ -147,8 +147,8 @@ export const useExperimentStore = defineStore("experiment", {
         },
 
         async detect_wound() {
-            const poly = await detect_wound(this.current_frame.id);
-            this.current_frame.polygons.push(poly);
+            const polys = await detect_wound(this.current_frame.id);
+            this.current_frame.polygons.push(...polys);
         },
 
         async detect_free_cells() {

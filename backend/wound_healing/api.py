@@ -139,7 +139,7 @@ class Mutation:
         return polygon
 
     @strawberry.django.mutation
-    def detect_wound(self, info: Info, frame_id: strawberry.ID) -> Polygon | None:
+    def detect_wound(self, info: Info, frame_id: strawberry.ID) -> list[Polygon] | None:
         if not info.context.request.user.is_authenticated:
             return None
         if not (frame := models.Frame.objects.get(pk=frame_id)):

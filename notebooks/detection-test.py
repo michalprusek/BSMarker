@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.6.20"
+__generated_with = "0.9.14"
 app = marimo.App(width="medium")
 
 
@@ -22,30 +22,33 @@ def __():
     #experiment_path = "../data/MRC-5/Experiment_02_C6/MRC-5_E02-C6_{val:03}.jpg"
     #frame_count = 259
 
-    experiment_path = "../data/MiaPaca-2/Experiment_01_D5/MiaPaca-2_E01-D5_{val:03}.jpg"
-    frame_count = 147
+    #experiment_path = "../data/MiaPaca-2/Experiment_01_D5/MiaPaca-2_E01-D5_{val:03}.jpg"
+    #frame_count = 147
+
+    experiment_path = "../backend/data/U2OS/Neošetřené_Pozice_1/Experiment_01_current_Default_observation_T{val:04}.png"
+    frame_count = 1382
     return experiment_path, frame_count
 
 
 @app.cell
 def __(frame_count, mo):
-    frame_num = mo.ui.slider(1, frame_count, value=73)
+    frame_num = mo.ui.slider(1, frame_count, value=409)
     frame_num
-    return frame_num,
+    return (frame_num,)
 
 
 @app.cell
 def __(cv, experiment_path, frame_num, show):
     img = cv.imread(experiment_path.format(val=frame_num.value), cv.IMREAD_GRAYSCALE)
     show(img)
-    return img,
+    return (img,)
 
 
 @app.cell
 def __(cv, img, show):
     img_blur = cv.blur(img, (3, 3))
     show(img_blur)
-    return img_blur,
+    return (img_blur,)
 
 
 @app.cell
@@ -71,7 +74,7 @@ def __(cv, img_blur, np, show):
 def __(cv, edges, show):
     img_morph = cv.morphologyEx(edges, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (30, 30)))
     show(img_morph)
-    return img_morph,
+    return (img_morph,)
 
 
 @app.cell
@@ -79,15 +82,17 @@ def __(cv, img, img_morph, show):
     contours, _ = cv.findContours(cv.bitwise_not(img_morph), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
     largest_contour = max(contours, key=cv.contourArea)
     color_image = cv.cvtColor(img, cv.COLOR_GRAY2BGR)
-    cv.drawContours(color_image, [largest_contour], -1, (0, 255, 0), 2)
+
+    central_contours = [c for c in contours if cv.contourArea(c)/cv.contourArea(largest_contour) > 0.1]
+    cv.drawContours(color_image, central_contours, -1, (0, 255, 0), 2)
     show(color_image)
-    return color_image, contours, largest_contour
+    return central_contours, color_image, contours, largest_contour
 
 
 @app.cell
-def __(cv, img, largest_contour, np, show):
+def __(central_contours, cv, img, np, show):
     mask = np.zeros(img.shape, np.uint8)
-    cv.drawContours(mask, [largest_contour], 0, 255, -1)
+    cv.drawContours(mask, central_contours, -1, 255, -1)
 
     wound = (mask == 255) * img
     show(wound)
@@ -98,14 +103,14 @@ def __(cv, img, largest_contour, np, show):
 def __(prewitt, show, wound):
     edges_inner = prewitt(wound, 10)
     show(edges_inner)
-    return edges_inner,
+    return (edges_inner,)
 
 
 @app.cell
-def __(cv, img, largest_contour, np, show):
-    contour_mask = cv.drawContours(np.zeros(img.shape, np.uint8), [largest_contour], -1, 255, 2)
+def __(central_contours, cv, img, np, show):
+    contour_mask = cv.drawContours(np.zeros(img.shape, np.uint8), central_contours, -1, 255, 2)
     show(contour_mask)
-    return contour_mask,
+    return (contour_mask,)
 
 
 @app.cell
@@ -116,7 +121,7 @@ def __(contour_mask, cv, edges_inner, show):
     _, inner = cv.threshold(inner, 127, 255, cv.THRESH_BINARY)
 
     show(inner)
-    return inner,
+    return (inner,)
 
 
 @app.cell
@@ -124,7 +129,7 @@ def __(cv, inner, show):
     morph_inner = cv.morphologyEx(inner, cv.MORPH_CLOSE, cv.getStructuringElement(cv.MORPH_ELLIPSE, (30, 30)))
 
     show(morph_inner)
-    return morph_inner,
+    return (morph_inner,)
 
 
 @app.cell
@@ -140,11 +145,11 @@ def __(cv, img, morph_inner, show):
 
 
 @app.cell
-def __(color_image_2, cv, largest_contour, show):
+def __(central_contours, color_image_2, cv, show):
     color_image_3 = color_image_2.copy()
-    cv.drawContours(color_image_3, [largest_contour], -1, (0, 255, 0), 2)
+    cv.drawContours(color_image_3, central_contours, -1, (0, 255, 0), 2)
     show(color_image_3)
-    return color_image_3,
+    return (color_image_3,)
 
 
 if __name__ == "__main__":
