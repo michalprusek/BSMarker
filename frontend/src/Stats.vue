@@ -3,6 +3,7 @@
     import { ref, computed, onMounted } from "vue";
     import Button from "./components/Button.vue";
     import Plot from "./components/Plot.vue";
+    import Loader from "./components/Loader.vue";
 
     const project = ref();
 
@@ -34,6 +35,9 @@
             </p>
             <Plot :data="data" />
         </div>
+    </main>
+    <main v-else>
+        <Loader />
     </main>
 </template>
 

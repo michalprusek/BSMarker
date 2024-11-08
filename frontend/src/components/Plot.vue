@@ -9,7 +9,7 @@
     function plot_data() {
         Plotly.newPlot(plot.value, props.data, {
             xaxis: { title: "frame" },
-            yaxis: { title: "wound size %" },
+            yaxis: { title: "relative wound size" },
             automargin: true,
             // TODO: unhardcode
             plot_bgcolor: "rgb(24, 28, 37)",

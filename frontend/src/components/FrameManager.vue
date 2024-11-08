@@ -17,6 +17,8 @@
     const action = ref("detect_full");
     const action_state = ref(Array(experiment.frames.length).fill(""));
 
+    const msg = ref("");
+
     async function fetch_file(idx) {
         let form = new FormData();
         form.append("file", files.value[idx].file);
@@ -79,6 +81,9 @@
     }
 
     function run() {
+        let current = 0;
+        const total = selected.value.length;
+
         for (let i = 0; i < selected.value.length; i++) {
             if (selected.value[i]) {
                 action_state.value[i] = "queued";
@@ -99,6 +104,8 @@
                 request.then(
                     data => {
                         action_state.value[i] = "done";
+                        current += 1;
+                        msg.value = "Progress: " + current + "/" + total + " completed"
                     },
                     data => {
                         action_state.value[i] = "failed";
@@ -146,6 +153,7 @@
                 <option value="delete_frame">Delete frame</option>
             </select>
             <Button @click="run">Run</Button>
+            {{ msg }}
         </p>
 
         <table v-if="experiment.frames">
