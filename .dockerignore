@@ -1,0 +1,18 @@
+# Source control
+.git/
+
+# Local test data
+data/
+backend/data/
+backend/db.sqlite3
+
+# Python stuff
+venv/
+
+# Other
+refs/
+notebooks/
+docs/
+
+# Frontend
+frontend/node_modules/

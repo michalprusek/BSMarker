@@ -9,13 +9,16 @@ et-xmlfile==1.1.0
 fastapi==0.110.1
 graphql-core==3.2.3
 greenlet==3.0.3
+gunicorn==23.0.0
 h11==0.14.0
 httptools==0.6.1
 idna==3.7
 numpy==1.26.4
 opencv-python==4.9.0.80
 openpyxl==3.1.5
+packaging==24.2
 pillow==10.3.0
+psycopg2-binary==2.9.10
 pydantic==2.7.0
 pydantic_core==2.18.1
 python-dateutil==2.9.0.post0
