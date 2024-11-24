@@ -12,6 +12,25 @@ This thesis will survey existing computer vision methods, focusing on object seg
 ### User documentation
 Please refer to [the user manual](docs/manual.md).
 
+### Running the production version
+A `.env` file must be created with the following content:
+```
+DEBUG=False
+
+DOMAIN=<DOMAIN>
+ORIGIN=http://<DOMAIN>
+SECRET_KEY=<YOUR SECRET KEY>
+```
+where <DOMAIN> is replaced with the domain on which the app will be running and <YOUR SECRET KEY> replaced with a randomly generated secret key for Django. 
+
+The port on which the server will be running is by default 1337 (in `docker-compose.yml`) but it should be changed to 80 or other port depending on whether your server has another proxy on the way.
+
+Then run the following commands:
+```
+docker-compose build
+docker-compose up
+```
+
 ### Running the development version
 
 First, run migrations, create a user and launch the backend server:
