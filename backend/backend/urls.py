@@ -30,22 +30,22 @@ urlpatterns = [
     path('', views.ProjectList.as_view(), name="project-list"),
 
     path('project/new', views.ProjectCreate.as_view(), name="project-create"),
-    path('project/<int:project>/', views.ProjectView.as_view(), name="project-detail"),
-    path('project/<int:pk>/delete', views.ProjectDelete.as_view(), name="project-delete"),
-    path('project/<int:pk>/update', views.ProjectUpdate.as_view(), name="project-update"),
+    path('project/<str:project>/', views.ProjectView.as_view(), name="project-detail"),
+    path('project/<str:pk>/delete', views.ProjectDelete.as_view(), name="project-delete"),
+    path('project/<str:pk>/update', views.ProjectUpdate.as_view(), name="project-update"),
 
-    path('project/<int:project>/experiment/<int:experiment>', views.ExperimentView.as_view(), name="experiment-detail"),
-    path('project/<int:project>/experiment/<int:pk>/delete', views.ExperimentDelete.as_view(), name="experiment-delete"),
-    path('project/<int:project>/experiment/<int:pk>/update', views.ExperimentUpdate.as_view(), name="experiment-update"),
-    path('project/<int:project>/experiment/new', views.ExperimentCreate.as_view(), name="experiment-create"),
+    path('project/<str:project>/experiment/new', views.ExperimentCreate.as_view(), name="experiment-create"),
+    path('project/<str:project>/experiment/<str:pk>', views.ExperimentView.as_view(), name="experiment-detail"),
+    path('project/<str:project>/experiment/<str:pk>/delete', views.ExperimentDelete.as_view(), name="experiment-delete"),
+    path('project/<str:project>/experiment/<str:pk>/update', views.ExperimentUpdate.as_view(), name="experiment-update"),
 
-    path('upload/<int:pk>/', views.frame_upload, name="frame-upload"),
+    path('upload/<str:pk>/', views.frame_upload, name="frame-upload"),
 
-    path('report/project/<int:pk>/', views.project_report, name="project-report"),
-    path('report/experiment/<int:pk>/', views.experiment_report, name="experiment-report"),
+    path('report/project/<str:pk>/', views.project_report, name="project-report"),
+    path('report/experiment/<str:pk>/', views.experiment_report, name="experiment-report"),
 
-    path('preview/<int:epk>/', views.preview, name="experiment-preview"),
-    path('frame/<int:pk>/', views.frame, name="frame-view"),
+    path('preview/<str:pk>/', views.preview, name="experiment-preview"),
+    path('frame/<str:pk>/', views.frame, name="frame-view"),
 
     path("graphql/", GraphQLView.as_view(schema=schema)),
 ]

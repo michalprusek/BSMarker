@@ -3,6 +3,8 @@ from django.db import models, transaction
 from django.template.defaultfilters import slugify
 from django.urls import reverse
 
+import uuid
+
 import numpy as np
 import cv2 as cv
 from imgproc.wound import wound_contours, free_cells
@@ -11,6 +13,8 @@ import tablib
 
 
 class Project(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     name = models.CharField(max_length=1024)
 
     def __str__(self):
@@ -43,6 +47,8 @@ class Project(models.Model):
 
 
 class Experiment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     project = models.ForeignKey(Project, related_name="experiments", on_delete=models.CASCADE)
     name = models.CharField(max_length=1024)
 
@@ -50,7 +56,7 @@ class Experiment(models.Model):
         return f"{self.project.name}_{self.name}"
 
     def get_absolute_url(self):
-        return reverse("experiment-detail", kwargs={"project": self.project.pk, "experiment": self.pk})
+        return reverse("experiment-detail", kwargs={"project": self.project.pk, "pk": self.pk})
 
     def report(self, fmt="csv"):
         data = tablib.Dataset(headers=["Frame", "Wound area %"])
@@ -63,6 +69,8 @@ class Experiment(models.Model):
 
 
 class Frame(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     def upload_to(instance, filename):
         return f"{instance.experiment.project.name}/{instance.experiment.name}/{filename}"
 
@@ -178,6 +186,8 @@ class Frame(models.Model):
 
 
 class Polygon(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     frame = models.ForeignKey(Frame, related_name="polygons", on_delete=models.CASCADE)
     data = models.JSONField()
 

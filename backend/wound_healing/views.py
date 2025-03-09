@@ -47,7 +47,6 @@ class ProjectUpdate(LoginRequiredMixin, UpdateView):
 
 class ExperimentView(LoginRequiredMixin, DetailView):
     model = Experiment
-    pk_url_kwarg = "experiment"
 
     def get_queryset(self):
         return Experiment.objects.filter(project__pk=self.kwargs["project"])
@@ -89,8 +88,8 @@ def img_response(img):
 
 
 @login_required
-def preview(request, epk):
-    experiment = get_object_or_404(Experiment, pk=epk)
+def preview(request, pk):
+    experiment = get_object_or_404(Experiment, pk=pk)
 
     img = experiment.frames.first().raw_img
     blurred = cv.medianBlur(img, 101)
