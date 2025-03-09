@@ -18,6 +18,8 @@
 
     --highlight-color: #2e6fd1;
 
+    --danger: #ff4136;
+
     color-scheme: dark;
 
     /* Polygon colors */
@@ -78,7 +80,14 @@ header h1 a {
 
 /* Buttons */
 
-input, button, select {
+a[role="button"] {
+    color: inherit;
+    text-decoration: inherit;
+    font-size: inherit;
+}
+
+input, button, select, a[role="button"] {
+    font-size: 0.8rem;
     padding: 0.2rem 0.5rem;
 
     background: var(--primary-color);
@@ -140,7 +149,7 @@ main .projects details {
     text-decoration: none;
 }
 
-.project ul li {
+.project > ul > li {
     display: flex;
 }
 
@@ -148,11 +157,24 @@ main .projects details {
     flex-grow: 1;
 }
 
+.project ul li.experiment a {
+    flex-grow: 0;
+}
+
+a.project-create {
+    font-weight: normal;
+    float: right;
+}
+
 .settings {
     float: right;
-    width: 1.1em;
 
     position: relative;
+}
+
+.settings .icon {
+    width: 1.1em;
+    vertical-align: middle;
 }
 
 .settings-expand {
@@ -164,7 +186,7 @@ main .projects details {
     transition: 0.1s;
     transition-delay: 0.1s;
 
-    width: 10rem;
+    width: 12rem;
 
     margin-top: 1.5em;
     padding: calc(0.5rem - var(--border-thickness));
@@ -178,10 +200,18 @@ main .projects details {
     visibility: visible;
 }
 
+.settings .settings-expand ul li {
+    padding: 0.1rem;
+}
+
 summary h3 {
     display: inline;
 }
 
 summary .project-link {
     float: right;
+}
+
+a.danger {
+    color: var(--danger);
 }

@@ -31,9 +31,12 @@ urlpatterns = [
 
     path('project/new', views.ProjectCreate.as_view(), name="project-create"),
     path('project/<int:project>/', views.ProjectView.as_view(), name="project-detail"),
+    path('project/<int:pk>/delete', views.ProjectDelete.as_view(), name="project-delete"),
+    path('project/<int:pk>/update', views.ProjectUpdate.as_view(), name="project-update"),
 
     path('project/<int:project>/experiment/<int:experiment>', views.ExperimentView.as_view(), name="experiment-detail"),
     path('project/<int:project>/experiment/<int:pk>/delete', views.ExperimentDelete.as_view(), name="experiment-delete"),
+    path('project/<int:project>/experiment/<int:pk>/update', views.ExperimentUpdate.as_view(), name="experiment-update"),
     path('project/<int:project>/experiment/new', views.ExperimentCreate.as_view(), name="experiment-create"),
 
     path('upload/<int:pk>/', views.frame_upload, name="frame-upload"),

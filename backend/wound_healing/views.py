@@ -1,4 +1,4 @@
-from django.views.generic import ListView, DetailView, CreateView, DeleteView
+from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.views.decorators.cache import cache_page
 
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -22,6 +22,8 @@ import json
 class ProjectList(LoginRequiredMixin, ListView):
     model = Project
 
+    ordering = ["-pk"]
+
 
 class ProjectCreate(LoginRequiredMixin, CreateView):
     model = Project
@@ -31,6 +33,16 @@ class ProjectCreate(LoginRequiredMixin, CreateView):
 class ProjectView(LoginRequiredMixin, DetailView):
     model = Project
     pk_url_kwarg = "project"
+
+
+class ProjectDelete(LoginRequiredMixin, DeleteView):
+    model = Project
+    success_url = reverse_lazy("project-list")
+
+
+class ProjectUpdate(LoginRequiredMixin, UpdateView):
+    model = Project
+    fields = ["name"]
 
 
 class ExperimentView(LoginRequiredMixin, DetailView):
@@ -54,7 +66,20 @@ class ExperimentCreate(LoginRequiredMixin, CreateView):
         return kwargs
 
 
-class ExperimentDelete(DeleteView):
+class ExperimentUpdate(LoginRequiredMixin, UpdateView):
+    model = Experiment
+    fields = ["name", "project"]
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        if not kwargs.get("instance"):
+            kwargs["instance"] = Experiment()
+
+        kwargs["instance"].project = Project.objects.get(pk=self.kwargs["project"])
+        return kwargs
+
+
+class ExperimentDelete(LoginRequiredMixin, DeleteView):
     model = Experiment
     success_url = reverse_lazy("project-list")
 

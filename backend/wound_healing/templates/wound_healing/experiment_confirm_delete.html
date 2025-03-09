@@ -1,15 +1,3 @@
-{% extends 'main.html' %}
+{% extends 'wound_healing/confirm_delete.html' %}
 
-{% block title %}{{ object }}{% endblock %}
-
-{% block heading %}Delete experiment?{% endblock %}
-
-{% block main %}
-<p>Do you really want to delete <code>{{object}}?</code></p>
-
-<form method="post">
-	{% csrf_token %}
-	{{ form.as_p }}
-	<input type="submit" />
-</form>
-{% endblock %}
+{% block heading %}Delete experiment {{object}}?{% endblock %}
