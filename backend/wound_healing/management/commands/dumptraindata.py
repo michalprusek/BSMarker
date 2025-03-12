@@ -4,6 +4,7 @@ from wound_healing.models import Frame
 import pathlib
 import pickle
 
+import numpy as np
 import tqdm
 
 
@@ -16,13 +17,17 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         res = []
         for frame in tqdm.tqdm(Frame.objects.all()):
+            mask = np.zeros_like(frame.raw_img, dtype=np.uint8)
+            for poly in frame.polygons.all():
+                if poly.operation == "+":
+                    mask |= poly.mask() == 255
+                elif poly.operation == "-":
+                    mask &= poly.mask() != 255
+            mask *= 255
+
             res.append({
                 "image": frame.raw_img,
-                "polygons": [
-                    poly.data
-                    for poly in frame.polygons.all()
-                    if poly.operation == "+"
-                ]
+                "mask": mask
             })
         with options["out"][0].open("wb") as f:
             pickle.dump(res, f)
