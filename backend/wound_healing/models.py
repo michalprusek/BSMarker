@@ -197,6 +197,12 @@ class Polygon(models.Model):
         default="+",
     )
 
+    def mask(self):
+        mask = np.zeros((self.frame.image.width, self.frame.image.height), np.uint8)
+        pts = np.array([[int(pt[0]*self.frame.image.width), int(pt[1]*self.frame.image.height)] for pt in self.data])
+        cv.fillPoly(mask, [pts], 255)
+        return mask
+
     @property
     def surface(self):
         points = np.array(self.data, dtype=np.float32)
