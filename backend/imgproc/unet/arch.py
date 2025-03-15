@@ -45,9 +45,9 @@ class Unet(nn.Module):
 
 		self.sizes = sizes or [1, 16, 32]
 
-		self.enc = [DownBlock(a, b) for a, b in zip(self.sizes, self.sizes[1:])]
+		self.enc = nn.ModuleList([DownBlock(a, b) for a, b in zip(self.sizes, self.sizes[1:])])
 		self.middle = double_conv(self.sizes[-1], self.sizes[-1])
-		self.dec = [UpBlock(a, b) for a, b in zip(reversed(self.sizes), reversed(self.sizes[:-1]))]
+		self.dec = nn.ModuleList([UpBlock(a, b) for a, b in zip(reversed(self.sizes), reversed(self.sizes[:-1]))])
 		self.final = nn.Conv2d(1, 1, kernel_size=1)
 
 	def forward(self, x):
