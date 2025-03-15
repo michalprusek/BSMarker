@@ -15,14 +15,16 @@ SIZE = (64, 64)
 
 
 class SegmentationDataset(torch.utils.data.Dataset):
-	def __init__(self, file, server="http://localhost:8000"):
-		self.server = server
+	def __init__(self, file, prefix="", device="cuda"):
+		self.prefix = prefix
 		with open(file, "r") as f:
 			self.frames = json.load(f)
 
 		self.cache_image = {}
 		self.cache_mask = {}
 		self.use_cache = False
+
+		self.device = device
 
 	def __len__(self):
 		return len(self.frames)
@@ -42,10 +44,10 @@ class SegmentationDataset(torch.utils.data.Dataset):
 			images = []
 			masks = []
 			for i in idx:
-				images.append(iio.imread(self.server + self.frames[i]["image"]))
-				masks.append(iio.imread(self.server + self.frames[i]["mask"]))
-			images = torch.tensor(np.array(images))
-			masks = torch.tensor(np.array(masks))
+				images.append(iio.imread(self.prefix + self.frames[i]["image"]))
+				masks.append(iio.imread(self.prefix + self.frames[i]["mask"]))
+			images = torch.tensor(np.array(images), device=self.device)
+			masks = torch.tensor(np.array(masks), device=self.device)
 
 			images = torchvision.transforms.functional.resize(images/255, SIZE)
 			masks = torchvision.transforms.functional.resize(masks/255, SIZE)
@@ -61,37 +63,43 @@ class SegmentationDataset(torch.utils.data.Dataset):
 			return images.reshape(b, 1, w, h), masks.reshape(b, 1, w, h)
 
 
-dataset = SegmentationDataset("data.json")
-train, test = torch.utils.data.random_split(dataset, [np.floor(0.8*len(dataset)).astype(int), np.ceil(0.2*len(dataset)).astype(int)])
-test_X, test_y = test[:]
+def train(data_file, device, epochs=EPOCHS):
+	dataset = SegmentationDataset(data_file, device=device)
+	train, test = torch.utils.data.random_split(dataset, [np.floor(0.8*len(dataset)).astype(int), np.ceil(0.2*len(dataset)).astype(int)])
+	test_X, test_y = test[:]
 
-loader = torch.utils.data.DataLoader(train, batch_size=BATCH_SIZE)
+	loader = torch.utils.data.DataLoader(train, batch_size=BATCH_SIZE)
 
-net = Unet()
-loss_fn = torch.nn.BCEWithLogitsLoss()
-optimizer = torch.optim.Adam(net.parameters())
+	net = Unet()
+	net = net.to(device)
+	loss_fn = torch.nn.BCEWithLogitsLoss()
+	optimizer = torch.optim.Adam(net.parameters())
 
-for e in range(EPOCHS):
-	print(f"epoch {e}")
-	total_loss = 0
-	for batch_X, batch_y in tqdm.tqdm(loader):
-		optimizer.zero_grad()
+	for e in range(epochs):
+		print(f"epoch {e}")
+		total_loss = 0
+		for batch_X, batch_y in tqdm.tqdm(loader):
+			optimizer.zero_grad()
 
-		batch_y_ = net(batch_X)
-		loss = loss_fn(batch_y_, batch_y)
+			batch_y_ = net(batch_X)
+			loss = loss_fn(batch_y_, batch_y)
 
-		loss.backward()
-		optimizer.step()
+			loss.backward()
+			optimizer.step()
 
-		total_loss += loss
+			total_loss += loss
 
-	print("epoch loss", float(total_loss))
-	test_y_ = net(test_X)
-	print("test loss", float(loss_fn(test_y_, test_y)))
+		print("epoch loss", float(total_loss))
+		test_y_ = net(test_X)
+		print("test loss", float(loss_fn(test_y_, test_y)))
 
-	dataset.use_cache = True
+		dataset.use_cache = True
 
-torch.save(net, "model.pth")
+	torch.save(net, "model.pth")
+
+
+if __name__ == "__main__":
+	train("data.json", "cuda" if torch.cuda.is_available() else "cpu")
 
 #net.eval()
 #res = net(test_X[0:1]).detach().numpy()
@@ -102,4 +110,4 @@ torch.save(net, "model.pth")
 #ax[1].imshow(test_y[0][0])
 #plt.show()
 #
-breakpoint()
+#breakpoint()
