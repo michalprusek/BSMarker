@@ -93,7 +93,9 @@ class Frame(models.Model):
     def raw_img(self):
         if self._img is None:
             with self.image.open() as f:
-                self._img = cv.imdecode(np.frombuffer(f.read(), np.uint8), cv.IMREAD_UNCHANGED)
+                self._img = cv.imdecode(np.frombuffer(f.read(), np.uint8), cv.IMREAD_GRAYSCALE)
+        #if len(img.shape) > 2:
+        #    img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
         return self._img
 
     def get_absolute_url(self):
@@ -101,7 +103,10 @@ class Frame(models.Model):
 
         return reverse("frame-view", kwargs={"pk": self.pk})
 
-    def img(self, equalized=False, lut_in=None, lut_out=None):
+    def img(self, equalized=False, lut_in=None, lut_out=None, mask=False):
+        if mask:
+            return self.mask()
+        
         res = self.raw_img
 
         if equalized:
@@ -112,6 +117,16 @@ class Frame(models.Model):
             res = cv.LUT(res, lut_8u)
 
         return res
+
+    def mask(self):
+        mask = np.zeros((self.image.height, self.image.width), dtype=np.uint8)
+        for poly in self.polygons.all():
+            if poly.operation == "+":
+                mask |= poly.mask() == 255
+            elif poly.operation == "-":
+                mask &= poly.mask() != 255
+        mask *= 255
+        return mask
 
     def img_and_histogram(self, **kwargs):
         image = self.img(**kwargs)
@@ -198,8 +213,8 @@ class Polygon(models.Model):
     )
 
     def mask(self):
-        mask = np.zeros((self.frame.image.width, self.frame.image.height), np.uint8)
-        pts = np.array([[int(pt[0]*self.frame.image.width), int(pt[1]*self.frame.image.height)] for pt in self.data])
+        mask = np.zeros((self.frame.image.height, self.frame.image.width), np.uint8)
+        pts = np.array([[int(pt[0]*self.frame.image.height), int(pt[1]*self.frame.image.width)] for pt in self.data])
         cv.fillPoly(mask, [pts], 255)
         return mask
 

@@ -98,7 +98,7 @@ def preview(request, pk):
     return img_response(blurred)
 
 
-@login_required
+#@login_required
 def frame(request, pk):
     frame = get_object_or_404(Frame, pk=pk)
 
@@ -109,6 +109,7 @@ def frame(request, pk):
         "equalized": request.GET.get("equalized") == "True",
         "lut_in": json.loads(lut_in) if lut_in else None,
         "lut_out": json.loads(lut_out) if lut_out else None,
+        "mask": request.GET.get("mask") == "True",
     }
 
     return img_response(frame.img(**params))

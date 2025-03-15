@@ -142,8 +142,13 @@ export const useExperimentStore = defineStore("experiment", {
                     ids.push(poly.id);
                 }
             }
-            await delete_polygons(ids);
             this.current_frame.polygons = this.current_frame.polygons.filter((p) => !p.selected);
+            await delete_polygons(ids);
+        },
+
+        async delete_polygons(ids) {
+            this.current_frame.polygons = this.current_frame.polygons.filter((p) => !ids.includes(p.id));
+            await delete_polygons(ids);
         },
 
         async detect_wound() {

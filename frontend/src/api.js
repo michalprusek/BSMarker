@@ -27,6 +27,9 @@ query experimentInfo($id: ID!) {
       },
       equalized: data(equalized: true) {
         url,
+      },
+      mask: data(mask: true) {
+        url,
       }
       polygons {
         id,

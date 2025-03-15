@@ -103,6 +103,57 @@
         const rect = editor_svg.value.parentElement.getBoundingClientRect();
         zoomer.zoomTo(rect.width/2, rect.height/2, 0.5);
     }
+
+    /* Drag select */
+    const select_start_point = ref(null);
+    const select_end_point = ref(null);
+
+    function calc_point(event) {
+        const image = document.querySelector(".image-view svg image");
+        const rect = image.getBoundingClientRect();
+
+        return {
+            "x": (event.clientX - rect.left)/rect.width,
+            "y": (event.clientY - rect.top)/rect.height
+        };
+    }
+
+    function select_start(event) {
+        select_start_point.value = calc_point(event);
+    }
+
+    function select_move(event) {
+        select_end_point.value = calc_point(event);
+    }
+
+    function point_in_rect(p, r1, r2) {
+        let min_x = Math.min(r1.x, r2.x);
+        let max_x = Math.max(r1.x, r2.x);
+        let min_y = Math.min(r1.y, r2.y);
+        let max_y = Math.max(r1.y, r2.y);
+
+        return p.x >= min_x && p.x <= max_x && p.y >= min_y && p.y <= max_y;
+    }
+
+    function select_end(event) {
+        if (!select_start_point.value || !select_end_point.value) {
+            return;
+        }
+
+        let polys_to_delete = [];
+        for (let i = 0; i < state.current_frame.polygons.length; ++i) {
+            state.current_frame.polygons[i].data = state.current_frame.polygons[i].data.filter((pt) => !point_in_rect({x: pt[0], y: pt[1]}, select_start_point.value, select_end_point.value));
+            if (state.current_frame.polygons[i].data.length < 3) {
+                polys_to_delete.push(state.current_frame.polygons[i].id);
+            } else {
+                state.save_polygon(i);
+            }
+        }
+        state.delete_polygons(polys_to_delete);
+
+        select_start_point.value = null;
+        select_end_point.value = null;
+    }
 </script>
 
 <template>
@@ -111,7 +162,7 @@
         <div class="blank">
         </div>
         <div class="image-view">
-            <svg v-if="state.current_frame" id="editor-svg" ref="editor_svg" :viewBox="'0 0 ' + SVG_COORD + ' ' + SVG_COORD" xmlns="http://www.w3.org/2000/svg">
+            <svg v-if="state.current_frame" id="editor-svg" ref="editor_svg" :viewBox="'0 0 ' + SVG_COORD + ' ' + SVG_COORD" xmlns="http://www.w3.org/2000/svg" @click.right="select_start" @mousemove="select_move" @mouseup.right="select_end">
                 <g>
                     <!-- studied images -->
                     <image 
@@ -160,6 +211,21 @@
                             :zoom="zoom_scale"
                             render="empty"
                             pcolor="var(--polygon-blue)"
+                        />
+                    </template>
+                </g>
+                <g>
+                    <template 
+                        v-if="select_start_point && select_end_point"
+                        v-for="sx in [[select_start_point.x, select_end_point.x], [select_end_point.x, select_start_point.x]]"
+                    >
+                        <rect  
+                            v-for="sy in [[select_start_point.y, select_end_point.y], [select_end_point.y, select_start_point.y]]"
+                            fill="rgba(var(--polygon-blue), 0.7)"
+                            :x="sx[0] * SVG_COORD"
+                            :y="sy[0] * SVG_COORD"
+                            :width="(sx[1]-sx[0]) * SVG_COORD"
+                            :height="(sy[1]-sy[0]) * SVG_COORD"
                         />
                     </template>
                 </g>

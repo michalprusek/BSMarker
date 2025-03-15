@@ -112,6 +112,7 @@
                                 <option value="original">Original</option>
                                 <option value="equalized">Equalized histogram</option>
                                 <option value="adjusted">Adjusted brightness</option>
+                                <option value="mask">Mask</option>
                             </select>
                         </td>
                     </tr>

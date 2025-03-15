@@ -62,10 +62,10 @@ class Frame:
     surface: float
 
     @strawberry.django.field
-    def data(self, info: Info, equalized: bool = False) -> FrameData:
+    def data(self, info: Info, equalized: bool = False, mask: bool = False) -> FrameData:
         return FrameData(
-            url=self.img_url(equalized=equalized), 
-            get_histogram=lambda: self.histogram(equalized=equalized)
+            url=self.img_url(equalized=equalized, mask=mask), 
+            get_histogram=lambda: self.histogram(equalized=equalized, mask=mask)
         )
 
 

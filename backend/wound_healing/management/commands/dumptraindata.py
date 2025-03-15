@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from wound_healing.models import Frame
 
 import pathlib
-import pickle
+import json
 
 import numpy as np
 import tqdm
@@ -17,17 +17,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         res = []
         for frame in tqdm.tqdm(Frame.objects.all()):
-            mask = np.zeros_like(frame.raw_img, dtype=np.uint8)
-            for poly in frame.polygons.all():
-                if poly.operation == "+":
-                    mask |= poly.mask() == 255
-                elif poly.operation == "-":
-                    mask &= poly.mask() != 255
-            mask *= 255
-
             res.append({
-                "image": frame.raw_img,
-                "mask": mask
+                "image": frame.get_absolute_url(),
+                "mask": frame.get_absolute_url() + "?mask=True"
             })
-        with options["out"][0].open("wb") as f:
-            pickle.dump(res, f)
+        with options["out"][0].open("w") as f:
+            json.dump(res, f)
