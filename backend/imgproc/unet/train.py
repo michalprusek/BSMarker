@@ -53,8 +53,8 @@ class SegmentationDataset(torch.utils.data.Dataset):
 			masks = torchvision.transforms.functional.resize(masks/255, SIZE)
 
 			for c, i in enumerate(idx):
-				self.cache_image[i] = images[c]
-				self.cache_mask[i] = masks[c]
+				self.cache_image[i] = images[c].cpu()
+				self.cache_mask[i] = masks[c].cpu()
 
 		if single:
 			return images, masks
