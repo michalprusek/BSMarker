@@ -38,8 +38,8 @@ class SegmentationDataset(torch.utils.data.Dataset):
 			idx = [idx]
 
 		if self.use_cache:
-			images = torch.tensor(np.array([self.cache_image[i] for i in idx]))
-			masks = torch.tensor(np.array([self.cache_mask[i] for i in idx]))
+			images = torch.tensor(np.array([self.cache_image[i] for i in idx]), device=self.device)
+			masks = torch.tensor(np.array([self.cache_mask[i] for i in idx]), device=self.device)
 		else:
 			images = []
 			masks = []
@@ -71,7 +71,7 @@ def train(data_file, device, epochs=EPOCHS):
 	loader = torch.utils.data.DataLoader(train, batch_size=BATCH_SIZE)
 
 	net = Unet()
-	net = net.to(device)
+	net.to(device)
 	loss_fn = torch.nn.BCEWithLogitsLoss()
 	optimizer = torch.optim.Adam(net.parameters())
 
