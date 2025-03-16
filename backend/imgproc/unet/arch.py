@@ -43,7 +43,7 @@ class Unet(nn.Module):
 	def __init__(self, sizes=None):
 		super().__init__()
 
-		self.sizes = sizes or [1, 16, 32]
+		self.sizes = sizes or [1, 64, 128]
 
 		self.enc = nn.ModuleList([DownBlock(a, b) for a, b in zip(self.sizes, self.sizes[1:])])
 		self.middle = double_conv(self.sizes[-1], self.sizes[-1])

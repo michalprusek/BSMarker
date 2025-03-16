@@ -5,12 +5,16 @@ import json
 from arch import Unet
 import torchvision
 import torch
+import torch.nn.functional as F
+
+import pickle
+import os
 
 import tqdm
 
 
-EPOCHS = 300
-BATCH_SIZE = 32
+EPOCHS = 1000
+BATCH_SIZE = 16
 SIZE = (64, 64)
 
 
@@ -25,6 +29,11 @@ class SegmentationDataset(torch.utils.data.Dataset):
 		self.use_cache = False
 
 		self.device = device
+
+		if os.path.exists("cache.pkl"):
+			with open("cache.pkl", "rb") as f:
+				self.cache_image, self.cache_mask = pickle.load(f)
+				self.use_cache = True
 
 	def __len__(self):
 		return len(self.frames)
@@ -57,13 +66,22 @@ class SegmentationDataset(torch.utils.data.Dataset):
 				self.cache_mask[i] = masks[c].cpu()
 
 		if single:
-			return images, masks
+			return (images-0.5)*2, masks
 		else:
 			b, w, h = images.shape
-			return images.reshape(b, 1, w, h), masks.reshape(b, 1, w, h)
+			return ((images-0.5)*2).reshape(b, 1, w, h), masks.reshape(b, 1, w, h)
+
+	def setup_cache(self):
+		if self.use_cache:
+			return
+		with open("cache.pkl", "wb") as f:
+			pickle.dump([self.cache_image, self.cache_mask], f)
+		self.use_cache = True
 
 
 def train(data_file, device, epochs=EPOCHS):
+	torch.manual_seed(0)
+
 	dataset = SegmentationDataset(data_file, device=device)
 	train, test = torch.utils.data.random_split(dataset, [np.floor(0.8*len(dataset)).astype(int), np.ceil(0.2*len(dataset)).astype(int)])
 	test_X, test_y = test[:]
@@ -71,11 +89,12 @@ def train(data_file, device, epochs=EPOCHS):
 	loader = torch.utils.data.DataLoader(train, batch_size=BATCH_SIZE)
 
 	net = Unet()
+	#net = torch.load("model.pth", weights_only=False)
 	net.to(device)
 	loss_fn = torch.nn.BCEWithLogitsLoss()
-	optimizer = torch.optim.Adam(net.parameters())
+	optimizer = torch.optim.Adam(net.parameters(), lr=1e-6)
 
-	for e in range(epochs):
+	for e in range(1, epochs+1):
 		print(f"epoch {e}")
 		total_loss = 0
 		for batch_X, batch_y in tqdm.tqdm(loader):
@@ -92,8 +111,29 @@ def train(data_file, device, epochs=EPOCHS):
 		print("epoch loss", float(total_loss))
 		test_y_ = net(test_X)
 		print("test loss", float(loss_fn(test_y_, test_y)))
+		pred_masks = F.sigmoid(test_y_) > 0.5
+		real_masks = test_y >= 0.5
 
-		dataset.use_cache = True
+		i = (pred_masks&real_masks).sum(-1).sum(-1).sum(-1)
+		u = pred_masks.sum(-1).sum(-1).sum(-1) + real_masks.sum(-1).sum(-1).sum(-1) - i
+		u[u==0] = 1
+
+		iou = (i/u).sum()/len(pred_masks)
+		print("test average iou", float(iou))
+
+		tp = ((pred_masks == real_masks) & real_masks).sum()
+		tn = ((pred_masks == real_masks) & ~real_masks).sum()
+		fn = ((pred_masks != real_masks) & real_masks).sum()
+		fp = ((pred_masks != real_masks) & ~real_masks).sum()
+		no_class = real_masks.shape[0] * real_masks.shape[2] * real_masks.shape[3]
+		print("test average precision", float(tp/(tp+fp)))
+		print("test average recall", float(tp/(tp+fn)))
+		print("test average pixel accuracy", float((pred_masks==real_masks).sum()/no_class))
+
+		dataset.setup_cache()
+
+		if e%100 == 0:
+			torch.save(net, f"model{e}.pth")
 
 	torch.save(net, "model.pth")
 
