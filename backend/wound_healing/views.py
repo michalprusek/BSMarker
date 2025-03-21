@@ -9,7 +9,7 @@ from django.views.decorators.http import require_POST
 from django.shortcuts import render, get_object_or_404
 from django.urls import reverse_lazy
 
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseBadRequest
 from django import forms
 
 from .models import Project, Experiment, Frame
@@ -145,7 +145,7 @@ def frame_upload(request, pk):
     experiment = get_object_or_404(Experiment, pk=pk)
 
     if "number" not in request.POST or not request.POST["number"].isdigit():
-        return HttpResponse("missing number", status_code=400)
+        return HttpResponseBadRequest("missing number")
 
     num = int(request.POST["number"])
     file = request.FILES["file"]

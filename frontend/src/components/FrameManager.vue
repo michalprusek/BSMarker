@@ -3,21 +3,32 @@
     import { experiment_info_quick, detect_wound, detect_free_cells, detect_full, clear_polys, delete_frame } from "../api.js";
     import Button from "./Button.vue";
 
-    const experiment = await experiment_info_quick(
-        JSON.parse(document.getElementById("experiment").textContent)
-    );
+    let experiment;
 
     const file_field = ref(null);
     const drop_class = ref("");
     const files = ref([]);
 
-    const selected = ref(Array(experiment.frames.length).fill(false));
+    const selected = ref();
     const all = ref();
 
     const action = ref("detect_full");
-    const action_state = ref(Array(experiment.frames.length).fill(""));
+    const action_state = ref();
 
     const msg = ref("");
+
+    async function setup() {
+        experiment = await experiment_info_quick(
+            JSON.parse(document.getElementById("experiment").textContent)
+        );
+        console.log(experiment);
+
+        selected.value = Array(experiment.frames.length).fill(false);
+        action_state.value = Array(experiment.frames.length).fill("");
+        files.value = [];
+    }
+
+    await setup();
 
     async function fetch_file(idx) {
         let form = new FormData();
@@ -25,8 +36,9 @@
 
         let num = 0;
         if (experiment.frames.length > 0) {
-            num = experiment.frames[experiment.frames.length-1].number;
+            num = experiment.frames[experiment.frames.length-1].number + 1;
         }
+        console.log("NUMBER " + (num+idx));
         form.append("number", num+idx)
 
         const res = await fetch(`/upload/${experiment.id}/`, {
@@ -39,6 +51,16 @@
 
         if (res.ok) {
             files.value[idx].state = "done";
+
+            let all_done = true;
+            for (let file of files.value) {
+                if (files.value[idx].state != "done") {
+                    all_done = false;
+                }
+            }
+            if (all_done) {
+                await setup();
+            }
         } else {
             files.value[idx].state = "failed";
         }

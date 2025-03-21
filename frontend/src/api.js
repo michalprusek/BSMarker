@@ -7,6 +7,7 @@ query experimentInfoQuick($id: ID!) {
     frameCount,
     frames {
       id,
+      number,
       image {
         name
       }
