@@ -38,7 +38,6 @@
         if (experiment.frames.length > 0) {
             num = experiment.frames[experiment.frames.length-1].number + 1;
         }
-        console.log("NUMBER " + (num+idx));
         form.append("number", num+idx)
 
         const res = await fetch(`/upload/${experiment.id}/`, {

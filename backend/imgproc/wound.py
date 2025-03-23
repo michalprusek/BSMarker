@@ -34,7 +34,7 @@ def edges(img, blur_size=3, edge_threshold=8):
     return prewitt(img_blur, edge_threshold)
 
 
-def wound_mask(img, blur_size=3, edge_threshold=8, morphology_size=40):
+def wound_mask(img, blur_size=3, edge_threshold=6, morphology_size=40):
     """Find the mask of the wound"""
     return cv.morphologyEx(
         edges(img, blur_size=blur_size, edge_threshold=edge_threshold), 
