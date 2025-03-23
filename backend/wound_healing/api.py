@@ -2,6 +2,11 @@ import strawberry
 from strawberry import auto
 from strawberry.types import Info
 from strawberry_django.optimizer import DjangoOptimizerExtension
+import strawberry_django
+
+from strawberry.django import auth
+from django.contrib.auth import get_user_model
+import typing
 
 from django.db import transaction
 
@@ -105,8 +110,17 @@ class Query:
         return models.Frame.objects.get(id=id)
 
 
+@strawberry_django.type(get_user_model())
+class User:
+    username: auto
+    email: auto
+
+
 @strawberry.type
 class Mutation:
+    login: User = auth.login()
+    logout = auth.logout()
+    
     @strawberry.django.mutation
     def create_polygon(self, info: Info, frame_id: strawberry.ID, data: list[tuple[float, float]]) -> Polygon | None:
         if not info.context.request.user.is_authenticated:

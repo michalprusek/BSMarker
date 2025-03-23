@@ -98,7 +98,7 @@ def preview(request, pk):
     return img_response(blurred)
 
 
-#@login_required
+@login_required
 def frame(request, pk):
     frame = get_object_or_404(Frame, pk=pk)
 

@@ -21,7 +21,6 @@
         experiment = await experiment_info_quick(
             JSON.parse(document.getElementById("experiment").textContent)
         );
-        console.log(experiment);
 
         selected.value = Array(experiment.frames.length).fill(false);
         action_state.value = Array(experiment.frames.length).fill("");
