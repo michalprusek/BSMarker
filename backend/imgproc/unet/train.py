@@ -15,25 +15,17 @@ import tqdm
 
 EPOCHS = 1000
 BATCH_SIZE = 16
-SIZE = (64, 64)
+SIZE = (512, 512)
+DATASET_PATH = pathlib.Path("dataset/")
+DEVICE="cuda" if torch.cuda.is_available() else "cpu"
 
 
 class SegmentationDataset(torch.utils.data.Dataset):
-	def __init__(self, file, prefix="", device="cuda"):
-		self.prefix = prefix
-		with open(file, "r") as f:
-			self.frames = json.load(f)
-
-		self.cache_image = {}
-		self.cache_mask = {}
-		self.use_cache = False
-
+	def __init__(self, path=DATASET_PATH, size=SIZE, device="cuda"):
+		self.path = path
+		self.size = size
 		self.device = device
-
-		if os.path.exists("cache.pkl"):
-			with open("cache.pkl", "rb") as f:
-				self.cache_image, self.cache_mask = pickle.load(f)
-				self.use_cache = True
+		self.images = os.listdir(path)
 
 	def __len__(self):
 		return len(self.frames)
@@ -46,24 +38,17 @@ class SegmentationDataset(torch.utils.data.Dataset):
 			single = True
 			idx = [idx]
 
-		if self.use_cache:
-			images = torch.tensor(np.array([self.cache_image[i] for i in idx]), device=self.device)
-			masks = torch.tensor(np.array([self.cache_mask[i] for i in idx]), device=self.device)
-		else:
-			images = []
-			masks = []
-			for i in idx:
-				images.append(iio.imread(self.prefix + self.frames[i]["image"]))
-				masks.append(iio.imread(self.prefix + self.frames[i]["mask"]))
-			images = torch.tensor(np.array(images), device=self.device)
-			masks = torch.tensor(np.array(masks), device=self.device)
+		images = []
+		masks = []
+		for i in idx:
+			images.append(iio.imread(self.path / "imgs" / self.images[i]))
+			masks.append(iio.imread(self.path / "masks" / self.images[i]))
 
-			images = torchvision.transforms.functional.resize(images/255, SIZE)
-			masks = torchvision.transforms.functional.resize(masks/255, SIZE)
+		images = torch.tensor(np.array(images), device=self.device)
+		masks = torch.tensor(np.array(masks), device=self.device)
 
-			for c, i in enumerate(idx):
-				self.cache_image[i] = images[c].cpu()
-				self.cache_mask[i] = masks[c].cpu()
+		images = torchvision.transforms.functional.resize(images/255, self.size)
+		masks = torchvision.transforms.functional.resize(masks/255, self.size)
 
 		if single:
 			return (images-0.5)*2, masks
@@ -71,28 +56,20 @@ class SegmentationDataset(torch.utils.data.Dataset):
 			b, w, h = images.shape
 			return ((images-0.5)*2).reshape(b, 1, w, h), masks.reshape(b, 1, w, h)
 
-	def setup_cache(self):
-		if self.use_cache:
-			return
-		with open("cache.pkl", "wb") as f:
-			pickle.dump([self.cache_image, self.cache_mask], f)
-		self.use_cache = True
 
-
-def train(data_file, device, epochs=EPOCHS):
+def main(device=DEVICE, epochs=EPOCHS):
 	torch.manual_seed(0)
 
-	dataset = SegmentationDataset(data_file, device=device)
+	dataset = SegmentationDataset(device=device)
 	train, test = torch.utils.data.random_split(dataset, [np.floor(0.8*len(dataset)).astype(int), np.ceil(0.2*len(dataset)).astype(int)])
 	test_X, test_y = test[:]
 
 	loader = torch.utils.data.DataLoader(train, batch_size=BATCH_SIZE)
 
 	net = Unet()
-	#net = torch.load("model.pth", weights_only=False)
 	net.to(device)
 	loss_fn = torch.nn.BCEWithLogitsLoss()
-	optimizer = torch.optim.Adam(net.parameters(), lr=1e-6)
+	optimizer = torch.optim.Adam(net.parameters(), lr=1e-4)
 
 	for e in range(1, epochs+1):
 		print(f"epoch {e}")
@@ -139,7 +116,7 @@ def train(data_file, device, epochs=EPOCHS):
 
 
 if __name__ == "__main__":
-	train("data.json", "cuda" if torch.cuda.is_available() else "cpu")
+	main()
 
 #net.eval()
 #res = net(test_X[0:1]).detach().numpy()
