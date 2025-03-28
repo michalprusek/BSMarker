@@ -6,11 +6,11 @@ import os
 import tqdm
 
 
-URL = "http://localhost:8000/"
+URL = "http://193.86.114.62:8000/"
 USER = "admin"
 PASS = "adminadmin"
 PROJECT_ID = "5b622c5b-4853-4e77-99b1-87e1f566507a"
-DATASET_PATH = pathlib.Path("Pytorch-UNet/data/")
+DATASET_PATH = pathlib.Path("dataset/")
 IMAGE_DIR = "imgs"
 MASK_DIR = "masks"
 
