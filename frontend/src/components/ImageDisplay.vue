@@ -162,7 +162,7 @@
         <div class="blank">
         </div>
         <div class="image-view">
-            <svg v-if="state.current_frame" id="editor-svg" ref="editor_svg" :viewBox="'0 0 ' + SVG_COORD + ' ' + SVG_COORD" xmlns="http://www.w3.org/2000/svg" @click.right="select_start" @mousemove="select_move" @mouseup.right="select_end">
+            <svg v-if="state.current_frame" id="editor-svg" ref="editor_svg" :viewBox="'0 0 ' + SVG_COORD + ' ' + SVG_COORD" xmlns="http://www.w3.org/2000/svg"><!--@click.right="select_start" @mousemove="select_move" @mouseup.right="select_end">-->
                 <g>
                     <!-- studied images -->
                     <image 
