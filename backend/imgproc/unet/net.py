@@ -2,9 +2,12 @@ import torch
 import numpy as np
 
 from dataset import load_dataset
+import albumentations as A
 
 import segmentation_models_pytorch as smp
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.loggers import TensorBoardLogger
 
 
 class SegmentationModel(pl.LightningModule):
@@ -14,19 +17,21 @@ class SegmentationModel(pl.LightningModule):
 			arch,
 			encoder_name=encoder_name,
 			in_channels=1,
-			classes=1
+			classes=1,
+			**kwargs,
 		)
 
 		self.T_max = T_max
 
-		self.loss_fn = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
+		self.loss_fn = smp.losses.FocalLoss(smp.losses.BINARY_MODE)
+		#self.loss_fn2 = smp.losses.DiceLoss(smp.losses.BINARY_MODE, from_logits=True)
 
 		self.training_step_outputs = []
 		self.validation_step_outputs = []
 		self.test_step_outputs = []
 
 	def forward(self, image):
-		mask = self.model(image)
+		mask = self.model(image/255 - 0.5)
 		return mask
 	
 	def shared_step(self, batch, stage):
@@ -41,7 +46,7 @@ class SegmentationModel(pl.LightningModule):
 
 		logits_mask = self.forward(image)
 
-		loss = self.loss_fn(logits_mask, mask)
+		loss = self.loss_fn(logits_mask, mask)# + self.loss_fn2(logits_mask, mask)
 
 		prob_mask = logits_mask.sigmoid()
 		pred_mask = (prob_mask > 0.5).float()
@@ -72,19 +77,18 @@ class SegmentationModel(pl.LightningModule):
 		metrics = {
 			f"{stage}_per_image_iou": per_image_iou,
 			f"{stage}_dataset_iou": dataset_iou,
+			f"{stage}_loss": sum((x["loss"] for x in outputs)),
 		}
 
 		self.log_dict(metrics, prog_bar=True, sync_dist=True)
 
 	def training_step(self, batch, batch_idx):
 		train_loss_info = self.shared_step(batch, "train")
-		# append the metics of each step to the
 		self.training_step_outputs.append(train_loss_info)
 		return train_loss_info
 
 	def on_train_epoch_end(self):
 		self.shared_epoch_end(self.training_step_outputs, "train")
-		# empty set output list
 		self.training_step_outputs.clear()
 		return
 
@@ -105,13 +109,12 @@ class SegmentationModel(pl.LightningModule):
 
 	def on_test_epoch_end(self):
 		self.shared_epoch_end(self.test_step_outputs, "test")
-		# empty set output list
 		self.test_step_outputs.clear()
 		return
 
 	def configure_optimizers(self):
-		optimizer = torch.optim.Adam(self.parameters(), lr=2e-4)
-		scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.T_max, eta_min=1e-5)
+		optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4)
+		scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.T_max, eta_min=1e-6)
 		return {
 			"optimizer": optimizer,
 			"lr_scheduler": {
@@ -125,10 +128,46 @@ class SegmentationModel(pl.LightningModule):
 SEED = 0
 DATASET_PATH = "dataset/"
 BATCH_SIZE = 32
-SIZE = (320, 320)
-EPOCHS = 25
-TEST_RATIO = 0.1
+EPOCHS = 150
 VAL_RATIO = 0.1
+
+
+def augment_train(batch):
+	transform = A.Compose([
+		A.SafeRotate(p=0.1, limit=[-15, 15]),
+		A.CropNonEmptyMaskIfExists(1024, 1024, p=0.2),
+		A.Resize(256, 256, p=1),
+		A.GaussianBlur(p=0.1),
+		A.RandomBrightnessContrast(brightness_limit=0.4, contrast_limit=0.4, p=0.5),
+		A.HorizontalFlip(p=0.5),
+		A.RandomRotate90(p=0.5),
+		A.OneOf([
+			A.ElasticTransform(p=0.6),
+			A.GridElasticDeform(num_grid_xy=(12, 12), magnitude=10, p=0.4),
+		], p=0.4),
+	])
+	images = []
+	masks = []
+	for image, mask in batch:
+		result = transform(image=image[0].numpy(), mask=mask[0].numpy().astype(np.uint8))
+		images.append(torch.tensor(result["image"].copy()).unsqueeze(0))
+		masks.append(torch.tensor(result["mask"].copy()).bool().unsqueeze(0))
+
+	return torch.stack(images), torch.stack(masks)
+
+
+def augment_test(batch):
+	transform = A.Compose([
+		A.Resize(256, 256, p=1),
+	])
+	images = []
+	masks = []
+	for image, mask in batch:
+		result = transform(image=image[0].numpy(), mask=mask[0].numpy().astype(np.uint8))
+		images.append(torch.tensor(result["image"].copy()).unsqueeze(0))
+		masks.append(torch.tensor(result["mask"].copy()).bool().unsqueeze(0))
+
+	return torch.stack(images), torch.stack(masks)
 
 
 if __name__ == "__main__":
@@ -140,14 +179,27 @@ if __name__ == "__main__":
 	torch.set_float32_matmul_precision("medium")
 
 	# Prepare data loaders
-	train_dataset, valid_dataset, test_dataset = load_dataset(DATASET_PATH, SIZE, TEST_RATIO, VAL_RATIO)
-	train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
-	valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
-	test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
+	train_dataset, valid_dataset, test_dataset = load_dataset(DATASET_PATH, None, VAL_RATIO)
+	train_loader = torch.utils.data.DataLoader(
+		train_dataset, 
+		batch_size=BATCH_SIZE, 
+		shuffle=True, 
+		num_workers=4,
+		collate_fn=augment_train,
+	)
+	valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, collate_fn=augment_test)
+	test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=4, collate_fn=augment_test)
 
 
-	model = SegmentationModel("unet", "resnet34", T_max=EPOCHS*len(train_dataset))
-	trainer = pl.Trainer(max_epochs=EPOCHS, log_every_n_steps=1)
+	model = SegmentationModel("unet", "resnet50", T_max=EPOCHS*len(train_dataset))#, aux_params=dict(dropout=0.1, classes=1))
+
+	logger = TensorBoardLogger("lightning_logs", name="heavy_augment")
+	trainer = pl.Trainer(
+		max_epochs=EPOCHS, 
+		log_every_n_steps=1,
+		logger=logger,
+		callbacks=[EarlyStopping(monitor="valid_dataset_iou", mode="max", patience=15)]
+	)
 	trainer.fit(
 		model,
 		train_dataloaders=train_loader,

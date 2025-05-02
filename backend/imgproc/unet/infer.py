@@ -1,29 +1,38 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import torchvision
+import functools
+import random
+import os
 
 from net import SegmentationModel
-from dataset import load_dataset
-
-SEED = 0
-torch.manual_seed(SEED)
-np.random.seed(SEED)
-
-_, _, test_dataset = load_dataset("dataset/", (320, 320), 0.1, 0.1)
+torch.set_float32_matmul_precision("medium")
 
 
-MODEL_PATH = "lightning_logs/version_18/checkpoints/epoch=24-step=200.ckpt"
-model = SegmentationModel.load_from_checkpoint(MODEL_PATH, arch="unet", encoder_name="resnet34", T_max=0)
-model.eval()
+SIZE = (256, 256)
 
-N = 5
-fig, ax = plt.subplots(N, 3)
+LOG_DIR = "/home/veskrna/wound-healing/backend/imgproc/unet/lightning_logs"
 
-for i in range(N):
-	mask = model(test_dataset[[i]][0].to("cuda"))
-	ax[i, 0].imshow(mask[0].sigmoid().cpu().detach().numpy()[0] > 0.5)
-	ax[i, 1].imshow(test_dataset[i][0][0])
-	ax[i, 2].imshow(test_dataset[i][1][0])
 
-plt.show()
+@functools.cache
+def get_model(model_name):
+	ckpt_name = os.listdir(f"{LOG_DIR}/{model_name}/checkpoints/")[0]
+	model_path = f"{LOG_DIR}/{model_name}/checkpoints/{ckpt_name}"
+	model = SegmentationModel.load_from_checkpoint(model_path, arch="unet", encoder_name="resnet50", T_max=54300)
+	model.eval()
+	return model
 
+
+def detect(img, model_name, thresh=0.5):
+	with torch.no_grad():
+		model = get_model(model_name)
+
+		img = torchvision.transforms.functional.resize(torch.tensor(img[None, None, :, :]), (256, 256))
+		img = img.to("cuda")
+
+		masks = model(img).sigmoid()[0, 0].cpu().detach().numpy()
+		if thresh is not None:
+			masks = masks > thresh
+
+		return masks
