@@ -85,6 +85,6 @@ ax[0, 3].set_title("Detection")
 ax[0, 4].set_title("Probabilities")
 plt.tight_layout()
 
-plt.savefig("unet.pdf", dpi=1000, bbox_inches="tight")
+plt.savefig("unet.pdf", dpi=800, bbox_inches="tight")
 #plt.show()
 

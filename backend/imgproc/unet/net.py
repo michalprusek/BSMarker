@@ -193,7 +193,7 @@ if __name__ == "__main__":
 
 	model = SegmentationModel("unet", "resnet50", T_max=EPOCHS*len(train_dataset))#, aux_params=dict(dropout=0.1, classes=1))
 
-	logger = TensorBoardLogger("lightning_logs", name="heavy_augment")
+	logger = TensorBoardLogger("lightning_logs", name="unet_resnet50")
 	trainer = pl.Trainer(
 		max_epochs=EPOCHS, 
 		log_every_n_steps=1,

@@ -36,13 +36,13 @@ def detect_classical_simple(img):
 	return wound.wound_mask(img) <= 0
 
 
-def unet(img, mask_truth, model_name):
+def unet(img, mask_truth, model_name, encoder="resnet50"):
 	transform = A.Compose([
 		A.Resize(256, 256, p=1),
 	])
 	t = transform(image=img, mask=mask_truth.astype(np.uint8))
 
-	mask = detect(t["image"], model_name) > 0
+	mask = detect(t["image"], model_name, encoder) > 0
 	return mask, t["mask"] > 0
 
 
@@ -52,7 +52,7 @@ def our_test():
 	groundtruth = sorted(list(walk(path / "masks")))
 	return original, groundtruth
 
-def sinitica():
+def sinitca():
 	path = Path("MCF-7 cell populations Dataset/")
 	original = sorted(list(walk(path / "images")))
 	groundtruth = sorted(list(walk(path / "masks")))
@@ -65,12 +65,16 @@ def lowenstein():
 	groundtruth = sorted(list(walk(path / "woundhealing_v3" / "groundtruth")))
 	return original, groundtruth
 
-original, groundtruth = our_test()
+original, groundtruth = lowenstein()
 
 methods = [
 	["detect_classical", detect_classical], 
 	["unet (no augment)", partial(unet, model_name="noaugment/version_0")], 
-	["unet (heavy augment)", partial(unet, model_name="heavy_augment/version_0")],
+	#["unet (light augment)", partial(unet, model_name="flipcrop_augment/version_0")],
+	["unet", partial(unet, model_name="heavy_augment/version_0")],
+	["unet (nopretrained)", partial(unet, model_name="nopretrained/version_0")],
+	["unet (densenet)", partial(unet, model_name="densenet/version_0", encoder="densenet169")],
+	["unet (resnet34)", partial(unet, model_name="resnet34/version_0", encoder="resnet34")],
 ]
 results = [[] for _ in methods]
 
@@ -97,7 +101,7 @@ for orig, truth in zip(tqdm.tqdm(list(original)), groundtruth):
 		results[i].append({"tp": tp, "fp": fp, "fn": fn, "tn": tn, "err": err})
 
 
-print("method" + " "*19 + "\tdataset iou\tper img iou\tavg err")
+print("method" + " "*19 + "\tdataset iou\tper img iou\tavg err    \tprecision  \trecall     ")
 for (method, _), res in zip(methods, results):#, "detect_classical_simple"
 	tp = torch.cat([x["tp"] for x in res])
 	fp = torch.cat([x["fp"] for x in res])
@@ -110,7 +114,10 @@ for (method, _), res in zip(methods, results):#, "detect_classical_simple"
 	)
 	dataset_iou = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
 
-	print(f"{method:<25}\t{float(dataset_iou)*100:0.8f}%\t{float(per_image_iou)*100:0.8f}%\t{float(err.mean())*100}%")
+	precision = smp.metrics.precision(tp, fp, fn, tn, reduction="micro")
+	recall = smp.metrics.recall(tp, fp, fn, tn, reduction="micro")
+
+	print(f"{method:<25}\t{float(dataset_iou)*100:0.8f}%\t{float(per_image_iou)*100:0.8f}%\t{float(err.mean())*100:0.8f}%\t{float(precision)*100:0.8f}%\t{float(recall)*100:0.8f}%")
 
 
 #import matplotlib.pyplot as plt
