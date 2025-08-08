@@ -22,19 +22,21 @@ def walk(path):
 
 
 def our_test():
-	path = Path("/home/veskrna/wound-healing/backend/imgproc/unet/dataset/test/")
+	path = Path("/home/veskrna/bsmarker/backend/imgproc/unet/dataset/test/")
 	original = sorted(list(walk(path / "images")))
 	groundtruth = sorted(list(walk(path / "masks")))
 	return original, groundtruth
 
 def sinitica():
-	path = Path("/home/veskrna/wound-healing/backend/imgproc/MCF-7 cell populations Dataset/")
+	path = Path("/home/veskrna/bsmarker/backend/imgproc/MCF-7 cell populations Dataset/")
 	original = sorted(list(walk(path / "images")))
 	groundtruth = sorted(list(walk(path / "masks")))
 	return original, groundtruth
 
 def lowenstein():
 	import kagglehub
+	# Note: This dataset path references the original wound healing dataset
+	# and may need to be updated for bird song spectrogram data
 	path = Path(kagglehub.dataset_download("katjalwenstein/woundhealing"))
 	original = sorted(list(walk(path / "woundhealing_v3" / "original")))
 	groundtruth = sorted(list(walk(path / "woundhealing_v3" / "groundtruth")))
