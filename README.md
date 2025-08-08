@@ -15,20 +15,17 @@ Please refer to [the user manual](docs/manual.md).
 ### Running the production version
 A `.env` file must be created in the project root with the following content:
 ```
-DEBUG=False
-
-DOMAIN=<DOMAIN>
-ORIGIN=http://<DOMAIN>
-SECRET_KEY=<YOUR SECRET KEY>
-
-NUM_WORKERS=<(number of cores) * 2 + 1>
+DB_NAME=postgres
+DB_USER=postgres
+DB_PASSWORD=<enter password>
+DB_HOST=db
+DB_PORT=5432
+ALLOWED_HOSTS=localhost,www.example.com
 ```
-where <DOMAIN> is replaced with the domain on which the app will be running and <YOUR SECRET KEY> replaced with a randomly generated secret key for Django. Set `NUM_WORKERS` to an approprivate number of workers corresponding to the number of available cores (there should be `number_of_cores*2 + 1` workers).
 
-The port on which the server will be running is by default 1337 (in `docker-compose.yml`) but it should be changed to 80 or other port depending on whether your server has another proxy on the way.
-
-Then run the following commands:
-```
+To build the application:
+```sh
+cd bsmarker/
 docker-compose build
 docker-compose up
 ```
