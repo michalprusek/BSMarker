@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-BSMarker is a web-based tool for analyzing and annotating bird song spectrograms using computer vision and deep learning. It provides interactive spectrogram analysis, automated bird song segmentation using U-Net, manual annotation tools, and statistical analysis of song patterns and characteristics.
+BSMarker is a web-based annotation tool for bird song analysis in ornithology and bioacoustics research. Originally based on a segmentation tool, it has been repurposed for annotating and analyzing bird vocalizations in spectrograms. The application provides interactive spectrogram viewing, manual annotation tools for marking bird songs, and export capabilities for research data.
 
 ## Common Development Commands
 
@@ -45,9 +45,9 @@ python3 infer.py  # Run inference on images
 ### Backend Structure (`backend/`)
 - **Django App** (`wound_healing/`): Core models (Project, Experiment, Frame, Polygon), GraphQL API via Strawberry
 - **Image Processing** (`imgproc/`):
-  - `wound.py`: Traditional CV algorithms (edge detection, morphological operations) for audio spectrogram analysis
+  - `wound.py`: Traditional CV algorithms (edge detection, morphological operations) - to be adapted for spectrogram analysis
   - `unet/`: Deep learning segmentation with U-Net (ResNet50 encoder)
-- **API**: GraphQL mutations for bird song detection, annotation management, data export
+- **API**: GraphQL mutations for annotation management, data export
 
 ### Frontend Structure (`frontend/`)
 - **Vue 3 + Vite**: SPA with Pinia state management
@@ -59,29 +59,27 @@ python3 infer.py  # Run inference on images
 
 ### Data Flow
 1. Upload spectrogram images → Django stores in PostgreSQL
-2. Request bird song detection → U-Net inference or traditional CV
-3. Return annotation boundaries → Frontend renders interactive overlays
-4. User edits annotations → GraphQL mutations update database
-5. Export analysis → Generate CSV/Excel with statistics
+2. Create manual annotations → Draw boundaries on spectrograms
+3. Edit annotations → GraphQL mutations update database
+4. Export analysis → Generate CSV/Excel with annotation data
 
 ## Key Technical Details
 
-### Deep Learning Pipeline
+### Deep Learning Pipeline (To be adapted)
 - **Framework**: PyTorch + PyTorch Lightning
-- **Model**: U-Net with ResNet50 encoder from Segmentation Models PyTorch
-- **Loss**: Focal Loss + Dice Loss combination
-- **Augmentation**: Heavy augmentation via Albumentations (rotation, elastic transforms, brightness/contrast)
-- **Inference**: Cached model loading with CUDA acceleration
+- **Model**: U-Net with ResNet50 encoder - currently for image segmentation
+- **Note**: Model needs retraining on bird song spectrograms
+- **Current state**: Infrastructure ready but requires new dataset
 
 ### Database Schema
 - `Project` → contains multiple `Experiment`
 - `Experiment` → contains multiple `Frame` (spectrogram segments)
-- `Frame` → has multiple `Polygon` (bird song annotations)
+- `Frame` → has multiple `Polygon` (song annotations)
 - `Polygon` → can be additive or subtractive, stores boundary points
 
 ### GraphQL API Endpoints
 Key mutations in `backend/wound_healing/api.py`:
-- `detect_wound`: Run automated bird song detection on frame
+- `detect_wound`: Currently for segmentation - to be adapted for spectrograms
 - `add_polygon`/`delete_polygon`: Manage song annotations
 - `update_polygon_points`: Edit boundary vertices
 - `export_experiment`: Generate analysis reports
@@ -89,7 +87,9 @@ Key mutations in `backend/wound_healing/api.py`:
 ## Development Notes
 
 - Frontend dev server runs on port 5173, backend on port 8000
-- Static files served from `backend/media/` for uploaded images
+- Static files served from `backend/media/` for uploaded spectrograms
 - U-Net model checkpoints stored in `backend/imgproc/unet/lightning_logs/`
 - Test notebooks available in `notebooks/` for algorithm experimentation
 - Minimal test coverage - focus on manual testing via UI and notebooks
+- Currently on `dev` branch, PRs to `main` branch
+- Repository: git@gita.utia.cas.cz:birds/bsmarker.git
