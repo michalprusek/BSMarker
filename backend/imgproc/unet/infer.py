@@ -12,7 +12,7 @@ torch.set_float32_matmul_precision("medium")
 
 SIZE = (256, 256)
 
-LOG_DIR = "/home/veskrna/wound-healing/backend/imgproc/unet/lightning_logs"
+LOG_DIR = "/home/veskrna/bsmarker/backend/imgproc/unet/lightning_logs"
 
 
 @functools.cache
