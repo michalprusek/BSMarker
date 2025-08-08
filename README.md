@@ -1,12 +1,12 @@
-# Wound Healing
+# BSMarker - Bird Song Annotation Tool
 
 ## About
 
-This thesis will survey existing computer vision methods, focusing on object segmentation of 2D data. An initial study of the healing process will be made to understand the processed data better. A tool will be developed for the manual annotation of imaging data. Collaborating with microbiologists will prepare the training data by specifically highlighting wounds. The study will also involve selecting suitable metrics for comparing the effectiveness of different segmentation methods. Based on these comparisons, the thesis will design a final system capable of monitoring the healing process over time, such as tracking the rate of wound ingrowth. This system aims to contribute valuable insights into healing dynamics, potentially influencing future therapeutic strategies.
+BSMarker is a comprehensive annotation tool designed for bird song analysis and visualization. This tool enables researchers and ornithologists to annotate, segment, and analyze bird song spectrograms with precision. The application provides both manual annotation capabilities and automated detection features, making it suitable for large-scale bird song studies. The system includes advanced visualization tools for tracking patterns over time and comparing different song segments. BSMarker aims to facilitate research in avian communication, behavior studies, and ecological monitoring through efficient audio-visual data processing.
 
 **Supervisor**: Adam Novozámský
 
-**Collaborating workplace**: Ústavu biochemie a mikrobiologie VŠCHT
+**Application domain**: Ornithology and Bioacoustics Research
 
 ## Usage
 ### User documentation
@@ -37,7 +37,7 @@ docker-compose up
 
 First, run migrations, create a user and launch the backend server:
 ```sh
-cd wound-healing/backend
+cd bsmarker/backend
 
 pip3 install -r requirements.txt
 
@@ -47,7 +47,7 @@ python3 manage.py runserver
 ```
 Then, launch the frontend:
 ```sh
-cd wound-healing/frontend
+cd bsmarker/frontend
 npm install
 npm run dev
 ```

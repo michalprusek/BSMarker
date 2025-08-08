@@ -39,7 +39,7 @@
     </Dialog>
 
     <header>
-        <h1><a href="/">Wound healing</a></h1>
+        <h1><a href="/">BSMarker</a></h1>
 
         <span class="menus">
             <Button @click="switch_interface">
@@ -88,12 +88,12 @@
                         <Button @click="state.clear_polys_experiment">Clear all polygons</Button>
                     </p>-->
                     <p>
-                        <h5>Wound detection</h5>
+                        <h5>Bird song detection</h5>
                         <Button @click="state.detect_wound">Detect frame</Button>
                         <!--<Button @click="state.detect_wound_all">Detect all frames</Button>-->
                     </p>
                     <p>
-                        <h5>Free cell detection</h5>
+                        <h5>Secondary detection</h5>
                         <Button @click="state.detect_free_cells">Detect frame</Button>
                         <!--<Button @click="state.detect_free_cells_all">Detect all frames</Button>-->
                     </p>
@@ -127,11 +127,11 @@
             <div class="results">
                 <h3>Results</h3>
                 <Button @click="results.show">
-                    Open healing results
+                    Open annotation results
                 </Button>
                 <Card title="This frame">
                     <table>
-                        <tr><td>Wound surface</td><td>{{ (100 * state.current_frame.polygons.reduce((s, poly) => s + poly.surface, 0)).toFixed(2) }}%</td></tr>
+                        <tr><td>Annotated area</td><td>{{ (100 * state.current_frame.polygons.reduce((s, poly) => s + poly.surface, 0)).toFixed(2) }}%</td></tr>
                         <tr>
                             <td>Selected surface</td>
                             <td>

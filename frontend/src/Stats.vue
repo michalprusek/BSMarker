@@ -24,7 +24,7 @@
 
 <template>
     <header>
-        <h1><a href="/">Wound healing</a></h1>
+        <h1><a href="/">BSMarker</a></h1>
     </header>
     <main v-if="project">
         <h2>{{ project.name }} – report</h2>

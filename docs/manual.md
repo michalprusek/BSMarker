@@ -1,4 +1,4 @@
-# Wound healing – User manual
+# BSMarker – User manual
 
 ## Login
 First of all, the user has to be logged in. User accounts at this moment are created exclusively by the administrator.
