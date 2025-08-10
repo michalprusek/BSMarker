@@ -29,13 +29,6 @@ const Layout: React.FC = () => {
                   <HomeIcon className="h-5 w-5 mr-1" />
                   Home
                 </Link>
-                <Link
-                  to="/projects"
-                  className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-900 hover:text-gray-700"
-                >
-                  <FolderIcon className="h-5 w-5 mr-1" />
-                  Projects
-                </Link>
                 {user?.is_admin && (
                   <Link
                     to="/admin/users"

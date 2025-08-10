@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     MINIO_BUCKET_RECORDINGS: str = "recordings"
     MINIO_BUCKET_SPECTROGRAMS: str = "spectrograms"
     
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://192.168.1.192:3000", "http://localhost:3001"]
+    CORS_ORIGINS: List[str] = ["http://localhost:9993", "http://localhost:3000", "http://192.168.1.192:3000"]
     
     FIRST_ADMIN_EMAIL: str = "admin@bsmarker.com"
     FIRST_ADMIN_PASSWORD: str = "admin123"

@@ -95,7 +95,7 @@ MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET_NAME=bsmarker
 SECRET_KEY=your-super-secret-jwt-key-change-this-in-production
-CORS_ORIGINS=["http://localhost:3000"]
+CORS_ORIGINS=["http://localhost:3456"]
 """
     
     env_path = Path("backend/.env")
@@ -194,7 +194,7 @@ def start_backend(venv_path):
         "app.main:app",
         "--reload",
         "--host", "0.0.0.0",
-        "--port", "8000"
+        "--port", "8123"
     ], cwd="backend")
     
     return backend_process
@@ -210,8 +210,13 @@ def start_frontend():
         print("📦 Installing npm dependencies...")
         subprocess.run(["npm", "install"], check=True)
     
+    # Set environment variables for frontend
+    env = os.environ.copy()
+    env["PORT"] = "3456"
+    env["REACT_APP_API_URL"] = "http://localhost:8123"
+    
     # Start development server
-    frontend_process = subprocess.Popen(["npm", "start"])
+    frontend_process = subprocess.Popen(["npm", "start"], env=env)
     
     os.chdir("..")
     return frontend_process
@@ -245,9 +250,9 @@ def main():
         print("\n" + "=" * 40)
         print("✅ BSMarker is running!")
         print("\n📍 Access points:")
-        print("  • Frontend: http://localhost:3000")
-        print("  • Backend API: http://localhost:8000")
-        print("  • API Docs: http://localhost:8000/docs")
+        print("  • Frontend: http://localhost:3456")
+        print("  • Backend API: http://localhost:8123")
+        print("  • API Docs: http://localhost:8123/docs")
         print("  • MinIO Console: http://localhost:9001")
         print("\n👤 Login credentials:")
         print("  • Email: admin@bsmarker.com")
