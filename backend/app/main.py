@@ -1,11 +1,16 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import settings
 from app.api.api_v1.api import api_router
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
 from app.services.minio_client import minio_client
+from app.api.deps import get_current_user
+from app.models.user import User
+from app.core.security import decode_access_token
+from typing import Optional
 import io
 
 app = FastAPI(
@@ -34,8 +39,37 @@ async def startup_event():
 def read_root():
     return {"message": "BSMarker API", "version": settings.VERSION}
 
-@app.get("/api/v1/audio/{file_path:path}")
-async def get_audio(file_path: str):
+async def verify_token(token: Optional[str] = Query(None), authorization: Optional[str] = Header(None)):
+    """Verify token from query parameter or Authorization header"""
+    if token:
+        # Token from query parameter
+        try:
+            payload = decode_access_token(token)
+            if payload is None:
+                raise HTTPException(status_code=403, detail="Invalid token")
+            return True
+        except Exception:
+            raise HTTPException(status_code=403, detail="Invalid token")
+    elif authorization and authorization.startswith("Bearer "):
+        # Token from Authorization header
+        token_value = authorization.replace("Bearer ", "")
+        try:
+            payload = decode_access_token(token_value)
+            if payload is None:
+                raise HTTPException(status_code=403, detail="Invalid token")
+            return True
+        except Exception:
+            raise HTTPException(status_code=403, detail="Invalid token")
+    else:
+        raise HTTPException(status_code=403, detail="No authentication provided")
+
+@app.get("/files/recordings/{file_path:path}")
+async def get_audio_file(
+    file_path: str,
+    token: Optional[str] = Query(None),
+    authorization: Optional[str] = None
+):
+    await verify_token(token, authorization)
     try:
         audio_data = minio_client.download_file(
             settings.MINIO_BUCKET_RECORDINGS,
@@ -46,19 +80,27 @@ async def get_audio(file_path: str):
         else:
             raise HTTPException(status_code=404, detail="Audio file not found")
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/v1/spectrograms/{recording_id}")
-async def get_spectrogram(recording_id: int):
+@app.get("/files/spectrograms/{file_path:path}")
+async def get_spectrogram_file(
+    file_path: str,
+    token: Optional[str] = Query(None),
+    authorization: Optional[str] = None
+):
+    await verify_token(token, authorization)
     try:
-        spectrogram_path = f"spectrograms/{recording_id}_spectrogram.png"
         image_data = minio_client.download_file(
             settings.MINIO_BUCKET_SPECTROGRAMS,
-            spectrogram_path
+            file_path
         )
         if image_data:
             return StreamingResponse(io.BytesIO(image_data), media_type="image/png")
         else:
             raise HTTPException(status_code=404, detail="Spectrogram not found")
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,9 +1,10 @@
 import os
 import uuid
-from typing import Any, List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from typing import Any, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 import librosa
 from app.api import deps
 from app.core.config import settings
@@ -78,8 +79,21 @@ async def upload_recording(
     db.commit()
     db.refresh(recording)
     
-    # TODO: Implement async spectrogram generation
-    # generate_spectrogram.delay(recording.id)
+    # Generate spectrogram synchronously during upload
+    try:
+        with open(f"/tmp/{unique_filename}", "wb") as f:
+            f.write(contents)
+        
+        spectrogram_path = generate_spectrogram(
+            audio_path=f"/tmp/{unique_filename}",
+            recording_id=recording.id,
+            db=db
+        )
+        
+        os.remove(f"/tmp/{unique_filename}")
+    except Exception as e:
+        print(f"Failed to generate spectrogram: {str(e)}")
+        # Continue even if spectrogram generation fails
     
     return recording
 
@@ -89,6 +103,11 @@ def read_recordings(
     db: Session = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
+    search: Optional[str] = Query(None, description="Search in filename"),
+    min_duration: Optional[float] = Query(None, description="Minimum duration in seconds"),
+    max_duration: Optional[float] = Query(None, description="Maximum duration in seconds"),
+    sort_by: Optional[str] = Query("created_at", description="Sort field: created_at, filename, duration"),
+    sort_order: Optional[str] = Query("desc", description="Sort order: asc or desc"),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
     project = db.query(Project).filter(Project.id == project_id).first()
@@ -97,9 +116,37 @@ def read_recordings(
     if not current_user.is_admin and project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
     
-    recordings = db.query(Recording).filter(
-        Recording.project_id == project_id
-    ).offset(skip).limit(limit).all()
+    query = db.query(Recording).filter(Recording.project_id == project_id)
+    
+    # Apply search filter
+    if search:
+        query = query.filter(
+            or_(
+                Recording.original_filename.ilike(f"%{search}%"),
+                Recording.filename.ilike(f"%{search}%")
+            )
+        )
+    
+    # Apply duration filters
+    if min_duration is not None:
+        query = query.filter(Recording.duration >= min_duration)
+    if max_duration is not None:
+        query = query.filter(Recording.duration <= max_duration)
+    
+    # Apply sorting
+    if sort_by == "filename":
+        order_field = Recording.original_filename
+    elif sort_by == "duration":
+        order_field = Recording.duration
+    else:  # Default to created_at
+        order_field = Recording.created_at
+    
+    if sort_order == "asc":
+        query = query.order_by(order_field.asc())
+    else:
+        query = query.order_by(order_field.desc())
+    
+    recordings = query.offset(skip).limit(limit).all()
     return recordings
 
 @router.get("/{recording_id}", response_model=RecordingSchema)
@@ -140,6 +187,41 @@ def delete_recording(
     db.delete(recording)
     db.commit()
     return {"message": "Recording deleted successfully"}
+
+@router.post("/{project_id}/bulk-delete")
+def bulk_delete_recordings(
+    project_id: int,
+    recording_ids: List[int],
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_active_user),
+) -> Any:
+    """Delete multiple recordings at once."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not current_user.is_admin and project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    
+    recordings = db.query(Recording).filter(
+        Recording.id.in_(recording_ids),
+        Recording.project_id == project_id
+    ).all()
+    
+    deleted_count = 0
+    for recording in recordings:
+        try:
+            minio_client.delete_file(
+                bucket_name=settings.MINIO_BUCKET_RECORDINGS,
+                object_name=recording.file_path
+            )
+        except:
+            pass  # Continue even if file deletion fails
+        
+        db.delete(recording)
+        deleted_count += 1
+    
+    db.commit()
+    return {"message": f"Deleted {deleted_count} recordings successfully"}
 
 @router.get("/{recording_id}/audio")
 async def get_recording_audio(

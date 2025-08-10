@@ -6,10 +6,38 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 interface LabelModalProps {
   onClose: () => void;
   onSave: (label: string) => void;
+  initialLabel?: string;
 }
 
-const LabelModal: React.FC<LabelModalProps> = ({ onClose, onSave }) => {
-  const [label, setLabel] = useState('');
+const LabelModal: React.FC<LabelModalProps> = ({ onClose, onSave, initialLabel = '' }) => {
+  const [label, setLabel] = useState(initialLabel);
+
+  // Prevent event propagation for keyboard events in the modal
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Stop propagation to prevent parent keyboard shortcuts
+      e.stopPropagation();
+      
+      // Handle Escape key to close modal
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      // Stop propagation to prevent parent keyboard shortcuts
+      e.stopPropagation();
+    };
+
+    // Add event listeners with capture phase to intercept events early
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('keyup', handleKeyUp, true);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('keyup', handleKeyUp, true);
+    };
+  }, [onClose]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,7 +87,7 @@ const LabelModal: React.FC<LabelModalProps> = ({ onClose, onSave }) => {
                 <div className="sm:flex sm:items-start">
                   <div className="mt-3 text-center sm:mt-0 sm:text-left w-full">
                     <Dialog.Title as="h3" className="text-lg font-medium leading-6 text-gray-900">
-                      Add Label
+                      {initialLabel ? 'Edit Label' : 'Add Label'}
                     </Dialog.Title>
                     <form onSubmit={handleSubmit} className="mt-4">
                       <div>
@@ -71,6 +99,8 @@ const LabelModal: React.FC<LabelModalProps> = ({ onClose, onSave }) => {
                           id="label"
                           value={label}
                           onChange={(e) => setLabel(e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          onKeyUp={(e) => e.stopPropagation()}
                           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                           placeholder="e.g., Robin, Sparrow, Call, Song"
                           autoFocus

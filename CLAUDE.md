@@ -3,6 +3,47 @@
 ## Project Overview
 BSMarker is a full-stack web application designed for annotating bird songs using spectrograms. It enables researchers and ornithologists to upload audio recordings, automatically generate spectrograms, and annotate them with bounding boxes to identify different bird species and sound types.
 
+## ⚠️ IMPORTANT DEVELOPMENT NOTES
+- **run_local.py**: ALWAYS use this script for local development - it's managed and run by the user
+- **Docker**: Currently NOT functional - do not suggest Docker commands
+- **Ports**: Frontend runs on 3456, Backend API on 8123
+- **Hot Reload**: Both frontend and backend MUST run with hot reload enabled
+
+## Critical Best Practices
+
+### 🔴 SSOT (Single Source of Truth) Principle
+**NEVER duplicate code, types, or business logic!**
+- Types & Interfaces → `packages/shared/types`
+- Constants → `packages/shared/constants`
+- Validation → `packages/shared/validation`
+- Utilities → `packages/shared/utils`
+- Before creating anything: Search if it exists first
+
+### 🔴 Security First
+**Current vulnerabilities to fix immediately:**
+- Remove `new Function()` usage (analyze-missing-zh.js)
+- Fix SQL injection risks (testDb.ts)
+- Move hardcoded credentials to env variables
+- Never log sensitive data (passwords, tokens, PII)
+- Always validate and sanitize input
+
+### 🔴 Error Debugging Workflow
+When encountering errors, ALWAYS gather maximum context:
+1. Check Docker logs: `docker-compose logs [service] --tail=100`
+2. Check browser console for client-side errors
+3. Verify database state if relevant
+4. Look for patterns across services
+5. Fix root cause, not symptoms
+
+### 🔴 Subagent Usage (USE FREQUENTLY!)
+**MAXIMIZE subagent usage to preserve context window:**
+Subagents can handle independent tasks without cluttering the main conversation. This allows you to:
+- Focus on high-level coordination in main conversation
+- Offload detailed work to subagents
+- Preserve context for future reference
+
+IMPORTANT: ALWAYS EXPLAIN THE PROJECT CONTEXT TO SUBAGENTS!
+
 ## Architecture
 
 ### Tech Stack
@@ -11,7 +52,7 @@ BSMarker is a full-stack web application designed for annotating bird songs usin
 - **Database**: PostgreSQL 15
 - **Cache/Queue**: Redis
 - **File Storage**: MinIO (S3-compatible)
-- **Containerization**: Docker & Docker Compose
+- **Containerization**: Docker & Docker Compose (NOT WORKING - use run_local.py)
 
 ### Key Features
 1. **User Management**: Admin-controlled user creation with role-based access (admin/regular user)
@@ -64,7 +105,8 @@ BSMarker/
 │   │   └── types/         # TypeScript type definitions
 │   ├── Dockerfile
 │   └── package.json
-├── docker-compose.yml      # Multi-container orchestration
+├── docker-compose.yml      # Multi-container orchestration (NOT WORKING)
+├── run_local.py           # LOCAL DEVELOPMENT SCRIPT (USE THIS!)
 ├── start.sh               # Startup script
 ├── stop.sh                # Shutdown script
 └── README.md              # User documentation
@@ -126,34 +168,30 @@ BSMarker/
 
 ## Development Guidelines
 
-### Building and Running with MCP Desktop Commander
+### Running Locally with run_local.py
 
-**IMPORTANT**: When building Docker images, use Desktop Commander MCP tool instead of direct Docker commands to avoid timeout issues:
+**IMPORTANT**: Always use `run_local.py` for local development. Docker is NOT functional.
 
 ```bash
-# Use Desktop Commander for Docker operations
-mcp__desktop-commander__start_process "docker-compose build"
-mcp__desktop-commander__start_process "docker-compose up -d"
+# User runs this script manually
+python3 run_local.py
 ```
 
-### Running Locally
-
-1. **Start all services**:
-```bash
-./start.sh
-# OR use Desktop Commander:
-mcp__desktop-commander__start_process "./start.sh"
-```
-
-2. **Access points**:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
+### Access Points (with run_local.py):
+- Frontend: http://localhost:3456
+- Backend API: http://localhost:8123
+- API Docs: http://localhost:8123/docs
 - MinIO Console: http://localhost:9001
 
-3. **Default credentials**:
+### Default credentials:
 - Email: admin@bsmarker.com
 - Password: admin123
+
+### Hot Reload Configuration
+The `run_local.py` script MUST ensure:
+- Backend runs with `--reload` flag for uvicorn
+- Frontend runs with React's hot reload enabled (default with `npm start`)
+- Changes to source files are immediately reflected without restart
 
 ### Code Quality
 
@@ -243,35 +281,38 @@ npm run lint
 
 ### Common Issues
 
-1. **Docker not running**:
+1. **Port conflicts**:
 ```bash
-# Start Docker Desktop or Docker daemon
-sudo systemctl start docker
+# Check ports 3456, 8123, 5432, 6379, 9000, 9001
+lsof -i :3456
+lsof -i :8123
 ```
 
-2. **Port conflicts**:
+2. **Database connection issues**:
 ```bash
-# Check ports 3000, 8000, 5432, 6379, 9000, 9001
-lsof -i :3000
+# Check PostgreSQL is running
+psql -U bsmarker -d bsmarker_db -h localhost
 ```
 
-3. **Database connection issues**:
+3. **Backend not starting**:
 ```bash
-# Check PostgreSQL container
-docker-compose logs postgres
+# Check Python dependencies
+cd backend
+pip install -r requirements.txt
 ```
 
-4. **Spectrogram not generating**:
+4. **Frontend not starting**:
 ```bash
-# Check Celery worker logs
-docker-compose logs backend
+# Check Node dependencies
+cd frontend
+npm install
 ```
 
 ## Maintenance
 
 ### Backup Database
 ```bash
-docker-compose exec postgres pg_dump -U bsmarker bsmarker_db > backup.sql
+pg_dump -U bsmarker bsmarker_db > backup.sql
 ```
 
 ### Update Dependencies
@@ -285,11 +326,11 @@ cd frontend
 npm update
 ```
 
-### Clear Storage
-```bash
-# Remove all Docker volumes (WARNING: deletes all data)
-docker-compose down -v
-```
-
 ## Contact & Support
 For issues or questions, please create an issue in the repository or contact the development team.
+
+# important-instruction-reminders
+Do what has been asked; nothing more, nothing less.
+NEVER create files unless they're absolutely necessary for achieving your goal.
+ALWAYS prefer editing an existing file to creating a new one.
+NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.

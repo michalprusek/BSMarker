@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { AuthToken, LoginCredentials, User, Project, Recording, Annotation } from '../types';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8123';
 
 const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
@@ -48,12 +48,12 @@ export const authService = {
 
 export const userService = {
   getUsers: async (): Promise<User[]> => {
-    const response = await api.get<User[]>('/users');
+    const response = await api.get<User[]>('/users/');
     return response.data;
   },
   
   createUser: async (userData: Partial<User> & { password: string }): Promise<User> => {
-    const response = await api.post<User>('/users', userData);
+    const response = await api.post<User>('/users/', userData);
     return response.data;
   },
   
@@ -65,7 +65,7 @@ export const userService = {
 
 export const projectService = {
   getProjects: async (): Promise<Project[]> => {
-    const response = await api.get<Project[]>('/projects');
+    const response = await api.get<Project[]>('/projects/');
     return response.data;
   },
   
@@ -75,7 +75,7 @@ export const projectService = {
   },
   
   createProject: async (projectData: Partial<Project>): Promise<Project> => {
-    const response = await api.post<Project>('/projects', projectData);
+    const response = await api.post<Project>('/projects/', projectData);
     return response.data;
   },
   
@@ -101,8 +101,17 @@ export const recordingService = {
     return response.data;
   },
   
-  getRecordings: async (projectId: number): Promise<Recording[]> => {
-    const response = await api.get<Recording[]>(`/recordings/${projectId}/recordings`);
+  getRecordings: async (
+    projectId: number,
+    params?: {
+      search?: string;
+      min_duration?: number;
+      max_duration?: number;
+      sort_by?: string;
+      sort_order?: string;
+    }
+  ): Promise<Recording[]> => {
+    const response = await api.get<Recording[]>(`/recordings/${projectId}/recordings`, { params });
     return response.data;
   },
   
@@ -115,18 +124,61 @@ export const recordingService = {
     await api.delete(`/recordings/${recordingId}`);
   },
   
-  getRecordingUrl: (filePath: string): string => {
-    return `${API_URL}/files/recordings/${filePath}`;
+  bulkDeleteRecordings: async (projectId: number, recordingIds: number[]): Promise<void> => {
+    await api.post(`/recordings/${projectId}/bulk-delete`, recordingIds);
   },
   
-  getSpectrogramUrl: (filePath: string): string => {
-    return `${API_URL}/files/spectrograms/${filePath}`;
+  getRecordingUrl: (filePath: string): string => {
+    const token = localStorage.getItem('token');
+    return `${API_URL}/files/recordings/${filePath}?token=${token}`;
+  },
+  
+  getSpectrogramUrl: async (recordingId: number): Promise<string | null> => {
+    try {
+      // Get the spectrogram URL directly from the API
+      const token = localStorage.getItem('token');
+      const response = await api.get(`/recordings/${recordingId}/spectrogram-url`);
+      if (response.data && response.data.url) {
+        return `${API_URL}${response.data.url}?token=${token}`;
+      }
+      // Fallback to constructing URL from recording ID
+      return `${API_URL}/files/spectrograms/${recordingId}_spectrogram.png?token=${token}`;
+    } catch (error) {
+      console.error('Failed to get spectrogram URL:', error);
+      // Fallback URL
+      const token = localStorage.getItem('token');
+      return `${API_URL}/files/spectrograms/${recordingId}_spectrogram.png?token=${token}`;
+    }
+  },
+  
+  downloadRecording: async (recordingId: number): Promise<Blob> => {
+    const recording = await recordingService.getRecording(recordingId);
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/files/recordings/${recording.file_path}?token=${token}`);
+    if (!response.ok) {
+      throw new Error(`Failed to download recording: ${response.status}`);
+    }
+    return response.blob();
+  },
+  
+  getAuthenticatedBlob: async (url: string): Promise<string> => {
+    const token = localStorage.getItem('token');
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch: ${response.status}`);
+    }
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
   },
 };
 
 export const annotationService = {
   getAnnotations: async (recordingId: number): Promise<Annotation[]> => {
-    const response = await api.get<Annotation[]>(`/annotations/${recordingId}`);
+    const response = await api.get<Annotation[]>(`/annotations/${recordingId}/`);
     return response.data;
   },
   
@@ -145,8 +197,23 @@ export const annotationService = {
   },
   
   createOrUpdateAnnotation: async (recordingId: number, boundingBoxes: any[]): Promise<Annotation> => {
+    // Ensure all required fields are present for each bounding box
+    const validBoxes = boundingBoxes.map(box => ({
+      x: box.x || 0,
+      y: box.y || 0,
+      width: box.width || 0,
+      height: box.height || 0,
+      start_time: box.start_time || 0,
+      end_time: box.end_time || 0,
+      min_frequency: box.min_frequency || 0,
+      max_frequency: box.max_frequency || 10000,
+      label: box.label || 'None',
+      confidence: box.confidence || null,
+      metadata: box.metadata || null
+    }));
+    
     const response = await api.post<Annotation>(`/annotations/${recordingId}`, {
-      bounding_boxes: boundingBoxes
+      bounding_boxes: validBoxes
     });
     return response.data;
   },

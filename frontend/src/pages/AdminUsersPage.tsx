@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, PencilIcon } from '@heroicons/react/24/outline';
 import { User } from '../types';
 import { userService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
