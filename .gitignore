@@ -50,6 +50,7 @@ Thumbs.db
 # Docker volumes
 postgres_data/
 minio_data/
+minio-data/
 
 # Logs
 *.log
