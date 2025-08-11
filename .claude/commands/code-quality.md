@@ -12,6 +12,7 @@ description: Perform comprehensive code audit, analyze recommendations, and crea
 - Repomix MCP, Context7 MCP
 - Docker logs
 - Browser console logs
+- Other tools like ESLint, Prettier, TypeScript, Jest, React Testing Library, Duplicate finder etc.
 
 
 ## Task
@@ -29,6 +30,15 @@ The audit should examine:
 - Technical debt
 - Test coverage gaps
 - Dependency problems
+- Code inconsistencies and duplicate implementations
+- Legacy code patterns and outdated approaches
+- Unnecessary implementations and over-engineered solutions
+- Code consolidation opportunities across packages
+- Architectural fragmentation and pattern inconsistencies
+- Redundant configurations and build setups
+- Cross-package dependency issues and circular imports
+
+IMPORTANT: Always follow SSOT principles.
 
 ### Phase 2: Analysis and Prioritization
 After receiving the audit report from code-audit-analyzer, use the @.claude/agents/context-analyzer-planner.md subagent to:

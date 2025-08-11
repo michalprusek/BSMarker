@@ -229,7 +229,7 @@ const AnnotationEditor: React.FC = () => {
       }
       
       // Handle 'A' key for annotation mode toggle
-      if (e.key.toLowerCase() === 'a' && !e.ctrlKey && !e.metaKey && !e.altKey && selectedBoxes.size === 0) {
+      if (e.key.toLowerCase() === 'a' && !e.ctrlKey && !e.metaKey && !e.altKey && !showLabelModal && !showCustomLabelInput) {
         e.preventDefault();
         toggleAnnotationMode();
         return;
@@ -310,8 +310,6 @@ const AnnotationEditor: React.FC = () => {
         if (rect) {
           const mouseX = e.clientX - rect.left - 40; // Account for frequency scale
           const mouseY = e.clientY - rect.top - 32; // Account for top offset
-          const relativeX = mouseX / (rect.width - 40);
-          const relativeY = mouseY / (rect.height * 0.7 - 32);
           
           if (e.deltaY < 0) {
             // Zoom in - maintain cursor position
@@ -675,44 +673,82 @@ const AnnotationEditor: React.FC = () => {
   const handlePasteSelection = useCallback(() => {
     if (!clipboardBox) return;
     
+    // Get the paste position - use context menu position if available, otherwise mouse position
     const pasteAt = contextMenu || mousePosition;
     
+    // Adjust paste position for zoom level (convert from screen to spectrogram coordinates)
+    const adjustedPasteX = pasteAt.x / zoomLevel;
+    const adjustedPasteY = pasteAt.y / 0.75; // Adjust for spectrogram area
+    
+    // Helper function to constrain box within boundaries
+    const constrainBox = (box: BoundingBox) => {
+      const maxX = spectrogramDimensions.width;
+      const maxY = spectrogramDimensions.height;
+      
+      // Ensure box stays within boundaries
+      let constrainedX = Math.max(0, Math.min(box.x, maxX - box.width));
+      let constrainedY = Math.max(0, Math.min(box.y, maxY - box.height));
+      
+      // If box is too wide/tall for the space, resize it
+      const constrainedWidth = Math.min(box.width, maxX - constrainedX);
+      const constrainedHeight = Math.min(box.height, maxY - constrainedY);
+      
+      return {
+        ...box,
+        x: constrainedX,
+        y: constrainedY,
+        width: constrainedWidth,
+        height: constrainedHeight,
+        start_time: duration ? (constrainedX / spectrogramDimensions.width) * duration : 0,
+        end_time: duration ? ((constrainedX + constrainedWidth) / spectrogramDimensions.width) * duration : 0,
+        max_frequency: 22050 * (1 - constrainedY / spectrogramDimensions.height),
+        min_frequency: 22050 * (1 - (constrainedY + constrainedHeight) / spectrogramDimensions.height),
+      };
+    };
+    
     if (Array.isArray(clipboardBox)) {
-      // Multiple boxes - paste at center of mass
+      // Multiple boxes - maintain relative positions
       const centerX = clipboardBox.reduce((sum, box) => sum + box.x + box.width / 2, 0) / clipboardBox.length;
       const centerY = clipboardBox.reduce((sum, box) => sum + box.y + box.height / 2, 0) / clipboardBox.length;
-      const offsetX = pasteAt.x - centerX;
-      const offsetY = pasteAt.y - centerY;
       
-      const newBoxes = clipboardBox.map(box => ({
-        ...box,
-        x: box.x + offsetX,
-        y: box.y + offsetY,
-        start_time: ((box.x + offsetX) / spectrogramDimensions.width) * duration,
-        end_time: ((box.x + offsetX + box.width) / spectrogramDimensions.width) * duration,
-        max_frequency: 10000 * (1 - (box.y + offsetY) / spectrogramDimensions.height),
-        min_frequency: 10000 * (1 - (box.y + offsetY + box.height) / spectrogramDimensions.height),
-      }));
+      // Calculate offset from original center to paste position
+      const offsetX = adjustedPasteX - centerX;
+      const offsetY = adjustedPasteY - centerY;
+      
+      const newBoxes = clipboardBox.map(box => {
+        const pastedBox = {
+          ...box,
+          x: box.x + offsetX,
+          y: box.y + offsetY,
+          start_time: 0, // Will be recalculated
+          end_time: 0,
+          max_frequency: 0,
+          min_frequency: 0,
+        };
+        return constrainBox(pastedBox);
+      });
       
       setBoundingBoxes([...boundingBoxes, ...newBoxes]);
       setHasUnsavedChanges(true);
       toast.success(`${newBoxes.length} bounding boxes pasted`);
     } else {
       // Single box - center at cursor
-      const newBox: BoundingBox = {
+      const pastedBox = {
         ...clipboardBox,
-        x: pasteAt.x - clipboardBox.width / 2,
-        y: pasteAt.y - clipboardBox.height / 2,
-        start_time: ((pasteAt.x - clipboardBox.width / 2) / spectrogramDimensions.width) * duration,
-        end_time: ((pasteAt.x + clipboardBox.width / 2) / spectrogramDimensions.width) * duration,
-        max_frequency: 10000 * (1 - (pasteAt.y - clipboardBox.height / 2) / spectrogramDimensions.height),
-        min_frequency: 10000 * (1 - (pasteAt.y + clipboardBox.height / 2) / spectrogramDimensions.height),
+        x: adjustedPasteX - clipboardBox.width / 2,
+        y: adjustedPasteY - clipboardBox.height / 2,
+        start_time: 0, // Will be recalculated
+        end_time: 0,
+        max_frequency: 0,
+        min_frequency: 0,
       };
+      
+      const newBox = constrainBox(pastedBox);
       setBoundingBoxes([...boundingBoxes, newBox]);
       setHasUnsavedChanges(true);
       toast.success('Bounding box pasted');
     }
-  }, [clipboardBox, contextMenu, boundingBoxes, spectrogramDimensions, duration, mousePosition]);
+  }, [clipboardBox, contextMenu, boundingBoxes, spectrogramDimensions, duration, mousePosition, zoomLevel]);
 
   const handleDeleteSelectedBoxes = useCallback(() => {
     if (selectedBoxes.size > 0) {
@@ -756,6 +792,9 @@ const AnnotationEditor: React.FC = () => {
 
   const handleMouseDown = (e: any) => {
     if (!canvasContainerRef.current) return;
+    
+    // Skip left mouse button handling if right-click was detected
+    if (e.evt.button === 2) return;
     
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
@@ -957,10 +996,10 @@ const AnnotationEditor: React.FC = () => {
               ...box,
               x: newX,
               y: newY,
-              start_time: (newX / spectrogramDimensions.width) * duration,
-              end_time: ((newX + box.width) / spectrogramDimensions.width) * duration,
-              max_frequency: 10000 * (1 - newY / spectrogramDimensions.height),
-              min_frequency: 10000 * (1 - (newY + box.height) / spectrogramDimensions.height),
+              start_time: duration ? (newX / spectrogramDimensions.width) * duration : 0,
+              end_time: duration ? ((newX + box.width) / spectrogramDimensions.width) * duration : 0,
+              max_frequency: 22050 * (1 - newY / spectrogramDimensions.height),
+              min_frequency: 22050 * (1 - (newY + box.height) / spectrogramDimensions.height),
             };
           }
         });
@@ -977,10 +1016,10 @@ const AnnotationEditor: React.FC = () => {
           ...boundingBoxes[draggingBox.index],
           x: boundedX,
           y: boundedY,
-          start_time: (boundedX / spectrogramDimensions.width) * duration,
-          end_time: ((boundedX + draggingBox.initialBox.width) / spectrogramDimensions.width) * duration,
-          max_frequency: 10000 * (1 - boundedY / spectrogramDimensions.height),
-          min_frequency: 10000 * (1 - (boundedY + draggingBox.initialBox.height) / spectrogramDimensions.height),
+          start_time: duration ? (boundedX / spectrogramDimensions.width) * duration : 0,
+          end_time: duration ? ((boundedX + draggingBox.initialBox.width) / spectrogramDimensions.width) * duration : 0,
+          max_frequency: 22050 * (1 - boundedY / spectrogramDimensions.height),
+          min_frequency: 22050 * (1 - (boundedY + draggingBox.initialBox.height) / spectrogramDimensions.height),
         };
         setSelectedBox(updatedBoxes[draggingBox.index]);
       }
@@ -994,7 +1033,7 @@ const AnnotationEditor: React.FC = () => {
     if (resizingBox && dragStartPos) {
       const box = boundingBoxes[resizingBox.index];
       const newBox = { ...box };
-      const minSize = 10;
+      const minSize = 2;
       
       // Constrain y position to spectrogram area
       const maxY = spectrogramDimensions.height / 0.75;
@@ -1130,7 +1169,7 @@ const AnnotationEditor: React.FC = () => {
     if (isDrawing && drawingBox) {
       setIsDrawing(false);
       
-      if (Math.abs(drawingBox.width) > 10 && Math.abs(drawingBox.height) > 10) {
+      if (Math.abs(drawingBox.width) > 2 && Math.abs(drawingBox.height) > 2) {
         const normalizedBox = {
           x: drawingBox.width < 0 ? drawingBox.x + drawingBox.width : drawingBox.x,
           y: drawingBox.height < 0 ? drawingBox.y + drawingBox.height : drawingBox.y,
@@ -1138,8 +1177,8 @@ const AnnotationEditor: React.FC = () => {
           height: Math.abs(drawingBox.height),
         };
         
-        const startTime = (normalizedBox.x / spectrogramDimensions.width) * duration;
-        const endTime = ((normalizedBox.x + normalizedBox.width) / spectrogramDimensions.width) * duration;
+        const startTime = duration ? (normalizedBox.x / spectrogramDimensions.width) * duration : 0;
+        const endTime = duration ? ((normalizedBox.x + normalizedBox.width) / spectrogramDimensions.width) * duration : 0;
         const maxFreq = 22050 * (1 - normalizedBox.y / spectrogramDimensions.height);  // Nyquist frequency
         const minFreq = 22050 * (1 - (normalizedBox.y + normalizedBox.height) / spectrogramDimensions.height);
         
@@ -1167,10 +1206,14 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     
+    // Adjust coordinates for zoom and spectrogram area
+    const adjustedX = point.x / zoomLevel;
+    const adjustedY = point.y / 0.75;
+    
     // Check if right-clicking on a box
     const clickedBoxIndex = boundingBoxes.findIndex(
-      box => point.x >= box.x && point.x <= box.x + box.width &&
-             point.y >= box.y && point.y <= box.y + box.height
+      box => adjustedX >= box.x && adjustedX <= box.x + box.width &&
+             adjustedY >= box.y && adjustedY <= box.y + box.height
     );
     
     if (clickedBoxIndex !== -1) {
@@ -1337,51 +1380,51 @@ const AnnotationEditor: React.FC = () => {
     }
   };
 
-  // Export handler
-  const handleExport = () => {
-    const exportData = {
-      recording: {
-        id: recording?.id,
-        filename: recording?.original_filename,
-        duration: duration,
-        sample_rate: recording?.sample_rate,
-      },
-      annotations: boundingBoxes.map((box, index) => ({
-        id: index,
-        label: box.label || 'None',
-        start_time: box.start_time,
-        end_time: box.end_time,
-        min_frequency: box.min_frequency,
-        max_frequency: box.max_frequency,
-        duration_ms: ((box.end_time || 0) - (box.start_time || 0)) * 1000,
-      })),
-      export_date: new Date().toISOString(),
-    };
-
-    // Export as JSON
-    const jsonBlob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const jsonUrl = URL.createObjectURL(jsonBlob);
-    const jsonLink = document.createElement('a');
-    jsonLink.href = jsonUrl;
-    jsonLink.download = `${recording?.original_filename || 'annotations'}_${Date.now()}.json`;
-    jsonLink.click();
-    URL.revokeObjectURL(jsonUrl);
-
-    // Export as CSV
-    const csvHeader = 'Label,Start Time (s),End Time (s),Duration (ms),Min Frequency (Hz),Max Frequency (Hz)\n';
-    const csvRows = boundingBoxes.map(box => 
-      `${box.label || 'None'},${box.start_time?.toFixed(3)},${box.end_time?.toFixed(3)},${(((box.end_time || 0) - (box.start_time || 0)) * 1000).toFixed(1)},${box.min_frequency?.toFixed(1)},${box.max_frequency?.toFixed(1)}`
-    ).join('\n');
-    const csvBlob = new Blob([csvHeader + csvRows], { type: 'text/csv' });
-    const csvUrl = URL.createObjectURL(csvBlob);
-    const csvLink = document.createElement('a');
-    csvLink.href = csvUrl;
-    csvLink.download = `${recording?.original_filename || 'annotations'}_${Date.now()}.csv`;
-    csvLink.click();
-    URL.revokeObjectURL(csvUrl);
-
-    toast.success('Annotations exported as JSON and CSV');
-  };
+  // Export handler - commented out for future use
+  // const handleExport = () => {
+  //   const exportData = {
+  //     recording: {
+  //       id: recording?.id,
+  //       filename: recording?.original_filename,
+  //       duration: duration,
+  //       sample_rate: recording?.sample_rate,
+  //     },
+  //     annotations: boundingBoxes.map((box, index) => ({
+  //       id: index,
+  //       label: box.label || 'None',
+  //       start_time: box.start_time,
+  //       end_time: box.end_time,
+  //       min_frequency: box.min_frequency,
+  //       max_frequency: box.max_frequency,
+  //       duration_ms: ((box.end_time || 0) - (box.start_time || 0)) * 1000,
+  //     })),
+  //     export_date: new Date().toISOString(),
+  //   };
+  //
+  //   // Export as JSON
+  //   const jsonBlob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+  //   const jsonUrl = URL.createObjectURL(jsonBlob);
+  //   const jsonLink = document.createElement('a');
+  //   jsonLink.href = jsonUrl;
+  //   jsonLink.download = `${recording?.original_filename || 'annotations'}_${Date.now()}.json`;
+  //   jsonLink.click();
+  //   URL.revokeObjectURL(jsonUrl);
+  //
+  //   // Export as CSV
+  //   const csvHeader = 'Label,Start Time (s),End Time (s),Duration (ms),Min Frequency (Hz),Max Frequency (Hz)\n';
+  //   const csvRows = boundingBoxes.map(box => 
+  //     `${box.label || 'None'},${box.start_time?.toFixed(3)},${box.end_time?.toFixed(3)},${(((box.end_time || 0) - (box.start_time || 0)) * 1000).toFixed(1)},${box.min_frequency?.toFixed(1)},${box.max_frequency?.toFixed(1)}`
+  //   ).join('\n');
+  //   const csvBlob = new Blob([csvHeader + csvRows], { type: 'text/csv' });
+  //   const csvUrl = URL.createObjectURL(csvBlob);
+  //   const csvLink = document.createElement('a');
+  //   csvLink.href = csvUrl;
+  //   csvLink.download = `${recording?.original_filename || 'annotations'}_${Date.now()}.csv`;
+  //   csvLink.click();
+  //   URL.revokeObjectURL(csvUrl);
+  //
+  //   toast.success('Annotations exported as JSON and CSV');
+  // };
 
   // Calculate and update segment duration when selection changes
   useEffect(() => {
@@ -1433,9 +1476,9 @@ const AnnotationEditor: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => navigate('/projects')}
+              onClick={() => navigate(recording ? `/projects/${recording.project_id}` : '/projects')}
               className="p-1 rounded-md hover:bg-gray-100"
-              title="Back to Projects"
+              title="Back to Project"
             >
               <ArrowLeftIcon className="h-4 w-4 text-gray-500" />
             </button>
@@ -1625,17 +1668,17 @@ const AnnotationEditor: React.FC = () => {
                     {boundingBoxes.map((box, index) => {
                       const isSelected = selectedBoxes.has(index);
                       const labelColor = getLabelColor(box.label || 'None');
-                      const startX = ((box.start_time || 0) / duration) * (spectrogramDimensions.width - 40) * zoomLevel;
-                      const endX = ((box.end_time || 0) / duration) * (spectrogramDimensions.width - 40) * zoomLevel;
+                      const startX = duration > 0 ? ((box.start_time || 0) / duration) * (spectrogramDimensions.width - 40) * zoomLevel : 0;
+                      const endX = duration > 0 ? ((box.end_time || 0) / duration) * (spectrogramDimensions.width - 40) * zoomLevel : 0;
                       const waveformHeight = spectrogramDimensions.height * 0.25;  // 25% for waveform
                       
                       return (
                         <g key={index}>
                           {/* Start line */}
                           <line
-                            x1={startX}
+                            x1={isNaN(startX) ? 0 : startX}
                             y1="0"
-                            x2={startX}
+                            x2={isNaN(startX) ? 0 : startX}
                             y2={waveformHeight}
                             stroke={labelColor.stroke}
                             strokeWidth={isSelected ? 2 : 1}
@@ -1643,9 +1686,9 @@ const AnnotationEditor: React.FC = () => {
                           />
                           {/* End line */}
                           <line
-                            x1={endX}
+                            x1={isNaN(endX) ? 0 : endX}
                             y1="0"
-                            x2={endX}
+                            x2={isNaN(endX) ? 0 : endX}
                             y2={waveformHeight}
                             stroke={labelColor.stroke}
                             strokeWidth={isSelected ? 2 : 1}
@@ -1653,9 +1696,9 @@ const AnnotationEditor: React.FC = () => {
                           />
                           {/* Horizontal connector at top */}
                           <line
-                            x1={startX}
+                            x1={isNaN(startX) ? 0 : startX}
                             y1="2"
-                            x2={endX}
+                            x2={isNaN(endX) ? 0 : endX}
                             y2="2"
                             stroke={labelColor.stroke}
                             strokeWidth={isSelected ? 2 : 1}
@@ -1663,9 +1706,9 @@ const AnnotationEditor: React.FC = () => {
                           />
                           {/* Fill area */}
                           <rect
-                            x={startX}
+                            x={isNaN(startX) ? 0 : startX}
                             y="0"
-                            width={endX - startX}
+                            width={isNaN(endX - startX) || (endX - startX) < 0 ? 0 : endX - startX}
                             height={waveformHeight}
                             fill={labelColor.fill}
                             opacity={0.3}
@@ -1834,10 +1877,10 @@ const AnnotationEditor: React.FC = () => {
                     {/* Drawing box - scale to spectrogram area */}
                     {drawingBox && (
                       <Rect
-                        x={(drawingBox.width < 0 ? drawingBox.x + drawingBox.width : drawingBox.x) * zoomLevel}
-                        y={(drawingBox.height < 0 ? drawingBox.y + drawingBox.height : drawingBox.y) * 0.75}
-                        width={Math.abs(drawingBox.width || 0) * zoomLevel}
-                        height={Math.abs(drawingBox.height || 0) * 0.75}
+                        x={isNaN(drawingBox.x) || isNaN(drawingBox.width) ? 0 : (drawingBox.width < 0 ? drawingBox.x + drawingBox.width : drawingBox.x) * zoomLevel}
+                        y={isNaN(drawingBox.y) || isNaN(drawingBox.height) ? 0 : (drawingBox.height < 0 ? drawingBox.y + drawingBox.height : drawingBox.y) * 0.75}
+                        width={isNaN(drawingBox.width) ? 0 : Math.abs(drawingBox.width || 0) * zoomLevel}
+                        height={isNaN(drawingBox.height) ? 0 : Math.abs(drawingBox.height || 0) * 0.75}
                         stroke="#10B981"
                         strokeWidth={2}
                         fill="transparent"
@@ -2019,8 +2062,7 @@ const AnnotationEditor: React.FC = () => {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={contextMenu.boxIndex !== undefined ? (
-            contextMenu.boxIndex !== undefined
+          items={contextMenu.boxIndex !== undefined
               ? selectedBoxes.size > 1 && selectedBoxes.has(contextMenu.boxIndex)
                 ? [
                     {
