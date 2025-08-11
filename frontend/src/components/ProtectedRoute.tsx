@@ -4,8 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 
 const ProtectedRoute: React.FC = () => {
   const { user, loading } = useAuth();
+  
+  console.log('ProtectedRoute: loading =', loading, 'user =', user);
 
   if (loading) {
+    console.log('ProtectedRoute: Showing loading spinner');
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -13,6 +16,7 @@ const ProtectedRoute: React.FC = () => {
     );
   }
 
+  console.log('ProtectedRoute: Redirecting to', user ? 'protected content' : 'login');
   return user ? <Outlet /> : <Navigate to="/login" replace />;
 };
 

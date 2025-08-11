@@ -1,7 +1,8 @@
-from fastapi import FastAPI, HTTPException, Depends, Query, Header
+from fastapi import FastAPI, HTTPException, Depends, Query, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
 from app.api.api_v1.api import api_router
 from app.db.init_db import init_db
@@ -10,6 +11,7 @@ from app.services.minio_client import minio_client
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.core.security import decode_access_token
+from app.core.rate_limiter import limiter, rate_limit_exceeded_handler, get_rate_limit
 from typing import Optional
 import io
 
@@ -18,6 +20,12 @@ app = FastAPI(
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
+
+# Add rate limiter to app state
+app.state.limiter = limiter
+
+# Add rate limit exceeded exception handler
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,12 +39,24 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.on_event("startup")
 async def startup_event():
+    # Initialize database
     db = SessionLocal()
     init_db(db)
     db.close()
+    
+    # Initialize MinIO buckets
+    print("Initializing MinIO storage...")
+    try:
+        # Force initialization of MinIO client and buckets
+        from app.services.minio_client import minio_client as mc
+        # This will trigger _ensure_buckets() in the constructor
+        print("MinIO client initialized successfully")
+    except Exception as e:
+        print(f"Error initializing MinIO: {e}")
 
 @app.get("/")
-def read_root():
+@limiter.limit(get_rate_limit("crud_read"))
+def read_root(request: Request):
     return {"message": "BSMarker API", "version": settings.VERSION}
 
 async def verify_token(token: Optional[str] = Query(None), authorization: Optional[str] = Header(None)):
@@ -64,7 +84,9 @@ async def verify_token(token: Optional[str] = Query(None), authorization: Option
         raise HTTPException(status_code=403, detail="No authentication provided")
 
 @app.get("/files/recordings/{file_path:path}")
+@limiter.limit(get_rate_limit("file_serve"))
 async def get_audio_file(
+    request: Request,
     file_path: str,
     token: Optional[str] = Query(None),
     authorization: Optional[str] = None
@@ -85,7 +107,9 @@ async def get_audio_file(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/files/spectrograms/{file_path:path}")
+@limiter.limit(get_rate_limit("file_serve"))
 async def get_spectrogram_file(
+    request: Request,
     file_path: str,
     token: Optional[str] = Query(None),
     authorization: Optional[str] = None

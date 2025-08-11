@@ -1,0 +1,3 @@
+# System requirements for run_local.py
+# Install with: pip3 install -r system_requirements.txt
+psutil==5.9.6
