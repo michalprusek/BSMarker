@@ -37,6 +37,26 @@ class BoundingBox(BoundingBoxBase):
 
     class Config:
         from_attributes = True
+        
+    @classmethod
+    def from_orm(cls, obj):
+        # Map extra_metadata from DB to metadata in schema
+        data = {
+            'id': obj.id,
+            'annotation_id': obj.annotation_id,
+            'x': obj.x,
+            'y': obj.y,
+            'width': obj.width,
+            'height': obj.height,
+            'start_time': obj.start_time,
+            'end_time': obj.end_time,
+            'min_frequency': obj.min_frequency,
+            'max_frequency': obj.max_frequency,
+            'label': obj.label,
+            'confidence': obj.confidence,
+            'metadata': getattr(obj, 'extra_metadata', None)  # Map extra_metadata to metadata
+        }
+        return cls(**data)
 
 class AnnotationBase(BaseModel):
     recording_id: int

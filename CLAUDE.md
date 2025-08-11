@@ -11,6 +11,8 @@ BSMarker is a full-stack web application designed for annotating bird songs usin
 
 ## Critical Best Practices
 
+IMPORTANT: Use desktop-commander MCP with timeout for potentially long-running commands.
+
 ### 🔴 SSOT (Single Source of Truth) Principle
 **NEVER duplicate code, types, or business logic!**
 - Types & Interfaces → `packages/shared/types`

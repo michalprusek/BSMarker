@@ -1,6 +1,8 @@
 from io import BytesIO
+import time
 from minio import Minio
 from minio.error import S3Error
+from urllib3.exceptions import MaxRetryError, ResponseError
 from app.core.config import settings
 
 class MinioClient:
@@ -19,22 +21,54 @@ class MinioClient:
             try:
                 if not self.client.bucket_exists(bucket):
                     self.client.make_bucket(bucket)
+                    print(f"Created bucket: {bucket}")
+                else:
+                    print(f"Bucket already exists: {bucket}")
             except S3Error as e:
                 print(f"Error creating bucket {bucket}: {e}")
+            except Exception as e:
+                print(f"Unexpected error with bucket {bucket}: {e}")
     
-    def upload_file(self, bucket_name: str, object_name: str, data: bytes, content_type: str = "application/octet-stream"):
-        try:
-            self.client.put_object(
-                bucket_name,
-                object_name,
-                BytesIO(data),
-                length=len(data),
-                content_type=content_type
-            )
-            return True
-        except S3Error as e:
-            print(f"Error uploading file: {e}")
-            return False
+    def upload_file(self, bucket_name: str, object_name: str, data: bytes, content_type: str = "application/octet-stream", max_retries: int = 3):
+        for attempt in range(max_retries):
+            try:
+                # Ensure bucket exists before uploading
+                if not self.client.bucket_exists(bucket_name):
+                    self.client.make_bucket(bucket_name)
+                    print(f"Created missing bucket during upload: {bucket_name}")
+                
+                self.client.put_object(
+                    bucket_name,
+                    object_name,
+                    BytesIO(data),
+                    length=len(data),
+                    content_type=content_type
+                )
+                print(f"Successfully uploaded {object_name} to {bucket_name}")
+                return True
+            except (MaxRetryError, ResponseError) as e:
+                print(f"Connection error on attempt {attempt + 1}/{max_retries} for {object_name}: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                    # Try to recreate the client connection
+                    try:
+                        self.client = Minio(
+                            settings.MINIO_ENDPOINT,
+                            access_key=settings.MINIO_ACCESS_KEY,
+                            secret_key=settings.MINIO_SECRET_KEY,
+                            secure=settings.MINIO_SECURE
+                        )
+                        print(f"Recreated MinIO client for retry {attempt + 2}")
+                    except Exception as reconnect_error:
+                        print(f"Failed to recreate MinIO client: {reconnect_error}")
+                else:
+                    raise
+            except S3Error as e:
+                print(f"S3 Error uploading file {object_name}: {e}")
+                raise
+            except Exception as e:
+                print(f"Unexpected error uploading file {object_name}: {e}")
+                raise
     
     def download_file(self, bucket_name: str, object_name: str) -> bytes:
         try:

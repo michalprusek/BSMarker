@@ -31,6 +31,6 @@ class BoundingBox(Base):
     max_frequency = Column(Float)
     label = Column(String, nullable=False)
     confidence = Column(Float)
-    extra_data = Column(JSON)
+    extra_metadata = Column(JSON)
 
     annotation = relationship("Annotation", back_populates="bounding_boxes")

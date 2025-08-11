@@ -51,92 +51,155 @@
 
 ---
 
-# Code Audit [2025-08-10]
+# Code Audit [2025-08-10] - UPDATED
 
-## 🔴 KRITICKÉ - Bezpečnostní problémy (opravit OKAMŽITĚ)
+## 🚨 OKAMŽITÉ AKCE (Udělat DNES - 4-6 hodin)
 
-- [ ] **CRIT-001: Odstranit hardcoded secrets z kódu** (Effort: S, Files: backend/app/core/config.py)
-      - Details: SECRET_KEY, MINIO keys, admin password jsou přímo v kódu
+- [x] **IMMEDIATE-001: Emergency Secret Rotation** (✓ Completed: 2025-08-10 10:35)
+      - Details: Vytvořit .env s novými secrets, update config.py pro env vars, rotovat všechny klíče
       - Agent: feature-implementer
       
-- [ ] **CRIT-002: Zabezpečit file operations proti path traversal** (Effort: M, Files: backend/app/api/api_v1/endpoints/recordings.py)
-      - Details: Validovat a sanitizovat všechny file paths, použít tempfile
+- [x] **IMMEDIATE-002: Fix Path Traversal** (✓ Completed: 2025-08-10 10:35)
+      - Details: Použít tempfile.NamedTemporaryFile, validovat paths s pathlib
       - Agent: feature-implementer
       
-- [ ] **CRIT-003: Přesunout JWT z localStorage do httpOnly cookies** (Effort: M, Files: frontend/src/services/api.ts, backend security)
-      - Details: Ochrana proti XSS útokům, implementovat CSRF ochranu
+- [x] **IMMEDIATE-003: Add Basic Rate Limiting** (✓ Completed: 2025-08-10 10:35)
+      - Details: Instalovat slowapi, limity: upload 5/min, auth 10/min
       - Agent: feature-implementer
       
-- [ ] **CRIT-004: Opravit SQL injection rizika** (Effort: S, Files: backend/app/api/api_v1/endpoints/)
-      - Details: Sanitizovat search parametry, escape speciální znaky
+- [ ] **IMMEDIATE-004: Fix File Upload Size Check** (Effort: 30min, Files: backend/app/api/api_v1/endpoints/recordings.py)
+      - Details: Stream file a kontrolovat velikost incrementálně před načtením
       - Agent: feature-implementer
       
-- [ ] **CRIT-005: Opravit deprecated datetime.utcnow()** (Effort: S, Files: backend/app/core/security.py)
-      - Details: Použít datetime.now(timezone.utc) pro Python 3.12+
-      - Agent: feature-implementer
-
-## 🟠 VYSOKÁ PRIORITA - Výkon a architektura
-
-- [ ] **HIGH-001: Refaktorovat 2129-řádkový AnnotationEditor.tsx** (Effort: XL, Files: frontend/src/pages/AnnotationEditor.tsx)
-      - Details: Rozdělit na SpectrogramCanvas, AudioPlayer, AnnotationTools, BoundingBoxManager
-      - Agent: feature-implementer
-      
-- [ ] **HIGH-002: Validovat file upload velikost před načtením** (Effort: M, Files: backend/app/api/api_v1/endpoints/recordings.py)
-      - Details: Stream file a kontrolovat velikost incrementálně
-      - Agent: feature-implementer
-      
-- [ ] **HIGH-003: Odstranit console.log statements** (Effort: S, Files: 5+ frontend files)
-      - Details: 18 výskytů, použít proper logging library
-      - Agent: feature-implementer
-      
-- [ ] **HIGH-004: Přidat React performance optimizace** (Effort: M, Files: frontend components)
-      - Details: Pouze 11 použití useCallback/useMemo, přidat memoizaci
+- [x] **IMMEDIATE-005: Fix datetime.utcnow()** (✓ Completed: 2025-08-10 10:35)
+      - Details: Nahradit datetime.now(timezone.utc)
       - Agent: feature-implementer
 
-## 🟡 STŘEDNÍ PRIORITA - Kvalita kódu
+## 🔴 KRITICKÉ - Bezpečnostní problémy (Týden 1)
 
-- [ ] **MED-001: Implementovat API rate limiting** (Effort: M, Files: backend/app/main.py)
-      - Details: Použít slowapi, zejména na upload endpointy
+- [ ] **CRIT-001: Implement Secure JWT Storage** (Effort: L/8h, Files: backend auth, frontend AuthContext)
+      - Details: Přesunout JWT do httpOnly cookies, přidat CSRF tokeny, refresh token mechanismus
       - Agent: feature-implementer
       
-- [ ] **MED-002: Odstranit .env soubory z git** (Effort: S, Files: .env, backend/.env)
-      - Details: git rm --cached, přidat do .gitignore
+- [ ] **CRIT-002: SQL Injection Prevention** (Effort: M/2h, Files: backend endpoints with search)
+      - Details: Sanitizovat všechny search parametry, použít parametrizované queries
+      - Agent: feature-implementer
+      
+- [ ] **CRIT-003: Remove .env from Git History** (Effort: S/30min, Files: .env, backend/.env)
+      - Details: git rm --cached .env backend/.env, přidat do .gitignore, BFG cleaner na historii
       - Agent: github-workflow-manager
       
-- [ ] **MED-003: Nahradit print() proper loggingem** (Effort: M, Files: backend services)
-      - Details: Python logging modul s různými úrovněmi
+- [ ] **CRIT-004: Fix NPM Vulnerabilities** (Effort: S/2h, Files: package.json)
+      - Details: npm audit fix --force, update vulnerable packages (9 high, 6 moderate)
       - Agent: feature-implementer
       
-- [ ] **MED-004: Opravit TypeScript 'any' typy** (Effort: M, Files: 5+ frontend files)
-      - Details: Definovat proper interfaces a typy
+- [ ] **CRIT-005: Implement CSRF Protection** (Effort: M/6h, Files: backend/app/core/security.py)
+      - Details: CSRF tokeny pro všechny state-changing operace
       - Agent: feature-implementer
       
-- [ ] **MED-005: Přidat CSRF ochranu** (Effort: M, Files: backend/app/core/security.py)
-      - Details: Implementovat CSRF tokeny pro state-changing operace
+- [ ] **CRIT-006: Secure CORS Configuration** (Effort: S/1h, Files: backend/app/main.py)
+      - Details: Specifikovat exact methods a headers místo ["*"]
+      - Agent: feature-implementer
+      
+- [ ] **CRIT-007: Add Security Headers** (Effort: S/1h, Files: backend/app/main.py)
+      - Details: X-Frame-Options, X-Content-Type-Options, CSP headers
       - Agent: feature-implementer
 
-## 🟢 NÍZKÁ PRIORITA - Nice-to-have
+## 🟠 VYSOKÁ PRIORITA - Výkon a architektura (Týden 2)
 
-- [ ] Odstranit unused imports (10+ souborů)
-- [ ] Standardizovat error message formáty
-- [ ] Přidat JSDoc komentáře k public API
-- [ ] Aktualizovat deprecated npm packages (9 vulnerabilities)
-- [ ] Konfigurovat ESLint a Prettier
-- [ ] Přidat git hooks pro pre-commit kontroly
-- [ ] Implementovat log rotation
-- [ ] Přidat API versioning strategii
-- [ ] Dokumentovat deployment procedury
-- [ ] Vytvořit development environment setup script
+- [ ] **HIGH-001: Refactor 2129-line AnnotationEditor.tsx** (Effort: XL/16h, Files: frontend/src/pages/AnnotationEditor.tsx)
+      - Details: Split: SpectrogramCanvas, AudioPlayer, AnnotationTools, BoundingBoxManager, KeyboardHandler
+      - Agent: feature-implementer
+      
+- [ ] **HIGH-002: Add Database Connection Pooling** (Effort: M/3h, Files: backend/app/db/session.py)
+      - Details: SQLAlchemy connection pool configuration
+      - Agent: feature-implementer
+      
+- [ ] **HIGH-003: Fix N+1 Query Problems** (Effort: M/4h, Files: backend endpoints)
+      - Details: Use eager loading with joinedload/selectinload
+      - Agent: feature-implementer
+      
+- [ ] **HIGH-004: React Performance Optimizations** (Effort: M/6h, Files: frontend components)
+      - Details: Add React.memo, useCallback, useMemo where needed
+      - Agent: feature-implementer
+      
+- [ ] **HIGH-005: Remove Console.log Statements** (Effort: S/2h, Files: 18 locations in frontend)
+      - Details: Remove all console.log, implement proper logging library
+      - Agent: feature-implementer
+      
+- [ ] **HIGH-006: Fix TypeScript 'any' Types** (Effort: M/4h, Files: 13+ frontend files)
+      - Details: Define proper interfaces and types
+      - Agent: feature-implementer
 
-## 📊 Souhrn auditu
+## 🟡 STŘEDNÍ PRIORITA - Kvalita kódu (Týden 3)
 
-- **Celkem nalezených problémů**: 47
-- **Kritické bezpečnostní problémy**: 8
-- **Duplicita kódu**: ~35%
-- **Test coverage**: <10%
-- **Odhadovaný technický dluh**: 120-150 hodin
-- **Doporučené okamžité akce**: 
-  1. Odstranit hardcoded secrets (CRIT-001)
-  2. Zabezpečit file operations (CRIT-002)
-  3. Přesunout JWT do cookies (CRIT-003)
+- [ ] **MED-001: Implement Logging Framework** (Effort: M/4h, Files: backend services)
+      - Details: Replace print() with Python logging module
+      - Agent: feature-implementer
+      
+- [ ] **MED-002: Create Basic Test Suite** (Effort: L/8h, Files: new test files)
+      - Details: Auth tests, file upload tests, critical path e2e
+      - Agent: test-debugger-reporter
+      
+- [ ] **MED-003: Add Database Migrations** (Effort: M/4h, Files: backend/alembic)
+      - Details: Setup Alembic, create initial migrations
+      - Agent: feature-implementer
+      
+- [ ] **MED-004: Implement Request ID Tracking** (Effort: M/3h, Files: backend middleware)
+      - Details: Correlation IDs for debugging across services
+      - Agent: feature-implementer
+      
+- [ ] **MED-005: Add Input Validation** (Effort: M/4h, Files: backend schemas)
+      - Details: Comprehensive Pydantic validation for all inputs
+      - Agent: feature-implementer
+
+## 🟢 NÍZKÁ PRIORITA - Nice-to-have (Týden 4+)
+
+- [ ] Setup CI/CD Pipeline (GitHub Actions)
+- [ ] Remove unused imports (10+ files)
+- [ ] Standardize naming conventions
+- [ ] Add JSDoc/docstrings
+- [ ] Configure ESLint and Prettier
+- [ ] Add git pre-commit hooks
+- [ ] Implement log rotation
+- [ ] Add health check endpoints
+- [ ] Create development setup script
+- [ ] Add API documentation (OpenAPI)
+- [ ] Implement graceful shutdown
+- [ ] Add monitoring/metrics endpoints
+
+## 📊 Souhrn auditu - AKTUALIZOVÁNO
+
+- **Celkem nalezených problémů**: 78
+- **Kritické bezpečnostní problémy**: 12
+- **Vysoká priorita problémů**: 18
+- **Duplicita kódu**: ~40%
+- **Test coverage**: 0%
+- **Odhadovaný technický dluh**: 180-220 hodin
+- **Code Quality Score**: 42/100
+
+## 🎯 Doporučené okamžité akce (TOP 3)
+
+1. **TERAZ**: Odstranit hardcoded secrets a vytvořit .env (30 min)
+2. **TERAZ**: Opravit path traversal vulnerability (1 hodina)
+3. **TERAZ**: Přidat basic rate limiting (1 hodina)
+
+## 📈 Success Metrics
+
+**Týden 1 cíle:**
+- [ ] Žádné hardcoded secrets v kódu
+- [ ] Path traversal opraveno
+- [ ] Rate limiting aktivní
+- [ ] .env files odstraněny z git
+
+**Týden 2 cíle:**
+- [ ] JWT v httpOnly cookies
+- [ ] AnnotationEditor refaktorovaný
+- [ ] Základní testy >20% coverage
+
+**Full Implementation (4 týdny):**
+- [ ] Test coverage >60%
+- [ ] Security vulnerabilities: 0
+- [ ] Code quality score >85
+- [ ] Performance: <2s page load, <200ms API
 

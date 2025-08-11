@@ -22,16 +22,59 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setFiles(e.target.files);
+      // Validate files
+      const fileList = e.target.files;
+      const validFiles: File[] = [];
+      const emptyFiles: string[] = [];
+      const largeFiles: string[] = [];
+      const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+      
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        if (file.size === 0) {
+          emptyFiles.push(file.name);
+        } else if (file.size > MAX_FILE_SIZE) {
+          largeFiles.push(`${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+        } else {
+          validFiles.push(file);
+        }
+      }
+      
+      if (emptyFiles.length > 0) {
+        toast.error(`Empty files cannot be uploaded: ${emptyFiles.join(', ')}`);
+      }
+      
+      if (largeFiles.length > 0) {
+        toast.error(`Files exceed 100MB limit: ${largeFiles.join(', ')}`);
+      }
+      
+      if (validFiles.length > 0) {
+        // Convert back to FileList-like object
+        const dt = new DataTransfer();
+        validFiles.forEach(file => dt.items.add(file));
+        setFiles(dt.files);
+        toast.success(`${validFiles.length} file(s) ready for upload`);
+      } else {
+        setFiles(null);
+      }
     }
   };
 
   const handleUpload = async () => {
+    console.log('Upload: Starting upload process');
     if (!files || files.length === 0) {
       toast.error('Please select at least one file');
       return;
     }
 
+    // Additional validation before upload
+    const emptyFiles = Array.from(files).filter(f => f.size === 0);
+    if (emptyFiles.length > 0) {
+      toast.error(`Cannot upload empty files: ${emptyFiles.map(f => f.name).join(', ')}`);
+      return;
+    }
+
+    console.log(`Upload: Processing ${files.length} file(s)`);
     setUploading(true);
     let successCount = 0;
     let failCount = 0;
@@ -40,27 +83,64 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
       // Upload files sequentially to avoid overwhelming the server
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        console.log(`Upload: Starting upload for file ${i+1}/${files.length}: ${file.name} (${(file.size/1024/1024).toFixed(2)} MB)`);
+        
         try {
           setUploadProgress(prev => ({ ...prev, [file.name]: 0 }));
-          await recordingService.uploadRecording(projectId, file);
+          console.log(`Upload: Calling uploadRecording for ${file.name}...`);
+          
+          const startTime = Date.now();
+          await recordingService.uploadRecording(
+            projectId, 
+            file,
+            (percent) => {
+              setUploadProgress(prev => ({ ...prev, [file.name]: percent }));
+            }
+          );
+          const uploadTime = Date.now() - startTime;
+          
+          console.log(`Upload: Successfully uploaded ${file.name} in ${uploadTime}ms`);
           setUploadProgress(prev => ({ ...prev, [file.name]: 100 }));
           successCount++;
         } catch (error: any) {
+          console.error(`Upload: Failed to upload ${file.name}:`, error);
+          console.error('Upload: Error response:', error.response);
+          console.error('Upload: Error data:', error.response?.data);
           failCount++;
-          toast.error(`Failed to upload ${file.name}: ${error.response?.data?.detail || 'Unknown error'}`);
+          
+          // Use the error message from the service or fallback
+          const errorMessage = error.message || error.response?.data?.detail || 'Unknown error';
+          toast.error(`Failed to upload ${file.name}: ${errorMessage}`);
         }
       }
 
+      console.log(`Upload: Finished. Success: ${successCount}, Failed: ${failCount}`);
+      
       if (successCount > 0) {
         toast.success(`Successfully uploaded ${successCount} file(s)`);
         onUploaded();
+        
+        // Close modal after successful uploads if no failures
+        if (failCount === 0) {
+          setTimeout(() => {
+            onClose();
+          }, 1500);
+        }
       }
       if (failCount > 0) {
         toast.error(`Failed to upload ${failCount} file(s)`);
       }
+    } catch (error) {
+      console.error('Upload: Unexpected error in upload process:', error);
+      toast.error('Unexpected error during upload');
     } finally {
+      console.log('Upload: Cleaning up...');
       setUploading(false);
-      setUploadProgress({});
+      
+      // Don't clear progress immediately to show completion status
+      setTimeout(() => {
+        setUploadProgress({});
+      }, 2000);
     }
   };
 
@@ -137,14 +217,26 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
                             <p className="text-sm font-medium text-gray-700">
                               Selected {files.length} file(s) - Total: {getTotalSize()} MB
                             </p>
-                            <div className="max-h-32 overflow-y-auto">
+                            <div className="max-h-32 overflow-y-auto space-y-2">
                               {Array.from(files).map((file, index) => (
-                                <div key={index} className="text-xs text-gray-600">
-                                  • {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                                  {uploadProgress[file.name] !== undefined && (
-                                    <span className="ml-2 text-blue-600">
-                                      {uploadProgress[file.name] === 100 ? '✓' : `${uploadProgress[file.name]}%`}
+                                <div key={index} className="text-xs">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-gray-600">
+                                      • {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
                                     </span>
+                                    {uploadProgress[file.name] !== undefined && (
+                                      <span className={uploadProgress[file.name] === 100 ? "text-green-600" : "text-blue-600"}>
+                                        {uploadProgress[file.name] === 100 ? '✓' : `${uploadProgress[file.name]}%`}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {uploadProgress[file.name] !== undefined && uploadProgress[file.name] < 100 && (
+                                    <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                                      <div 
+                                        className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                                        style={{ width: `${uploadProgress[file.name]}%` }}
+                                      />
+                                    </div>
                                   )}
                                 </div>
                               ))}

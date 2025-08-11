@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface ContextMenuItem {
   label: string;
@@ -17,6 +17,7 @@ interface ContextMenuProps {
 
 const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [adjustedPosition, setAdjustedPosition] = useState({ x, y });
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -44,19 +45,36 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }) => {
   useEffect(() => {
     if (menuRef.current) {
       const rect = menuRef.current.getBoundingClientRect();
-      const adjustedX = Math.min(x, window.innerWidth - rect.width - 10);
-      const adjustedY = Math.min(y, window.innerHeight - rect.height - 10);
+      const menuHeight = rect.height;
+      const menuWidth = rect.width;
       
-      menuRef.current.style.left = `${Math.max(10, adjustedX)}px`;
-      menuRef.current.style.top = `${Math.max(10, adjustedY)}px`;
+      // Calculate adjusted position to keep menu fully visible
+      let adjustedX = x;
+      let adjustedY = y;
+      
+      // Check right edge
+      if (x + menuWidth > window.innerWidth - 10) {
+        adjustedX = window.innerWidth - menuWidth - 10;
+      }
+      
+      // Check bottom edge - this is the main fix for the cutoff issue
+      if (y + menuHeight > window.innerHeight - 10) {
+        adjustedY = window.innerHeight - menuHeight - 10;
+      }
+      
+      // Ensure minimum distance from edges
+      adjustedX = Math.max(10, adjustedX);
+      adjustedY = Math.max(10, adjustedY);
+      
+      setAdjustedPosition({ x: adjustedX, y: adjustedY });
     }
   }, [x, y]);
 
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[180px]"
-      style={{ left: x, top: y }}
+      className="fixed z-50 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[180px] max-h-[80vh] overflow-y-auto"
+      style={{ left: adjustedPosition.x, top: adjustedPosition.y }}
     >
       {items.map((item, index) => (
         <button

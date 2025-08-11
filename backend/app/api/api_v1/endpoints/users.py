@@ -1,15 +1,18 @@
 from typing import Any, List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.api import deps
 from app.core.security import get_password_hash
+from app.core.rate_limiter import limiter, RATE_LIMITS
 from app.models.user import User
 from app.schemas.user import User as UserSchema, UserCreate, UserUpdate
 
 router = APIRouter()
 
 @router.get("/", response_model=List[UserSchema])
+@limiter.limit(RATE_LIMITS["admin_operation"])
 def read_users(
+    request: Request,
     db: Session = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
@@ -19,8 +22,10 @@ def read_users(
     return users
 
 @router.post("/", response_model=UserSchema)
+@limiter.limit(RATE_LIMITS["admin_operation"])
 def create_user(
     *,
+    request: Request,
     db: Session = Depends(deps.get_db),
     user_in: UserCreate,
     current_user: User = Depends(deps.get_current_admin_user),
@@ -45,7 +50,9 @@ def create_user(
     return user
 
 @router.get("/{user_id}", response_model=UserSchema)
+@limiter.limit(RATE_LIMITS["admin_operation"])
 def read_user(
+    request: Request,
     user_id: int,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_admin_user),
@@ -56,8 +63,10 @@ def read_user(
     return user
 
 @router.put("/{user_id}", response_model=UserSchema)
+@limiter.limit(RATE_LIMITS["admin_operation"])
 def update_user(
     *,
+    request: Request,
     db: Session = Depends(deps.get_db),
     user_id: int,
     user_in: UserUpdate,
