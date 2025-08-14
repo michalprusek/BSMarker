@@ -119,9 +119,12 @@ async def upload_recording(
     contents = await file.read()
     logger.info(f"File read completed in {time.time() - file_read_start:.2f}s")
     
-    # Upload file to MinIO
+    # Upload file to MinIO with enhanced error handling
     minio_start = time.time()
     try:
+        # Log connection details (without sensitive data)
+        logger.info(f"MinIO upload attempt - Endpoint: {settings.MINIO_ENDPOINT}, Bucket: {settings.MINIO_BUCKET_RECORDINGS}")
+        
         success = minio_client.upload_file(
             bucket_name=settings.MINIO_BUCKET_RECORDINGS,
             object_name=file_path,
@@ -129,11 +132,21 @@ async def upload_recording(
             content_type=file.content_type
         )
         if not success:
+            logger.error(f"MinIO upload returned False for {file_path}")
             raise HTTPException(status_code=500, detail="Failed to upload file to storage")
         logger.info(f"MinIO upload completed in {time.time() - minio_start:.2f}s")
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
-        logger.error(f"MinIO upload error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+        logger.error(f"MinIO upload error for {file_path}: {str(e)}", exc_info=True)
+        # Provide more specific error messages
+        error_msg = str(e)
+        if "Connection" in error_msg or "refused" in error_msg.lower():
+            raise HTTPException(status_code=503, detail="Storage service temporarily unavailable. Please try again.")
+        elif "Access" in error_msg or "credentials" in error_msg.lower():
+            raise HTTPException(status_code=500, detail="Storage authentication error. Please contact support.")
+        else:
+            raise HTTPException(status_code=500, detail=f"Storage error: {error_msg[:100]}")  # Limit error message length
     
     # Use secure temporary file for audio processing
     audio_analysis_start = time.time()

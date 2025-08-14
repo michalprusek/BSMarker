@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "BSMarker"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
+    REDIRECT_HOST: str = Field(default="bsmarker.utia.cas.cz", description="Host to use in redirect location headers")
     
     # Security Settings - NO HARDCODED DEFAULTS FOR PRODUCTION SECRETS
     DATABASE_URL: str = Field(..., description="PostgreSQL connection URL")

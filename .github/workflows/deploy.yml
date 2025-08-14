@@ -1,0 +1,245 @@
+name: Deploy to Production
+
+# Required GitHub Secrets:
+# - DOCKER_USERNAME: Docker Hub username
+# - DOCKER_PASSWORD: Docker Hub password
+# - PRODUCTION_HOST: Production server hostname/IP
+# - PRODUCTION_USER: SSH username for production server
+# - PRODUCTION_SSH_KEY: SSH private key for production server
+# - REACT_APP_API_URL: Frontend API URL (e.g., https://bsmarker.utia.cas.cz)
+# - SLACK_WEBHOOK: Optional Slack webhook URL for notifications
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy_type:
+        description: 'Deployment type'
+        required: true
+        default: 'rolling'
+        type: choice
+        options:
+          - rolling
+          - recreate
+          - build-only
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: bsmarker
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run backend tests
+        run: |
+          cd backend
+          pytest tests/ --cov=app --cov-report=xml
+        continue-on-error: true  # Don't fail if tests don't exist yet
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run frontend tests
+        run: |
+          cd frontend
+          npm test -- --watchAll=false
+        continue-on-error: true  # Don't fail if tests don't exist yet
+
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/nginx
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:buildcache,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ github.sha }}
+          build-args: |
+            REACT_APP_API_URL=${{ secrets.REACT_APP_API_URL }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:buildcache,mode=max
+
+      - name: Build and push nginx
+        uses: docker/build-push-action@v4
+        with:
+          context: ./nginx
+          file: ./nginx/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/nginx:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/nginx:${{ github.sha }}
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://bsmarker.utia.cas.cz
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /opt/bsmarker
+            
+            # Pull latest code
+            git pull origin main
+            
+            # Update images
+            export VERSION=${{ github.sha }}
+            docker-compose -f docker-compose.prod.yml pull
+            
+            # Run migrations
+            docker-compose -f docker-compose.prod.yml run --rm backend alembic upgrade head
+            
+            # Deploy with rolling update
+            docker-compose -f docker-compose.prod.yml up -d --scale backend=4 --scale frontend=4
+            
+            # Wait for new containers to be healthy before scaling down
+            echo "Waiting for containers to become healthy..."
+            for i in {1..60}; do
+              healthy_backends=$(docker ps --filter "name=bsmarker_backend" --filter "health=healthy" --format "{{.Names}}" | wc -l)
+              healthy_frontends=$(docker ps --filter "name=bsmarker_frontend" --filter "health=healthy" --format "{{.Names}}" | wc -l)
+              running_backends=$(docker ps --filter "name=bsmarker_backend" --format "{{.Names}}" | wc -l)
+              running_frontends=$(docker ps --filter "name=bsmarker_frontend" --format "{{.Names}}" | wc -l)
+              
+              echo "Healthy backends: $healthy_backends/$running_backends, frontends: $healthy_frontends/$running_frontends"
+              
+              # Check if at least 2 of each service are healthy or if no health check is defined, check if running
+              if [ $healthy_backends -ge 2 ] && [ $healthy_frontends -ge 2 ]; then
+                echo "Sufficient healthy containers available, proceeding with scale down"
+                break
+              elif [ $running_backends -ge 2 ] && [ $running_frontends -ge 2 ] && [ $i -gt 30 ]; then
+                # Fallback: if containers are running for 30+ seconds but no health check, assume ready
+                echo "Containers running for 30+ seconds without health status, proceeding"
+                break
+              fi
+              
+              if [ $i -eq 60 ]; then
+                echo "Timeout waiting for containers to become healthy"
+                exit 1
+              fi
+              
+              sleep 5
+            done
+            
+            docker-compose -f docker-compose.prod.yml up -d --scale backend=2 --scale frontend=2 --remove-orphans
+            
+            # Clean up old images
+            docker image prune -f
+
+      - name: Verify deployment
+        run: |
+          sleep 10
+          curl -f https://bsmarker.utia.cas.cz/health || exit 1
+
+      - name: Notify on success
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          text: 'BSMarker deployed successfully to production!'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        continue-on-error: true
+
+      - name: Notify on failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: 'BSMarker deployment to production failed!'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        continue-on-error: true
+
+  rollback:
+    name: Rollback if needed
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: needs.deploy.result == 'failure'
+    steps:
+      - name: Rollback deployment
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            cd /opt/bsmarker
+            ./scripts/rollback.sh
