@@ -70,7 +70,7 @@ async def proxy_headers_middleware(request: Request, call_next):
                 
                 # Also ensure the correct host is used
                 if "localhost" in location:
-                    location = location.replace("localhost", "your-domain.example.com")
+                    location = location.replace("localhost", settings.REDIRECT_HOST)
                 
                 headers["location"] = location
     
