@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { AuthToken, LoginCredentials, User, Project, Recording, Annotation } from '../types';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8123';
+// Use relative URL to automatically use the same protocol as the page
+const API_URL = process.env.REACT_APP_API_URL || '';
 
 console.log('API Configuration:', {
   API_URL,
@@ -361,7 +362,7 @@ export const recordingService = {
 
 export const annotationService = {
   getAnnotations: async (recordingId: number): Promise<Annotation[]> => {
-    const response = await api.get<Annotation[]>(`/annotations/${recordingId}/`);
+    const response = await api.get<Annotation[]>(`/annotations/${recordingId}`);
     return response.data;
   },
   

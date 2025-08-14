@@ -455,7 +455,7 @@ const AnnotationEditor: React.FC = () => {
         setAnnotationId(null);
       }
       
-      const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8123';
+      const baseUrl = process.env.REACT_APP_API_URL || '';
       const token = localStorage.getItem('token');
       
       try {
@@ -514,7 +514,7 @@ const AnnotationEditor: React.FC = () => {
 
     wavesurferRef.current = wavesurfer;
 
-    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8877';
+    const baseUrl = process.env.REACT_APP_API_URL || '';
     const token = localStorage.getItem('token');
     
     try {

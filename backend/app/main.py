@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, Query, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import StreamingResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
@@ -14,6 +15,7 @@ from app.core.security import decode_access_token
 from app.core.rate_limiter import limiter, rate_limit_exceeded_handler, get_rate_limit
 from typing import Optional
 import io
+from starlette.datastructures import MutableHeaders
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -26,6 +28,53 @@ app.state.limiter = limiter
 
 # Add rate limit exceeded exception handler
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# Middleware to handle proxy headers and ensure HTTPS URLs
+@app.middleware("http")
+async def proxy_headers_middleware(request: Request, call_next):
+    # Get the forwarded headers from nginx
+    forwarded_proto = request.headers.get("X-Forwarded-Proto", "https")
+    forwarded_host = request.headers.get("X-Forwarded-Host") or request.headers.get("Host")
+    
+    # Ensure we use the correct host for URL generation
+    if forwarded_host:
+        # Remove port if present
+        host_without_port = forwarded_host.split(':')[0]
+        port = 443 if forwarded_proto == "https" else 80
+        
+        # Update request scope for proper URL generation
+        request.scope["scheme"] = forwarded_proto
+        request.scope["server"] = (host_without_port, port)
+        
+        # Update host header
+        new_headers = []
+        for header_name, header_value in request.scope["headers"]:
+            if header_name == b"host":
+                new_headers.append((b"host", host_without_port.encode()))
+            else:
+                new_headers.append((header_name, header_value))
+        request.scope["headers"] = new_headers
+    
+    # Process the request
+    response = await call_next(request)
+    
+    # Fix redirect URLs to use HTTPS
+    if hasattr(response, 'headers'):
+        headers = MutableHeaders(response.headers)
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = headers.get("location")
+            if location:
+                # Replace any http:// with https:// and fix the host
+                if location.startswith("http://"):
+                    location = location.replace("http://", "https://", 1)
+                
+                # Also ensure the correct host is used
+                if "localhost" in location:
+                    location = location.replace("localhost", "bsmarker.utia.cas.cz")
+                
+                headers["location"] = location
+    
+    return response
 
 app.add_middleware(
     CORSMiddleware,
