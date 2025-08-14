@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { HomeIcon, FolderIcon, UsersIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
+import Logo from './Logo';
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -19,6 +20,7 @@ const Layout: React.FC = () => {
           <div className="flex justify-between h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
+                <Logo size={32} className="mr-2" />
                 <h1 className="text-xl font-bold text-gray-900">BSMarker</h1>
               </div>
               <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
