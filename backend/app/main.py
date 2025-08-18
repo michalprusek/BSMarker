@@ -84,6 +84,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Health check endpoint for Docker
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "BSMarker API"}
+
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.on_event("startup")

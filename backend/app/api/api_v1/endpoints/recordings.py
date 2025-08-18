@@ -15,7 +15,7 @@ from app.api import deps
 from app.core.config import settings
 from app.models.project import Project
 from app.models.recording import Recording
-from app.models.spectrogram import Spectrogram
+from app.models.spectrogram import Spectrogram, SpectrogramStatus
 from app.models.user import User
 from app.schemas.recording import Recording as RecordingSchema
 from app.services.minio_client import minio_client
@@ -177,9 +177,14 @@ async def upload_recording(
     db.refresh(recording)
     logger.info(f"Database operations completed in {time.time() - db_start:.2f}s")
     
-    # Skip spectrogram generation during upload to prevent timeouts
-    # Spectrogram will be generated on-demand when requested
-    logger.info(f"Skipping spectrogram generation during upload for recording {recording.id}")
+    # Trigger asynchronous spectrogram generation
+    try:
+        from app.tasks.spectrogram_tasks import generate_spectrogram_task
+        task = generate_spectrogram_task.delay(recording.id)
+        logger.info(f"Spectrogram generation task {task.id} queued for recording {recording.id}")
+    except Exception as e:
+        logger.error(f"Failed to queue spectrogram generation for recording {recording.id}: {str(e)}")
+        # Don't fail the upload if task queueing fails
     
     total_time = time.time() - upload_start_time
     logger.info(f"Upload completed for {file.filename} - Total time: {total_time:.2f}s")
@@ -362,15 +367,15 @@ async def get_recording_audio(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve audio: {str(e)}")
 
-@router.get("/{recording_id}/spectrogram")
-@limiter.limit(RATE_LIMITS["spectrogram"])
-async def get_recording_spectrogram(
+@router.get("/{recording_id}/spectrogram/status")
+@limiter.limit(RATE_LIMITS["crud_read"])
+def get_spectrogram_status(
     request: Request,
     recording_id: int,
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
-    """Get or generate spectrogram for a recording."""
+    """Get spectrogram generation status for a recording."""
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=404, detail="Recording not found")
@@ -379,54 +384,117 @@ async def get_recording_spectrogram(
     if not current_user.is_admin and project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
     
+    # Check spectrogram status
+    spectrogram = db.query(Spectrogram).filter(
+        Spectrogram.recording_id == recording_id
+    ).first()
+    
+    if not spectrogram:
+        return {
+            "status": "not_started",
+            "recording_id": recording_id,
+            "available_resolutions": []
+        }
+    
+    # Check which resolutions are available
+    available_resolutions = []
+    if spectrogram.thumbnail_path:
+        available_resolutions.append("thumbnail")
+    if spectrogram.standard_path:
+        available_resolutions.append("standard")
+    if spectrogram.full_path:
+        available_resolutions.append("full")
+    
+    return {
+        "status": spectrogram.status.value,
+        "recording_id": recording_id,
+        "available_resolutions": available_resolutions,
+        "error_message": spectrogram.error_message,
+        "processing_time": spectrogram.processing_time,
+        "created_at": spectrogram.created_at.isoformat() if spectrogram.created_at else None,
+        "updated_at": spectrogram.updated_at.isoformat() if spectrogram.updated_at else None
+    }
+
+@router.get("/{recording_id}/spectrogram")
+@limiter.limit(RATE_LIMITS["spectrogram"])
+async def get_recording_spectrogram(
+    request: Request,
+    recording_id: int,
+    resolution: str = Query("standard", description="Resolution: thumbnail, standard, or full"),
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_active_user),
+) -> Any:
+    """Get spectrogram for a recording with specified resolution."""
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=404, detail="Recording not found")
+    
+    project = db.query(Project).filter(Project.id == recording.project_id).first()
+    if not current_user.is_admin and project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    
+    # Validate resolution parameter
+    if resolution not in ["thumbnail", "standard", "full"]:
+        raise HTTPException(status_code=400, detail="Invalid resolution. Use: thumbnail, standard, or full")
+    
     # Check if spectrogram exists
     spectrogram = db.query(Spectrogram).filter(
         Spectrogram.recording_id == recording_id
     ).first()
     
     if not spectrogram:
-        # Generate spectrogram synchronously
-        try:
-            # Validate file extension before processing
-            file_extension = validate_file_extension(recording.filename)
-            
-            # Download audio file to secure temp location
-            audio_data = minio_client.get_file(
-                bucket_name=settings.MINIO_BUCKET_RECORDINGS,
-                object_name=recording.file_path
-            )
-            
-            with secure_temp_file(suffix=file_extension) as temp_path:
-                with open(temp_path, "wb") as f:
-                    f.write(audio_data.read())
-                
-                # Generate spectrogram
-                spectrogram_path = generate_spectrogram(
-                    audio_path=str(temp_path),
-                    recording_id=recording_id,
-                    db=db
-                )
-            
-            # Get the newly created spectrogram
-            spectrogram = db.query(Spectrogram).filter(
-                Spectrogram.recording_id == recording_id
-            ).first()
-            
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to generate spectrogram: {str(e)}")
+        # Return 202 Accepted - processing not started yet
+        raise HTTPException(
+            status_code=202, 
+            detail="Spectrogram generation not started. Please check status endpoint."
+        )
+    
+    if spectrogram.status == SpectrogramStatus.FAILED:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Spectrogram generation failed: {spectrogram.error_message or 'Unknown error'}"
+        )
+    
+    if spectrogram.status == SpectrogramStatus.PROCESSING:
+        raise HTTPException(
+            status_code=202, 
+            detail="Spectrogram is being generated. Please try again later."
+        )
+    
+    if spectrogram.status != SpectrogramStatus.COMPLETED:
+        raise HTTPException(
+            status_code=202, 
+            detail=f"Spectrogram is not ready yet. Status: {spectrogram.status.value}"
+        )
+    
+    # Get the appropriate path for the resolution
+    image_path = None
+    if resolution == "thumbnail":
+        image_path = spectrogram.thumbnail_path
+    elif resolution == "standard":
+        image_path = spectrogram.standard_path or spectrogram.image_path  # Fallback to legacy
+    elif resolution == "full":
+        image_path = spectrogram.full_path
+    
+    if not image_path:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Spectrogram resolution '{resolution}' not available"
+        )
     
     # Serve the spectrogram image
     try:
         spectrogram_data = minio_client.get_file(
             bucket_name=settings.MINIO_BUCKET_SPECTROGRAMS,
-            object_name=spectrogram.image_path
+            object_name=image_path
         )
         
         return StreamingResponse(
             spectrogram_data,
             media_type="image/png",
             headers={
-                "Content-Disposition": f"inline; filename=spectrogram_{recording_id}.png"
+                "Content-Disposition": f"inline; filename=spectrogram_{recording_id}_{resolution}.png",
+                "Cache-Control": "public, max-age=86400"  # Cache for 24 hours
             }
         )
     except Exception as e:

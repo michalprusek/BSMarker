@@ -317,21 +317,52 @@ export const recordingService = {
     return `${API_URL}/files/recordings/${filePath}?token=${token}`;
   },
   
-  getSpectrogramUrl: async (recordingId: number): Promise<string | null> => {
+  getSpectrogramStatus: async (recordingId: number): Promise<{
+    status: string;
+    recording_id: number;
+    available_resolutions: string[];
+    error_message?: string;
+    processing_time?: number;
+    created_at?: string;
+    updated_at?: string;
+  }> => {
+    const response = await api.get(`/recordings/${recordingId}/spectrogram/status`);
+    return response.data;
+  },
+
+  getSpectrogramUrl: async (recordingId: number, resolution: string = 'standard'): Promise<string | null> => {
     try {
-      // Get the spectrogram URL directly from the API
-      const token = localStorage.getItem('token');
-      const response = await api.get(`/recordings/${recordingId}/spectrogram-url`);
-      if (response.data && response.data.url) {
-        return `${API_URL}${response.data.url}?token=${token}`;
+      const status = await recordingService.getSpectrogramStatus(recordingId);
+      
+      if (status.status === 'completed' && status.available_resolutions.includes(resolution)) {
+        // Return direct API URL for completed spectrograms
+        return `${API_URL}/api/v1/recordings/${recordingId}/spectrogram?resolution=${resolution}`;
+      } else if (status.status === 'completed' && status.available_resolutions.length > 0) {
+        // Fallback to first available resolution
+        const availableRes = status.available_resolutions[0];
+        return `${API_URL}/api/v1/recordings/${recordingId}/spectrogram?resolution=${availableRes}`;
       }
-      // Fallback to constructing URL from recording ID
-      return `${API_URL}/files/spectrograms/${recordingId}_spectrogram.png?token=${token}`;
+      
+      return null; // Spectrogram not ready yet
     } catch (error) {
       console.error('Failed to get spectrogram URL:', error);
-      // Fallback URL
-      const token = localStorage.getItem('token');
-      return `${API_URL}/files/spectrograms/${recordingId}_spectrogram.png?token=${token}`;
+      return null;
+    }
+  },
+
+  getSpectrogramBlob: async (recordingId: number, resolution: string = 'standard'): Promise<Blob | null> => {
+    try {
+      const response = await api.get(`/recordings/${recordingId}/spectrogram`, {
+        params: { resolution },
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.status === 202) {
+        // Spectrogram is being generated
+        return null;
+      }
+      throw error;
     }
   },
   
