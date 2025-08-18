@@ -81,8 +81,8 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       CORS_ORIGINS: '["https://bsmarker.utia.cas.cz"]'
-    volumes:
-      - ./backend/logs:/app/logs
+    # volumes:
+    #   - ./backend/logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,7 +93,7 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -107,6 +107,83 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    image: bsmarker/backend:${VERSION:-latest}
+    restart: unless-stopped
+    command: ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info", "--queues=spectrogram,default", "--concurrency=2"]
+    env_file:
+      - .env.production
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      NUMBA_CACHE_DIR: /tmp
+    # volumes:
+    #   - ./backend/logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    image: bsmarker/backend:${VERSION:-latest}
+    restart: unless-stopped
+    command: ["celery", "-A", "app.core.celery_app", "beat", "--loglevel=info", "--schedule=/tmp/celerybeat-schedule"]
+    env_file:
+      - .env.production
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+    volumes:
+      - celery-beat-schedule:/tmp
+    # volumes:
+    #   - ./backend/logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/tmp/celerybeat-schedule') else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 
   frontend:
     build:
@@ -142,8 +219,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/ssl:/etc/letsencrypt:ro
-      - ./nginx/certbot:/var/www/certbot:rw
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:rw
       - nginx_logs:/var/log/nginx
     depends_on:
       - backend
@@ -200,6 +277,8 @@ volumes:
   minio_data:
     driver: local
   nginx_logs:
+    driver: local
+  celery-beat-schedule:
     driver: local
 
 networks:

@@ -22,6 +22,54 @@ BSMarker is a full-stack web application designed for annotating bird songs usin
 - **Domain**: https://bsmarker.utia.cas.cz
 - **Ports**: Frontend/Backend via nginx (80/443), MinIO=9000/9001 (internal), PostgreSQL=5432 (internal), Redis=6379 (internal)
 
+## Let's Encrypt SSL Setup
+
+### Automated SSL Certificate with Let's Encrypt
+```bash
+# 1. Stop nginx to free port 80
+docker-compose -f docker-compose.prod.yml stop nginx
+
+# 2. Create certbot directories
+mkdir -p /home/prusek/BSMarker/certbot/{conf,www}
+
+# 3. Run Certbot in Docker to get certificate
+docker run --rm \
+  -v /home/prusek/BSMarker/certbot/conf:/etc/letsencrypt \
+  -v /home/prusek/BSMarker/certbot/www:/var/www/certbot \
+  -p 80:80 \
+  certbot/certbot certonly --standalone \
+  --email admin@bsmarker.com \
+  -d bsmarker.utia.cas.cz \
+  --rsa-key-size 4096 \
+  --agree-tos \
+  --force-renewal
+
+# 4. Generate DH parameters for SSL security
+openssl dhparam -out /tmp/ssl-dhparams.pem 2048
+cp /tmp/ssl-dhparams.pem /home/prusek/BSMarker/certbot/conf/ssl-dhparams.pem
+
+# 5. Update docker-compose.prod.yml nginx volumes:
+#    - ./certbot/conf:/etc/letsencrypt:ro
+#    - ./certbot/www:/var/www/certbot:rw
+
+# 6. Start nginx and apply Let's Encrypt configuration
+docker-compose -f docker-compose.prod.yml up -d nginx
+docker cp /home/prusek/BSMarker/nginx/nginx-letsencrypt.conf bsmarker_nginx_1:/etc/nginx/conf.d/nginx.conf
+docker exec bsmarker_nginx_1 nginx -s reload
+```
+
+### SSL Certificate Renewal
+```bash
+# Renew certificates (run monthly via cron)
+docker run --rm \
+  -v /home/prusek/BSMarker/certbot/conf:/etc/letsencrypt \
+  -v /home/prusek/BSMarker/certbot/www:/var/www/certbot \
+  certbot/certbot renew --quiet
+
+# Reload nginx after renewal
+docker exec bsmarker_nginx_1 nginx -s reload
+```
+
 ## Common Docker Commands
 
 ### Backend (FastAPI in Docker)
