@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from app.db.database import Base
+from app.db.base_class import Base
 
 class Recording(Base):
     __tablename__ = "recordings"

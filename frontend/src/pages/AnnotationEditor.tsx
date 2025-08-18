@@ -38,6 +38,11 @@ const AnnotationEditor: React.FC = () => {
   const [projectRecordings, setProjectRecordings] = useState<Recording[]>([]);
   const [currentRecordingIndex, setCurrentRecordingIndex] = useState<number>(0);
   const [spectrogramUrl, setSpectrogramUrl] = useState<string>('');
+  const [spectrogramStatus, setSpectrogramStatus] = useState<string>('not_started');
+  const [spectrogramError, setSpectrogramError] = useState<string | null>(null);
+  const [availableResolutions, setAvailableResolutions] = useState<string[]>([]);
+  const [currentResolution, setCurrentResolution] = useState<string>('standard');
+  const [isLoadingSpectrogram, setIsLoadingSpectrogram] = useState<boolean>(false);
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
   const [selectedBox, setSelectedBox] = useState<BoundingBox | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -400,6 +405,114 @@ const AnnotationEditor: React.FC = () => {
   }, [spectrogramUrl]);
 
 
+  const loadSpectrogram = async (recordingId: number) => {
+    setIsLoadingSpectrogram(true);
+    setSpectrogramError(null);
+    
+    try {
+      // Check current status
+      const status = await recordingService.getSpectrogramStatus(recordingId);
+      setSpectrogramStatus(status.status);
+      setAvailableResolutions(status.available_resolutions);
+      
+      if (status.error_message) {
+        setSpectrogramError(status.error_message);
+      }
+      
+      if (status.status === 'completed' && status.available_resolutions.length > 0) {
+        // Try to get the preferred resolution, or fallback to first available
+        const preferredResolution = status.available_resolutions.includes(currentResolution) 
+          ? currentResolution 
+          : status.available_resolutions[0];
+        
+        await loadSpectrogramImage(recordingId, preferredResolution);
+        setCurrentResolution(preferredResolution);
+      } else if (status.status === 'processing' || status.status === 'pending') {
+        // Start polling for completion
+        pollSpectrogramStatus(recordingId);
+      } else if (status.status === 'failed') {
+        toast.error(`Spectrogram generation failed: ${status.error_message || 'Unknown error'}`);
+      } else if (status.status === 'not_started') {
+        toast.info('Spectrogram generation will start shortly...');
+        // Start polling for when generation begins
+        pollSpectrogramStatus(recordingId);
+      }
+    } catch (error) {
+      console.error('Failed to load spectrogram:', error);
+      setSpectrogramError('Failed to load spectrogram');
+      toast.error('Failed to load spectrogram');
+    } finally {
+      setIsLoadingSpectrogram(false);
+    }
+  };
+
+  const loadSpectrogramImage = async (recordingId: number, resolution: string) => {
+    try {
+      const blob = await recordingService.getSpectrogramBlob(recordingId, resolution);
+      if (blob) {
+        // Clean up previous URL
+        if (spectrogramUrl && spectrogramUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(spectrogramUrl);
+        }
+        
+        const objectUrl = URL.createObjectURL(blob);
+        setSpectrogramUrl(objectUrl);
+      }
+    } catch (error) {
+      console.error(`Failed to load spectrogram image (${resolution}):`, error);
+      throw error;
+    }
+  };
+
+  const pollSpectrogramStatus = async (recordingId: number) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const status = await recordingService.getSpectrogramStatus(recordingId);
+        setSpectrogramStatus(status.status);
+        setAvailableResolutions(status.available_resolutions);
+        
+        if (status.status === 'completed' && status.available_resolutions.length > 0) {
+          clearInterval(pollInterval);
+          
+          // Get thumbnail first for quick display if available
+          if (status.available_resolutions.includes('thumbnail')) {
+            await loadSpectrogramImage(recordingId, 'thumbnail');
+            setCurrentResolution('thumbnail');
+            
+            // Then load standard resolution in background
+            if (status.available_resolutions.includes('standard')) {
+              setTimeout(async () => {
+                await loadSpectrogramImage(recordingId, 'standard');
+                setCurrentResolution('standard');
+              }, 100);
+            }
+          } else {
+            // Load best available resolution
+            const preferredResolution = status.available_resolutions.includes('standard') 
+              ? 'standard' 
+              : status.available_resolutions[0];
+            await loadSpectrogramImage(recordingId, preferredResolution);
+            setCurrentResolution(preferredResolution);
+          }
+          
+          toast.success('Spectrogram loaded successfully!');
+        } else if (status.status === 'failed') {
+          clearInterval(pollInterval);
+          setSpectrogramError(status.error_message || 'Generation failed');
+          toast.error(`Spectrogram generation failed: ${status.error_message || 'Unknown error'}`);
+        }
+      } catch (error) {
+        console.error('Error polling spectrogram status:', error);
+        clearInterval(pollInterval);
+      }
+    }, 2000); // Poll every 2 seconds
+
+    // Stop polling after 5 minutes (avoid infinite polling)
+    setTimeout(() => {
+      clearInterval(pollInterval);
+    }, 5 * 60 * 1000);
+  };
+
   const fetchProjectRecordings = async () => {
     if (!recordingId) return;
     try {
@@ -455,28 +568,8 @@ const AnnotationEditor: React.FC = () => {
         setAnnotationId(null);
       }
       
-      const baseUrl = process.env.REACT_APP_API_URL || '';
-      const token = localStorage.getItem('token');
-      
-      try {
-        const response = await fetch(`${baseUrl}/api/v1/recordings/${recordingId}/spectrogram`, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
-        
-        if (response.ok) {
-          const blob = await response.blob();
-          const objectUrl = URL.createObjectURL(blob);
-          setSpectrogramUrl(objectUrl);
-        } else {
-          console.error('Failed to fetch spectrogram');
-          toast.error('Failed to load spectrogram');
-        }
-      } catch (error) {
-        console.error('Failed to fetch spectrogram:', error);
-        toast.error('Failed to load spectrogram');
-      }
+      // Start loading spectrogram asynchronously
+      loadSpectrogram(parseInt(recordingId));
     } catch (error) {
       console.error('Failed to fetch recording data:', error);
       toast.error('Failed to fetch recording data');
@@ -1624,8 +1717,41 @@ const AnnotationEditor: React.FC = () => {
                       }}
                     />
                   ) : (
-                    <div className="flex items-center justify-center w-full h-full bg-gray-100">
-                      <p className="text-gray-500">Loading spectrogram...</p>
+                    <div className="flex flex-col items-center justify-center w-full h-full bg-gray-50" style={{ left: '40px', width: 'calc(100% - 40px)' }}>
+                      {isLoadingSpectrogram ? (
+                        <>
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-4"></div>
+                          <p className="text-gray-600 mb-2">
+                            {spectrogramStatus === 'processing' ? 'Generating spectrogram...' :
+                             spectrogramStatus === 'pending' ? 'Queued for processing...' :
+                             'Loading spectrogram...'}
+                          </p>
+                          {spectrogramStatus === 'processing' && (
+                            <p className="text-sm text-gray-500">This may take a few moments for longer recordings</p>
+                          )}
+                        </>
+                      ) : spectrogramError ? (
+                        <div className="text-center">
+                          <div className="text-red-500 mb-2">⚠️ Spectrogram Generation Failed</div>
+                          <p className="text-sm text-gray-600 mb-3">{spectrogramError}</p>
+                          <button
+                            onClick={() => loadSpectrogram(parseInt(recordingId!))}
+                            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-center">
+                          <p className="text-gray-500 mb-3">Spectrogram not available</p>
+                          <button
+                            onClick={() => loadSpectrogram(parseInt(recordingId!))}
+                            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                          >
+                            Spektrogram se generuje, čekejte prosím...
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1939,6 +2065,40 @@ const AnnotationEditor: React.FC = () => {
                 <div className="text-xs text-gray-500 ml-4">
                   Hold ← to rewind, → to fast-forward
                 </div>
+                
+                {/* Spectrogram Status Indicator */}
+                {(spectrogramStatus === 'processing' || spectrogramStatus === 'pending') && (
+                  <div className="flex items-center space-x-2 ml-6">
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                    <span className="text-xs text-blue-600">
+                      {spectrogramStatus === 'processing' ? 'Generating...' : 'Queued...'}
+                    </span>
+                  </div>
+                )}
+                
+                {/* Spectrogram Resolution Selector */}
+                {availableResolutions.length > 1 && (
+                  <div className="flex items-center space-x-2 ml-6">
+                    <span className="text-xs text-gray-500">Quality:</span>
+                    <select 
+                      value={currentResolution}
+                      onChange={(e) => {
+                        const newResolution = e.target.value;
+                        setCurrentResolution(newResolution);
+                        if (recordingId) {
+                          loadSpectrogramImage(parseInt(recordingId), newResolution);
+                        }
+                      }}
+                      className="text-xs px-1 py-0.5 border border-gray-300 rounded bg-white"
+                    >
+                      {availableResolutions.map(res => (
+                        <option key={res} value={res}>
+                          {res === 'thumbnail' ? 'Fast' : res === 'standard' ? 'Standard' : 'High'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
           </div>
