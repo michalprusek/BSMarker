@@ -1,6 +1,8 @@
-from typing import Optional
-from pydantic import BaseModel, EmailStr
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, EmailStr
+
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -9,11 +11,14 @@ class UserBase(BaseModel):
     is_active: bool = True
     is_admin: bool = False
 
+
 class UserCreate(UserBase):
     password: str
 
+
 class UserUpdate(UserBase):
     password: Optional[str] = None
+
 
 class UserInDBBase(UserBase):
     id: int
@@ -23,8 +28,10 @@ class UserInDBBase(UserBase):
     class Config:
         from_attributes = True
 
+
 class User(UserInDBBase):
     pass
+
 
 class UserInDB(UserInDBBase):
     hashed_password: str

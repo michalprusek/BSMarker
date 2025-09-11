@@ -1,5 +1,7 @@
+"""BSMarker API v1 router configuration."""
+
+from app.api.api_v1.endpoints import annotations, auth, projects, recordings, users
 from fastapi import APIRouter
-from app.api.api_v1.endpoints import auth, users, projects, recordings, annotations
 
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])

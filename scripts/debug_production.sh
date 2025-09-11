@@ -9,11 +9,11 @@ if [ -f "docker-compose.prod.yml" ]; then
     echo "1. Checking container status:"
     docker-compose -f docker-compose.prod.yml ps
     echo ""
-    
+
     echo "2. Backend container logs (last 50 lines):"
     docker-compose -f docker-compose.prod.yml logs --tail=50 backend
     echo ""
-    
+
     echo "3. Testing MinIO connection from backend container:"
     docker-compose -f docker-compose.prod.yml exec backend python3 -c "
 import os
@@ -38,23 +38,23 @@ except Exception as e:
     print(f'Connection failed: {e}')
 "
     echo ""
-    
+
     echo "4. Checking backend environment variables:"
     docker-compose -f docker-compose.prod.yml exec backend env | grep -E "(MINIO|DATABASE|REDIS)" | sed 's/=.*PASSWORD.*/=***HIDDEN***/'
     echo ""
-    
+
     echo "5. Testing backend API health:"
     curl -s http://localhost/api/v1/health || echo "Health check failed"
     echo ""
-    
+
     echo "6. Checking disk space:"
     df -h | grep -E "(Filesystem|docker|/var|/home)"
     echo ""
-    
+
     echo "7. Memory usage:"
     free -h
     echo ""
-    
+
     echo "8. MinIO container logs (last 30 lines):"
     docker-compose -f docker-compose.prod.yml logs --tail=30 minio
 else

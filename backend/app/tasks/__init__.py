@@ -1,1 +1,1 @@
-# Celery tasks module
+"""BSMarker tasks package."""

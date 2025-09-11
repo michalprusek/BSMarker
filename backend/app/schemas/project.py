@@ -1,16 +1,21 @@
-from typing import Optional
-from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel
+
 
 class ProjectBase(BaseModel):
     name: str
     description: Optional[str] = None
 
+
 class ProjectCreate(ProjectBase):
     pass
 
+
 class ProjectUpdate(ProjectBase):
     name: Optional[str] = None
+
 
 class ProjectInDBBase(ProjectBase):
     id: int
@@ -20,6 +25,7 @@ class ProjectInDBBase(ProjectBase):
 
     class Config:
         from_attributes = True
+
 
 class Project(ProjectInDBBase):
     pass

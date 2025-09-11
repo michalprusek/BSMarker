@@ -1,18 +1,20 @@
-from io import BytesIO
-import time
 import logging
+import time
+from io import BytesIO
+
+from app.core.config import settings
 from minio import Minio
 from minio.error import S3Error
 from urllib3.exceptions import MaxRetryError, ResponseError
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
 
 class MinioClient:
     def __init__(self):
         self._create_client()
         self._ensure_buckets()
-    
+
     def _create_client(self):
         """Create or recreate the MinIO client connection"""
         try:
@@ -20,13 +22,13 @@ class MinioClient:
                 settings.MINIO_ENDPOINT,
                 access_key=settings.MINIO_ACCESS_KEY,
                 secret_key=settings.MINIO_SECRET_KEY,
-                secure=settings.MINIO_SECURE
+                secure=settings.MINIO_SECURE,
             )
             logger.info(f"MinIO client created for endpoint: {settings.MINIO_ENDPOINT}")
         except Exception as e:
             logger.error(f"Error creating MinIO client: {e}")
             raise
-    
+
     def _ensure_buckets(self):
         buckets = [settings.MINIO_BUCKET_RECORDINGS, settings.MINIO_BUCKET_SPECTROGRAMS]
         for bucket in buckets:
@@ -40,28 +42,37 @@ class MinioClient:
                 logger.error(f"Error creating bucket {bucket}: {e}")
             except Exception as e:
                 logger.error(f"Unexpected error with bucket {bucket}: {e}")
-    
-    def upload_file(self, bucket_name: str, object_name: str, data: bytes, content_type: str = "application/octet-stream", max_retries: int = 3):
+
+    def upload_file(
+        self,
+        bucket_name: str,
+        object_name: str,
+        data: bytes,
+        content_type: str = "application/octet-stream",
+        max_retries: int = 3,
+    ):
         for attempt in range(max_retries):
             try:
                 # Ensure bucket exists before uploading
                 if not self.client.bucket_exists(bucket_name):
                     self.client.make_bucket(bucket_name)
                     logger.info(f"Created missing bucket during upload: {bucket_name}")
-                
+
                 self.client.put_object(
                     bucket_name,
                     object_name,
                     BytesIO(data),
                     length=len(data),
-                    content_type=content_type
+                    content_type=content_type,
                 )
                 logger.debug(f"Successfully uploaded {object_name} to {bucket_name}")
                 return True
             except (MaxRetryError, ResponseError) as e:
-                logger.warning(f"Connection error on attempt {attempt + 1}/{max_retries} for {object_name}: {e}")
+                logger.warning(
+                    f"Connection error on attempt {attempt + 1}/{max_retries} for {object_name}: {e}"
+                )
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)  # Exponential backoff
+                    time.sleep(2**attempt)  # Exponential backoff
                     # Try to recreate the client connection
                     try:
                         self._create_client()
@@ -76,7 +87,7 @@ class MinioClient:
             except Exception as e:
                 logger.error(f"Unexpected error uploading file {object_name}: {e}")
                 raise
-    
+
     def download_file(self, bucket_name: str, object_name: str) -> bytes:
         try:
             response = self.client.get_object(bucket_name, object_name)
@@ -87,7 +98,7 @@ class MinioClient:
         except S3Error as e:
             logger.error(f"Error downloading file: {e}")
             return None
-    
+
     def delete_file(self, bucket_name: str, object_name: str):
         try:
             self.client.remove_object(bucket_name, object_name)
@@ -95,7 +106,7 @@ class MinioClient:
         except S3Error as e:
             logger.error(f"Error deleting file: {e}")
             return False
-    
+
     def get_file(self, bucket_name: str, object_name: str):
         """Get file as a stream for use with StreamingResponse."""
         try:
@@ -104,12 +115,13 @@ class MinioClient:
         except S3Error as e:
             logger.error(f"Error getting file: {e}")
             raise
-    
+
     def get_presigned_url(self, bucket_name: str, object_name: str, expiry: int = 3600):
         try:
             return self.client.presigned_get_object(bucket_name, object_name, expires=expiry)
         except S3Error as e:
             logger.error(f"Error generating presigned URL: {e}")
             return None
+
 
 minio_client = MinioClient()

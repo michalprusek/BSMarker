@@ -94,7 +94,7 @@ find "$BACKUP_DIR" -name "*.gz" -mtime +$RETENTION_DAYS -delete
 if command -v aws &> /dev/null && [ ! -z "$S3_BUCKET" ]; then
     log "Uploading backups to S3..."
     aws s3 cp "$BACKUP_DIR/db_${TIMESTAMP}.sql.gz" "$S3_BUCKET/daily/" || true
-    
+
     if [ "$FULL_BACKUP" = true ]; then
         aws s3 cp "$BACKUP_DIR/minio_${TIMESTAMP}.tar.gz" "$S3_BUCKET/full/" || true
     fi

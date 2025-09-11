@@ -114,17 +114,17 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     log "Showing recent commits..."
     git log --oneline -10
     read -p "Enter commit hash to revert to: " COMMIT_HASH
-    
+
     # Validate commit hash exists
     if git cat-file -e "$COMMIT_HASH^{commit}" 2>/dev/null; then
         # Create backup branch before checkout
         BACKUP_BRANCH="rollback-backup-$(date +%Y%m%d_%H%M%S)"
         git branch "$BACKUP_BRANCH"
         log "Created backup branch: $BACKUP_BRANCH"
-        
+
         git checkout "$COMMIT_HASH"
         log "Reverted to commit: $COMMIT_HASH"
-        
+
         # Rebuild images with old code
         log "Rebuilding Docker images..."
         docker-compose -f "$COMPOSE_FILE" build

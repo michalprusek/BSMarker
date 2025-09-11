@@ -84,7 +84,7 @@ done < <(grep -v '^#' "$ENV_FILE" | grep -v '^[[:space:]]*$')
 if [ "$BACKUP" = true ]; then
     log "Creating backup..."
     mkdir -p "$BACKUP_DIR"
-    
+
     # Backup database with compression and error handling
     log "Creating database backup..."
     if docker-compose -f "$COMPOSE_FILE" exec -T postgres pg_dump -U "$DB_USER" --no-password "$DB_NAME" | gzip > "$BACKUP_DIR/db_$(date +%Y%m%d_%H%M%S).sql.gz"; then
@@ -92,7 +92,7 @@ if [ "$BACKUP" = true ]; then
     else
         warning "Database backup failed"
     fi
-    
+
     # Backup MinIO data with verification
     log "Creating MinIO backup..."
     MINIO_BACKUP_FILE="$BACKUP_DIR/minio_$(date +%Y%m%d_%H%M%S).tar.gz"
@@ -102,7 +102,7 @@ if [ "$BACKUP" = true ]; then
         warning "MinIO backup failed or resulted in empty file"
         rm -f "$MINIO_BACKUP_FILE"  # Remove empty backup file
     fi
-    
+
     log "Backup completed"
 fi
 
@@ -163,7 +163,7 @@ VERIFICATION_DELAY=10
 
 for i in $(seq 1 $VERIFICATION_ATTEMPTS); do
     log "Verification attempt $i/$VERIFICATION_ATTEMPTS..."
-    
+
     # Check if containers are healthy
     if docker-compose -f "$COMPOSE_FILE" ps | grep -q "Up.*healthy"; then
         # Test HTTP endpoint
@@ -172,7 +172,7 @@ for i in $(seq 1 $VERIFICATION_ATTEMPTS); do
             break
         fi
     fi
-    
+
     if [ $i -eq $VERIFICATION_ATTEMPTS ]; then
         error "Deployment verification failed after $VERIFICATION_ATTEMPTS attempts. Application is not responding."
     else

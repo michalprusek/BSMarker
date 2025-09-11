@@ -1,3 +1,5 @@
+"""Recording endpoints for BSMarker API."""
+
 import logging
 import os
 import tempfile
@@ -83,7 +85,7 @@ async def upload_recording(
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
     upload_start_time = time.time()
-    logger.info(f"=== UPLOAD ENDPOINT HIT ===")
+    logger.info("=== UPLOAD ENDPOINT HIT ===")
     logger.info(f"Starting upload of {file.filename} ({file.size} bytes) to project {project_id}")
     logger.info(f"User: {current_user.email}")
     project = db.query(Project).filter(Project.id == project_id).first()
@@ -122,7 +124,8 @@ async def upload_recording(
     try:
         # Log connection details (without sensitive data)
         logger.info(
-            f"MinIO upload attempt - Endpoint: {settings.MINIO_ENDPOINT}, Bucket: {settings.MINIO_BUCKET_RECORDINGS}"
+            f"MinIO upload attempt - Endpoint: {settings.MINIO_ENDPOINT}, "
+            f"Bucket: {settings.MINIO_BUCKET_RECORDINGS}"
         )
 
         success = minio_client.upload_file(
@@ -164,7 +167,8 @@ async def upload_recording(
             y, sr = librosa.load(str(temp_path), sr=None)
             duration = librosa.get_duration(y=y, sr=sr)
             logger.info(
-                f"Audio analysis completed in {time.time() - audio_analysis_start:.2f}s - Duration: {duration:.2f}s, Sample Rate: {sr}"
+                f"Audio analysis completed in {time.time() - audio_analysis_start:.2f}s - "
+                f"Duration: {duration:.2f}s, Sample Rate: {sr}"
             )
         except Exception as e:
             logger.error(f"Audio analysis failed: {str(e)}")
