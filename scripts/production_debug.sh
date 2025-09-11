@@ -46,20 +46,20 @@ try:
     endpoint = os.getenv('MINIO_ENDPOINT', 'minio:9000')
     access_key = os.getenv('MINIO_ACCESS_KEY', 'minioadmin')
     secret_key = os.getenv('MINIO_SECRET_KEY', 'minioadmin')
-    
+
     client = Minio(
         endpoint,
         access_key=access_key,
         secret_key=secret_key,
         secure=False
     )
-    
+
     # List buckets
     buckets = list(client.list_buckets())
     print(f"✅ Connected! Found {len(buckets)} buckets:")
     for bucket in buckets:
         print(f"  - {bucket.name}")
-    
+
     # Check/create required buckets
     for bucket_name in ['recordings', 'spectrograms']:
         if not client.bucket_exists(bucket_name):
@@ -67,7 +67,7 @@ try:
             print(f"✅ Created bucket: {bucket_name}")
         else:
             print(f"✅ Bucket exists: {bucket_name}")
-    
+
     # Test upload
     test_data = b"Test from production debug script"
     test_file = "test/debug_test.txt"
@@ -79,11 +79,11 @@ try:
         content_type='text/plain'
     )
     print(f"✅ Test upload successful: {test_file}")
-    
+
     # Cleanup
     client.remove_object('recordings', test_file)
     print("✅ Test cleanup successful")
-    
+
 except Exception as e:
     print(f"❌ MinIO test failed: {e}")
     import traceback
@@ -93,11 +93,11 @@ EOF
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}MinIO connection test failed!${NC}"
-    
+
     echo ""
     echo -e "${YELLOW}Step 3b: Checking MinIO container directly...${NC}"
     docker-compose -f docker-compose.prod.yml exec -T minio sh -c "ls -la /data/"
-    
+
     echo ""
     echo -e "${YELLOW}Step 3c: MinIO logs...${NC}"
     docker-compose -f docker-compose.prod.yml logs --tail=20 minio

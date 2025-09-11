@@ -15,10 +15,10 @@ from app.core.celery_app import celery_app
 if __name__ == "__main__":
     # Set up proper logging
     import logging
+
     logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    
+
     # Start worker
     celery_app.start()

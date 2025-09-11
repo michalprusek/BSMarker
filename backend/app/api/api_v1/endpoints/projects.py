@@ -1,19 +1,24 @@
+"""Project endpoints for BSMarker API."""
+
+import logging
 from typing import Any, List
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
+
 from app.api import deps
+from app.core.config import settings
+from app.core.rate_limiter import RATE_LIMITS, limiter
 from app.models.project import Project
 from app.models.recording import Recording
 from app.models.spectrogram import Spectrogram
 from app.models.user import User
-from app.schemas.project import Project as ProjectSchema, ProjectCreate, ProjectUpdate
-from app.core.rate_limiter import limiter, RATE_LIMITS
-from app.core.config import settings
+from app.schemas.project import Project as ProjectSchema
+from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services.minio_client import minio_client
-import logging
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
 
 @router.get("/", response_model=List[ProjectSchema])
 @limiter.limit(RATE_LIMITS["crud_read"])
@@ -27,10 +32,15 @@ def read_projects(
     if current_user.is_admin:
         projects = db.query(Project).offset(skip).limit(limit).all()
     else:
-        projects = db.query(Project).filter(
-            Project.owner_id == current_user.id
-        ).offset(skip).limit(limit).all()
+        projects = (
+            db.query(Project)
+            .filter(Project.owner_id == current_user.id)
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
     return projects
+
 
 @router.post("/", response_model=ProjectSchema)
 @limiter.limit(RATE_LIMITS["crud_write"])
@@ -42,14 +52,13 @@ def create_project(
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
     project = Project(
-        name=project_in.name,
-        description=project_in.description,
-        owner_id=current_user.id
+        name=project_in.name, description=project_in.description, owner_id=current_user.id
     )
     db.add(project)
     db.commit()
     db.refresh(project)
     return project
+
 
 @router.get("/{project_id}", response_model=ProjectSchema)
 @limiter.limit(RATE_LIMITS["crud_read"])
@@ -66,6 +75,7 @@ def read_project(
         raise HTTPException(status_code=403, detail="Not enough permissions")
     return project
 
+
 @router.put("/{project_id}", response_model=ProjectSchema)
 @limiter.limit(RATE_LIMITS["crud_write"])
 def update_project(
@@ -81,15 +91,16 @@ def update_project(
         raise HTTPException(status_code=404, detail="Project not found")
     if not current_user.is_admin and project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
-    
+
     update_data = project_in.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(project, field, value)
-    
+
     db.add(project)
     db.commit()
     db.refresh(project)
     return project
+
 
 @router.delete("/{project_id}")
 @limiter.limit(RATE_LIMITS["crud_write"])
@@ -111,49 +122,43 @@ def delete_project(
         raise HTTPException(status_code=404, detail="Project not found")
     if not current_user.is_admin and project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
-    
+
     logger.info(f"Deleting project {project_id} and all associated data")
-    
+
     # Get all recordings for this project to delete their files
     recordings = db.query(Recording).filter(Recording.project_id == project_id).all()
-    
+
     # Delete all MinIO files for recordings
     for recording in recordings:
         try:
             # Delete the audio file from MinIO
             minio_client.delete_file(
-                bucket_name=settings.MINIO_BUCKET_RECORDINGS,
-                object_name=recording.file_path
+                bucket_name=settings.MINIO_BUCKET_RECORDINGS, object_name=recording.file_path
             )
             logger.info(f"Deleted audio file: {recording.file_path}")
         except Exception as e:
             logger.error(f"Failed to delete audio file {recording.file_path}: {str(e)}")
             # Continue even if file deletion fails
-        
+
         # Get and delete spectrograms for this recording
-        spectrograms = db.query(Spectrogram).filter(
-            Spectrogram.recording_id == recording.id
-        ).all()
-        
+        spectrograms = db.query(Spectrogram).filter(Spectrogram.recording_id == recording.id).all()
+
         for spectrogram in spectrograms:
             try:
                 # Delete the spectrogram image from MinIO
                 minio_client.delete_file(
                     bucket_name=settings.MINIO_BUCKET_SPECTROGRAMS,
-                    object_name=spectrogram.image_path
+                    object_name=spectrogram.image_path,
                 )
                 logger.info(f"Deleted spectrogram: {spectrogram.image_path}")
             except Exception as e:
                 logger.error(f"Failed to delete spectrogram {spectrogram.image_path}: {str(e)}")
                 # Continue even if file deletion fails
-    
+
     # Delete the project (cascade will handle recordings, spectrograms, and annotations)
     db.delete(project)
     db.commit()
-    
+
     logger.info(f"Successfully deleted project {project_id} with {len(recordings)} recordings")
-    
-    return {
-        "message": "Project deleted successfully",
-        "deleted_recordings": len(recordings)
-    }
+
+    return {"message": "Project deleted successfully", "deleted_recordings": len(recordings)}
