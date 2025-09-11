@@ -1,0 +1,227 @@
+# Pre-commit hooks for BSMarker backend
+# Run: pre-commit install to set up the git hook scripts
+# Run: pre-commit run --all-files to run on all files
+
+repos:
+  # Python code formatting
+  - repo: https://github.com/psf/black
+    rev: 24.3.0
+    hooks:
+      - id: black
+        language_version: python3.11
+        args: [--line-length=100]
+        exclude: ^(migrations/|alembic/)
+
+  # Python import sorting
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: [--profile, black, --line-length, "100"]
+        exclude: ^(migrations/|alembic/)
+
+  # Python linting
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        args: [--max-line-length=100, --extend-ignore=E203,W503]
+        exclude: ^(migrations/|alembic/)
+        additional_dependencies:
+          - flake8-docstrings
+          - flake8-bugbear
+          - flake8-comprehensions
+          - flake8-simplify
+
+  # Python static type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.9.0
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports, --strict-optional, --disallow-untyped-defs]
+        exclude: ^(migrations/|alembic/|tests/)
+        additional_dependencies:
+          - types-requests
+          - types-python-dateutil
+          - sqlalchemy-stubs
+
+  # Security checks
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.8
+    hooks:
+      - id: bandit
+        args: [-r, app/, --skip, B101]
+        exclude: ^tests/
+
+  # Check for security vulnerabilities
+  - repo: https://github.com/twu/skjold
+    rev: v0.6.1
+    hooks:
+      - id: skjold
+        verbose: true
+
+  # Pylint for advanced Python checks
+  - repo: https://github.com/PyCQA/pylint
+    rev: v3.1.0
+    hooks:
+      - id: pylint
+        args: [
+          --max-line-length=100,
+          --disable=C0114,  # missing-module-docstring
+          --disable=C0115,  # missing-class-docstring
+          --disable=C0116,  # missing-function-docstring
+          --disable=R0903,  # too-few-public-methods
+          --disable=R0801,  # duplicate-code
+          --disable=W0613,  # unused-argument
+          --disable=W0212,  # protected-access
+          --load-plugins=pylint.extensions.docparams,
+          --accept-no-param-doc=yes,
+          --accept-no-return-doc=yes,
+          --accept-no-yields-doc=yes,
+        ]
+        exclude: ^(migrations/|alembic/|tests/)
+
+  # YAML linting
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [-c=.yamllint.yml]
+
+  # JSON validation
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-json
+      - id: pretty-format-json
+        args: [--autofix, --indent=2]
+        exclude: ^(package-lock\.json|frontend/)
+
+  # SQL linting
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: 3.0.3
+    hooks:
+      - id: sqlfluff-lint
+        args: [--dialect, postgres]
+        files: \.(sql|SQL)$
+      - id: sqlfluff-fix
+        args: [--dialect, postgres]
+        files: \.(sql|SQL)$
+
+  # Check for hardcoded secrets
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: [--baseline, .secrets.baseline]
+        exclude: ^(.*\.lock|package-lock\.json|poetry\.lock)
+
+  # Dockerfile linting
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: [--ignore, DL3008, --ignore, DL3009]
+
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(.*\.md|.*\.svg)$
+      - id: end-of-file-fixer
+        exclude: ^(.*\.svg)$
+      - id: check-yaml
+        exclude: ^(docker-compose.*\.yml|\.github/)
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: check-ast
+      - id: debug-statements
+      - id: check-docstring-first
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-toml
+      - id: check-xml
+        exclude: ^(.*\.svg)$
+
+  # Check Python dependencies
+  - repo: https://github.com/Lucas-C/pre-commit-hooks-safety
+    rev: v1.3.3
+    hooks:
+      - id: python-safety-dependencies-check
+        files: requirements.*\.txt$
+
+  # Documentation checks
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.28.0
+    hooks:
+      - id: check-github-workflows
+        files: ^\.github/workflows/
+      - id: check-github-actions
+        files: ^\.github/actions/
+
+  # Python code coverage check (custom)
+  - repo: local
+    hooks:
+      - id: pytest-coverage
+        name: Check test coverage
+        entry: bash -c 'cd backend && python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=70 tests/ || true'
+        language: system
+        pass_filenames: false
+        always_run: false
+        files: ^backend/.*\.py$
+
+      - id: python-no-print
+        name: Check for print statements
+        entry: bash -c 'grep -r "print(" backend/app/ --include="*.py" --exclude-dir=tests | grep -v "# noqa" | grep -v "logger" && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+        files: ^backend/.*\.py$
+
+      - id: python-no-breakpoint
+        name: Check for breakpoint()
+        entry: bash -c 'grep -r "breakpoint()" backend/ --include="*.py" && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+        files: ^backend/.*\.py$
+
+      - id: env-vars-check
+        name: Check for hardcoded credentials
+        entry: bash -c 'grep -r "password\s*=\s*[\"'\''][^\"'\'']*[\"'\'']" backend/ --include="*.py" | grep -v ".env" | grep -v "example" | grep -v "test" && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+        files: ^backend/.*\.py$
+
+# Configuration for specific tools
+default_language_version:
+  python: python3.11
+
+default_stages: [commit, push]
+
+# Files to exclude globally
+exclude: |
+  (?x)^(
+    .*\.egg-info/.*|
+    \.git/.*|
+    \.tox/.*|
+    \.venv/.*|
+    build/.*|
+    dist/.*|
+    docs/_build/.*|
+    frontend/.*|
+    node_modules/.*|
+    venv/.*|
+    __pycache__/.*|
+    .*\.pyc|
+    .*\.pyo|
+    .*\.pyd|
+    .*\.db|
+    .*\.sqlite3?|
+    .*\.log
+  )$

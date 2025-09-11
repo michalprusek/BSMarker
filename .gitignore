@@ -10,7 +10,11 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
+.env*/
+virtualenv/
+.virtualenv/
 build/
 develop-eggs/
 dist/
@@ -60,7 +64,24 @@ minio-data/
 .coverage
 .pytest_cache/
 htmlcov/
+.tox/
+.hypothesis/
 
 # Celery
 celerybeat-schedule
 celerybeat.pid
+
+# Pre-commit and hooks
+.pre-commit-config.yaml.backup
+.hookconfig
+*.orig
+
+# Package lock files (if not tracking)
+package-lock.json.backup
+
+# Temporary files
+*.tmp
+*.bak
+*~
+.*.swp
+.*.swo
