@@ -968,7 +968,7 @@ const AnnotationEditor: React.FC = () => {
     const spectrogramHeight = containerHeight * 0.72;
     
     // Check if clicking in waveform area (bottom 24%, after timeline at 76%)
-    const timelineHeight = containerHeight * 0.76; // Timeline ends at 76%
+    const timelineHeight = containerHeight * 0.80; // Timeline ends at 80% (increased from 76%)
     if (point.y > timelineHeight) {
       // Handle waveform click for seeking
       if (wavesurferRef.current && duration > 0) {
@@ -1786,13 +1786,13 @@ const AnnotationEditor: React.FC = () => {
                   minHeight: '400px'
                 }}
               >
-                {/* Split view: 72% spectrogram, 4% timeline, 24% waveform */}
-                {/* Spectrogram: 72% */}
+                {/* Split view: 68% spectrogram, 8% timeline, 24% waveform */}
+                {/* Spectrogram: 68% */}
                 <div className="absolute" style={{ 
                   top: 0,
                   left: 0,
                   width: '100%',
-                  height: '72%'
+                  height: '68%'
                 }}>
                   {spectrogramUrl ? (
                     <img 
@@ -1859,16 +1859,16 @@ const AnnotationEditor: React.FC = () => {
                   )}
                 </div>
                 
-                {/* Timeline: 4% */}
+                {/* Timeline: 8% with white background and improved visibility */}
                 <div 
-                  className="absolute bg-gray-800 bg-opacity-95"
+                  className="absolute bg-white border-t-2 border-b-2 border-gray-300"
                   style={{ 
-                    top: '72%',
+                    top: '68%',
                     left: 0,
                     right: 0,
-                    height: '4%',
-                    overflow: 'hidden',
-                    borderBottom: '1px solid #374151'
+                    height: '8%',
+                    minHeight: '48px',
+                    overflow: 'hidden'
                   }}
                 >
                   <div 
@@ -1881,7 +1881,7 @@ const AnnotationEditor: React.FC = () => {
                   >
                     <svg 
                       width={(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel} 
-                      height={32}
+                      height="100%"
                       className="absolute"
                       style={{ 
                         transform: `translateX(-${scrollOffset}px)`,
@@ -1891,6 +1891,7 @@ const AnnotationEditor: React.FC = () => {
                       {duration > 0 && (() => {
                         const ticks = [];
                         const totalWidth = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel;
+                        const containerHeight = Math.max(48, spectrogramDimensions.height * 0.08);
                         
                         // Determine appropriate interval based on zoom level and duration
                         let interval = 5; // Default 5 seconds
@@ -1914,18 +1915,18 @@ const AnnotationEditor: React.FC = () => {
                                   x1={position}
                                   y1={0}
                                   x2={position}
-                                  y2={isMajor ? 16 : 10}
-                                  stroke="#9CA3AF"
-                                  strokeWidth={isMajor ? 1.5 : 1}
+                                  y2={isMajor ? containerHeight * 0.4 : containerHeight * 0.25}
+                                  stroke="#374151"
+                                  strokeWidth={isMajor ? 2 : 1}
                                 />
                                 {isMajor && (
                                   <text
                                     x={position}
-                                    y={28}
+                                    y={containerHeight * 0.75}
                                     textAnchor="middle"
-                                    fontSize="10"
-                                    fill="white"
-                                    fontWeight="500"
+                                    fontSize={Math.max(12, containerHeight * 0.3)}
+                                    fill="#111827"
+                                    fontWeight="600"
                                   >
                                     {(() => {
                                       const mins = Math.floor(time / 60);
@@ -2072,7 +2073,7 @@ const AnnotationEditor: React.FC = () => {
                               mousePosition.x >= box.x && mousePosition.x <= box.x + box.width &&
                               mousePosition.y >= box.y && mousePosition.y <= box.y + box.height
                             ) ? 'move' : 
-                            mousePosition.y > Math.max(spectrogramDimensions.height, 600) * 0.76 ? 'pointer' : 'default'
+                            mousePosition.y > Math.max(spectrogramDimensions.height, 600) * 0.80 ? 'pointer' : 'default'
                   }}
                 >
                   <Layer>
