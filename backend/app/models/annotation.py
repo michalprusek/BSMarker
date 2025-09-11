@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, JSON
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
 from app.db.base_class import Base
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+
 
 class Annotation(Base):
     __tablename__ = "annotations"
@@ -14,7 +15,10 @@ class Annotation(Base):
 
     recording = relationship("Recording", back_populates="annotations")
     user = relationship("User", back_populates="annotations")
-    bounding_boxes = relationship("BoundingBox", back_populates="annotation", cascade="all, delete-orphan")
+    bounding_boxes = relationship(
+        "BoundingBox", back_populates="annotation", cascade="all, delete-orphan"
+    )
+
 
 class BoundingBox(Base):
     __tablename__ = "bounding_boxes"
@@ -31,6 +35,6 @@ class BoundingBox(Base):
     max_frequency = Column(Float)
     label = Column(String, nullable=False)
     confidence = Column(Float)
-    extra_metadata = Column(JSON)
+    extra_metadata = Column(JSON)  # Keep original column name
 
     annotation = relationship("Annotation", back_populates="bounding_boxes")

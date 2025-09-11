@@ -1,0 +1,26 @@
+{
+  "*.{ts,tsx}": [
+    "eslint --fix --max-warnings=0",
+    "prettier --write",
+    "bash -c 'tsc --noEmit -p tsconfig.json'"
+  ],
+  "*.{js,jsx}": [
+    "eslint --fix --max-warnings=0",
+    "prettier --write"
+  ],
+  "*.{css,scss,sass,less}": [
+    "stylelint --fix",
+    "prettier --write"
+  ],
+  "*.{json,md,mdx,yml,yaml}": [
+    "prettier --write"
+  ],
+  "*.html": [
+    "prettier --write",
+    "htmlhint"
+  ],
+  "package.json": [
+    "npm run lint:deps",
+    "npm run security:audit"
+  ]
+}

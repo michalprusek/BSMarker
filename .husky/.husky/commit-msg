@@ -1,0 +1,126 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# BSMarker Commit Message Validation Hook
+# Ensures commit messages follow conventional commit format
+
+echo "📝 Validating commit message..."
+
+# Color codes
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Get the commit message
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Define valid types
+VALID_TYPES="feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|security|deps|config|db|api|ui"
+
+# Define valid scopes
+VALID_SCOPES="backend|frontend|api|auth|db|docker|deps|config|test|ci|docs|annotations|recordings|projects|users|spectrogram|minio|redis|nginx|security|hooks"
+
+# Conventional commit pattern
+# Format: type(scope): subject
+# or: type: subject
+PATTERN="^($VALID_TYPES)(\(($VALID_SCOPES)\))?: .{1,100}$"
+
+# Check if commit message matches the pattern
+if ! echo "$COMMIT_MSG" | grep -qE "$PATTERN"; then
+    echo -e "${RED}❌ Invalid commit message format!${NC}"
+    echo ""
+    echo -e "${YELLOW}Your commit message:${NC}"
+    echo "$COMMIT_MSG"
+    echo ""
+    echo -e "${BLUE}Expected format:${NC}"
+    echo "  <type>(<scope>): <subject>"
+    echo "  or"
+    echo "  <type>: <subject>"
+    echo ""
+    echo -e "${BLUE}Valid types:${NC}"
+    echo "  feat     - New feature"
+    echo "  fix      - Bug fix"
+    echo "  docs     - Documentation changes"
+    echo "  style    - Code style changes (formatting, etc)"
+    echo "  refactor - Code refactoring"
+    echo "  perf     - Performance improvements"
+    echo "  test     - Test additions or fixes"
+    echo "  build    - Build system changes"
+    echo "  ci       - CI/CD changes"
+    echo "  chore    - Maintenance tasks"
+    echo "  revert   - Revert previous commit"
+    echo "  security - Security fixes"
+    echo "  deps     - Dependency updates"
+    echo "  config   - Configuration changes"
+    echo "  db       - Database schema changes"
+    echo "  api      - API changes"
+    echo "  ui       - UI/UX changes"
+    echo ""
+    echo -e "${BLUE}Valid scopes:${NC}"
+    echo "  backend, frontend, api, auth, db, docker, deps, config, test,"
+    echo "  ci, docs, annotations, recordings, projects, users, spectrogram,"
+    echo "  minio, redis, nginx, security, hooks"
+    echo ""
+    echo -e "${BLUE}Examples:${NC}"
+    echo "  feat(backend): add user authentication endpoint"
+    echo "  fix(frontend): resolve annotation rendering issue"
+    echo "  docs: update installation instructions"
+    echo "  security(api): fix SQL injection vulnerability"
+    echo ""
+    exit 1
+fi
+
+# Additional checks
+
+# Check subject length
+SUBJECT=$(echo "$COMMIT_MSG" | sed -E "s/^($VALID_TYPES)(\(($VALID_SCOPES)\))?: (.*)$/\4/")
+SUBJECT_LENGTH=${#SUBJECT}
+
+if [ $SUBJECT_LENGTH -gt 100 ]; then
+    echo -e "${YELLOW}⚠ Warning: Subject is too long (${SUBJECT_LENGTH} chars, max 100)${NC}"
+    echo "Consider making it more concise."
+fi
+
+# Check for capital letter at start of subject
+if echo "$SUBJECT" | grep -qE "^[A-Z]"; then
+    echo -e "${YELLOW}⚠ Warning: Subject should start with lowercase letter${NC}"
+fi
+
+# Check for period at end of subject
+if echo "$SUBJECT" | grep -qE "\.$"; then
+    echo -e "${YELLOW}⚠ Warning: Subject should not end with a period${NC}"
+fi
+
+# Check for imperative mood (basic check)
+FIRST_WORD=$(echo "$SUBJECT" | awk '{print $1}')
+if echo "$FIRST_WORD" | grep -qE "^(added|fixed|updated|changed|removed)$"; then
+    echo -e "${YELLOW}⚠ Tip: Use imperative mood (e.g., 'add' instead of 'added')${NC}"
+fi
+
+# Check for issue references in commit body
+COMMIT_BODY=$(echo "$COMMIT_MSG" | tail -n +2)
+if echo "$COMMIT_BODY" | grep -qE "(closes?|fix(es)?|resolves?|refs?) #[0-9]+"; then
+    echo -e "${GREEN}✓ Found issue reference${NC}"
+fi
+
+# Check for breaking changes
+if echo "$COMMIT_MSG" | grep -qE "BREAKING CHANGE:|^[^:]+!:"; then
+    echo -e "${YELLOW}⚠ Breaking change detected - ensure it's documented${NC}"
+fi
+
+# Success
+echo -e "${GREEN}✅ Commit message validation passed!${NC}"
+
+# Run commitlint for additional validation if available
+if command -v commitlint >/dev/null 2>&1; then
+    echo "Running commitlint for additional validation..."
+    echo "$COMMIT_MSG" | commitlint || exit 1
+elif [ -f "node_modules/.bin/commitlint" ]; then
+    echo "Running commitlint for additional validation..."
+    echo "$COMMIT_MSG" | node_modules/.bin/commitlint || exit 1
+fi
+
+exit 0
