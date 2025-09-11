@@ -1,0 +1,23 @@
+{
+  "*.json": [
+    "prettier --check"
+  ],
+  "*.sh": [
+    "shellcheck"
+  ],
+  "*.sql": [
+    "sqlfluff lint --dialect postgres"
+  ],
+  "*.{py,pyi}": [
+    "black --check --line-length=100",
+    "isort --check-only --profile black --line-length 100",
+    "flake8 --max-line-length=100 --extend-ignore=E203,W503",
+    "mypy --ignore-missing-imports --strict-optional --disallow-untyped-defs"
+  ],
+  "*.{yml,yaml}": [
+    "yamllint"
+  ],
+  "Dockerfile*": [
+    "hadolint"
+  ]
+}

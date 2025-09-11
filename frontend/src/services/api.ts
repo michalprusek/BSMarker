@@ -320,9 +320,11 @@ export const recordingService = {
   getSpectrogramStatus: async (recordingId: number): Promise<{
     status: string;
     recording_id: number;
-    available_resolutions: string[];
+    available: boolean;
     error_message?: string;
     processing_time?: number;
+    width?: number;
+    height?: number;
     created_at?: string;
     updated_at?: string;
   }> => {
@@ -330,17 +332,13 @@ export const recordingService = {
     return response.data;
   },
 
-  getSpectrogramUrl: async (recordingId: number, resolution: string = 'standard'): Promise<string | null> => {
+  getSpectrogramUrl: async (recordingId: number): Promise<string | null> => {
     try {
       const status = await recordingService.getSpectrogramStatus(recordingId);
       
-      if (status.status === 'completed' && status.available_resolutions.includes(resolution)) {
+      if (status.status === 'completed' && status.available) {
         // Return direct API URL for completed spectrograms
-        return `${API_URL}/api/v1/recordings/${recordingId}/spectrogram?resolution=${resolution}`;
-      } else if (status.status === 'completed' && status.available_resolutions.length > 0) {
-        // Fallback to first available resolution
-        const availableRes = status.available_resolutions[0];
-        return `${API_URL}/api/v1/recordings/${recordingId}/spectrogram?resolution=${availableRes}`;
+        return `${API_URL}/api/v1/recordings/${recordingId}/spectrogram`;
       }
       
       return null; // Spectrogram not ready yet
@@ -350,10 +348,9 @@ export const recordingService = {
     }
   },
 
-  getSpectrogramBlob: async (recordingId: number, resolution: string = 'standard'): Promise<Blob | null> => {
+  getSpectrogramBlob: async (recordingId: number): Promise<Blob | null> => {
     try {
       const response = await api.get(`/recordings/${recordingId}/spectrogram`, {
-        params: { resolution },
         responseType: 'blob'
       });
       return response.data;
@@ -419,11 +416,12 @@ export const annotationService = {
     });
 
     // Ensure all required fields are present for each bounding box
+    // Round coordinates to prevent floating-point precision issues
     const validBoxes = boundingBoxes.map(box => ({
-      x: Number(box.x) || 0,
-      y: Number(box.y) || 0,
-      width: Number(box.width) || 0,
-      height: Number(box.height) || 0,
+      x: Math.round(Number(box.x) || 0),
+      y: Math.round(Number(box.y) || 0),
+      width: Math.round(Number(box.width) || 0),
+      height: Math.round(Number(box.height) || 0),
       start_time: Number(box.start_time) || 0,
       end_time: Number(box.end_time) || 0,
       min_frequency: box.min_frequency !== undefined ? Number(box.min_frequency) : null,

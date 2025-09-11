@@ -10,24 +10,25 @@ import BoundingBoxList from '../components/BoundingBoxList';
 import LabelModal from '../components/LabelModal';
 import ContextMenu from '../components/ContextMenu';
 import SpectrogramScales from '../components/SpectrogramScales';
+import { CoordinateUtils, LAYOUT_CONSTANTS } from '../utils/coordinates';
 
 const PLAYBACK_SPEEDS = [1, 2, 4, 8, 16];
 const MAX_HISTORY_SIZE = 20;
 
-// Color palette for different labels
+// Enhanced color palette for better visibility in spectrogram
 const LABEL_COLORS = [
-  { stroke: '#6B7280', fill: 'rgba(107, 114, 128, 0.15)' }, // Gray for "None"
-  { stroke: '#EF4444', fill: 'rgba(239, 68, 68, 0.15)' },   // Red
-  { stroke: '#F59E0B', fill: 'rgba(245, 158, 11, 0.15)' },  // Amber
-  { stroke: '#10B981', fill: 'rgba(16, 185, 129, 0.15)' },  // Emerald
-  { stroke: '#3B82F6', fill: 'rgba(59, 130, 246, 0.15)' },  // Blue
-  { stroke: '#8B5CF6', fill: 'rgba(139, 92, 246, 0.15)' },  // Violet
-  { stroke: '#EC4899', fill: 'rgba(236, 72, 153, 0.15)' },  // Pink
-  { stroke: '#14B8A6', fill: 'rgba(20, 184, 166, 0.15)' },  // Teal
-  { stroke: '#F97316', fill: 'rgba(249, 115, 22, 0.15)' },  // Orange
-  { stroke: '#84CC16', fill: 'rgba(132, 204, 22, 0.15)' },  // Lime
-  { stroke: '#06B6D4', fill: 'rgba(6, 182, 212, 0.15)' },   // Cyan
-  { stroke: '#A855F7', fill: 'rgba(168, 85, 247, 0.15)' },  // Purple
+  { stroke: '#6B7280', fill: 'rgba(107, 114, 128, 0.2)' },  // Gray for "None"
+  { stroke: '#DC2626', fill: 'rgba(220, 38, 38, 0.25)' },   // Red (enhanced)
+  { stroke: '#F59E0B', fill: 'rgba(245, 158, 11, 0.25)' },  // Amber
+  { stroke: '#10B981', fill: 'rgba(16, 185, 129, 0.25)' },  // Emerald
+  { stroke: '#2563EB', fill: 'rgba(37, 99, 235, 0.25)' },   // Blue (enhanced)
+  { stroke: '#9333EA', fill: 'rgba(147, 51, 234, 0.25)' },  // Violet (enhanced)
+  { stroke: '#EC4899', fill: 'rgba(236, 72, 153, 0.25)' },  // Pink
+  { stroke: '#14B8A6', fill: 'rgba(20, 184, 166, 0.25)' },  // Teal
+  { stroke: '#EA580C', fill: 'rgba(234, 88, 12, 0.25)' },   // Orange (enhanced)
+  { stroke: '#65A30D', fill: 'rgba(101, 163, 13, 0.25)' },  // Lime (enhanced)
+  { stroke: '#0891B2', fill: 'rgba(8, 145, 178, 0.25)' },   // Cyan (enhanced)
+  { stroke: '#9333EA', fill: 'rgba(147, 51, 234, 0.25)' },  // Purple (enhanced)
 ];
 
 const AnnotationEditor: React.FC = () => {
@@ -40,8 +41,7 @@ const AnnotationEditor: React.FC = () => {
   const [spectrogramUrl, setSpectrogramUrl] = useState<string>('');
   const [spectrogramStatus, setSpectrogramStatus] = useState<string>('not_started');
   const [spectrogramError, setSpectrogramError] = useState<string | null>(null);
-  const [availableResolutions, setAvailableResolutions] = useState<string[]>([]);
-  const [currentResolution, setCurrentResolution] = useState<string>('standard');
+  const [spectrogramAvailable, setSpectrogramAvailable] = useState<boolean>(false);
   const [isLoadingSpectrogram, setIsLoadingSpectrogram] = useState<boolean>(false);
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
   const [selectedBox, setSelectedBox] = useState<BoundingBox | null>(null);
@@ -195,6 +195,29 @@ const AnnotationEditor: React.FC = () => {
     };
   }, [spectrogramUrl]);
 
+  // Audio cleanup on navigation/unmount
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Pause audio before page unload
+      if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
+        wavesurferRef.current.pause();
+      }
+    };
+
+    // Add event listener for page unload
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Cleanup function called on component unmount or route change
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      
+      // Pause audio when component unmounts (route change)
+      if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
+        wavesurferRef.current.pause();
+      }
+    };
+  }, []); // Empty dependency array means this effect runs once on mount and cleanup on unmount
+
   // Autosave functionality
   useEffect(() => {
     // Set up autosave interval
@@ -313,7 +336,7 @@ const AnnotationEditor: React.FC = () => {
         e.preventDefault();
         const rect = canvasContainerRef.current?.getBoundingClientRect();
         if (rect) {
-          const mouseX = e.clientX - rect.left - 40; // Account for frequency scale
+          const mouseX = e.clientX - rect.left - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH; // Account for frequency scale
           const mouseY = e.clientY - rect.top - 32; // Account for top offset
           
           if (e.deltaY < 0) {
@@ -413,20 +436,14 @@ const AnnotationEditor: React.FC = () => {
       // Check current status
       const status = await recordingService.getSpectrogramStatus(recordingId);
       setSpectrogramStatus(status.status);
-      setAvailableResolutions(status.available_resolutions);
+      setSpectrogramAvailable(status.available);
       
       if (status.error_message) {
         setSpectrogramError(status.error_message);
       }
       
-      if (status.status === 'completed' && status.available_resolutions.length > 0) {
-        // Try to get the preferred resolution, or fallback to first available
-        const preferredResolution = status.available_resolutions.includes(currentResolution) 
-          ? currentResolution 
-          : status.available_resolutions[0];
-        
-        await loadSpectrogramImage(recordingId, preferredResolution);
-        setCurrentResolution(preferredResolution);
+      if (status.status === 'completed' && status.available) {
+        await loadSpectrogramImage(recordingId);
       } else if (status.status === 'processing' || status.status === 'pending') {
         // Start polling for completion
         pollSpectrogramStatus(recordingId);
@@ -446,9 +463,9 @@ const AnnotationEditor: React.FC = () => {
     }
   };
 
-  const loadSpectrogramImage = async (recordingId: number, resolution: string) => {
+  const loadSpectrogramImage = async (recordingId: number) => {
     try {
-      const blob = await recordingService.getSpectrogramBlob(recordingId, resolution);
+      const blob = await recordingService.getSpectrogramBlob(recordingId);
       if (blob) {
         // Clean up previous URL
         if (spectrogramUrl && spectrogramUrl.startsWith('blob:')) {
@@ -459,7 +476,7 @@ const AnnotationEditor: React.FC = () => {
         setSpectrogramUrl(objectUrl);
       }
     } catch (error) {
-      console.error(`Failed to load spectrogram image (${resolution}):`, error);
+      console.error('Failed to load spectrogram image:', error);
       throw error;
     }
   };
@@ -469,31 +486,11 @@ const AnnotationEditor: React.FC = () => {
       try {
         const status = await recordingService.getSpectrogramStatus(recordingId);
         setSpectrogramStatus(status.status);
-        setAvailableResolutions(status.available_resolutions);
+        setSpectrogramAvailable(status.available);
         
-        if (status.status === 'completed' && status.available_resolutions.length > 0) {
+        if (status.status === 'completed' && status.available) {
           clearInterval(pollInterval);
-          
-          // Get thumbnail first for quick display if available
-          if (status.available_resolutions.includes('thumbnail')) {
-            await loadSpectrogramImage(recordingId, 'thumbnail');
-            setCurrentResolution('thumbnail');
-            
-            // Then load standard resolution in background
-            if (status.available_resolutions.includes('standard')) {
-              setTimeout(async () => {
-                await loadSpectrogramImage(recordingId, 'standard');
-                setCurrentResolution('standard');
-              }, 100);
-            }
-          } else {
-            // Load best available resolution
-            const preferredResolution = status.available_resolutions.includes('standard') 
-              ? 'standard' 
-              : status.available_resolutions[0];
-            await loadSpectrogramImage(recordingId, preferredResolution);
-            setCurrentResolution(preferredResolution);
-          }
+          await loadSpectrogramImage(recordingId);
           
           toast.success('Spectrogram loaded successfully!');
         } else if (status.status === 'failed') {
@@ -534,10 +531,20 @@ const AnnotationEditor: React.FC = () => {
       
       const annotationsData = await annotationService.getAnnotations(parseInt(recordingId));
       if (annotationsData.length > 0) {
-        const boxes = annotationsData[0].bounding_boxes || [];
+        // Take the LATEST annotation (last in array), not the first one
+        const latestAnnotation = annotationsData[annotationsData.length - 1];
+        const rawBoxes = latestAnnotation.bounding_boxes || [];
+        // Round coordinates when loading to ensure consistency
+        const boxes = rawBoxes.map(box => ({
+          ...box,
+          x: Math.round(box.x || 0),
+          y: Math.round(box.y || 0),
+          width: Math.round(box.width || 0),
+          height: Math.round(box.height || 0)
+        }));
         setBoundingBoxes(boxes);
         setLastSavedState([...boxes]);
-        setAnnotationId(annotationsData[0].id || null);
+        setAnnotationId(latestAnnotation.id || null);
         
         // Reset history for new recording
         setHistory([boxes]);
@@ -586,7 +593,7 @@ const AnnotationEditor: React.FC = () => {
     }
     
     // Ensure container has proper dimensions
-    const waveformHeight = Math.max(50, spectrogramDimensions.height * 0.25);
+    const waveformHeight = Math.max(50, spectrogramDimensions.height * 0.24);
     
     const wavesurfer = WaveSurfer.create({
       container: waveformRef.current,
@@ -596,7 +603,7 @@ const AnnotationEditor: React.FC = () => {
       barWidth: 2,
       barRadius: 3,
       cursorWidth: 0,  // Hide cursor
-      height: waveformHeight,  // 25% of total height
+      height: waveformHeight,  // 24% of total height
       barGap: 3,
       normalize: true,
       interact: true,
@@ -728,20 +735,112 @@ const AnnotationEditor: React.FC = () => {
     setIsAnnotationMode(!isAnnotationMode);
   };
 
+  // Get Nyquist frequency (sample_rate / 2) or fallback to 22050 Hz
+  const getNyquistFrequency = () => {
+    return recording?.sample_rate ? recording.sample_rate / 2 : 22050;
+  };
+  
+  // Helper function to constrain box within boundaries
+  const constrainBox = (box: BoundingBox): BoundingBox => {
+    const nyquistFreq = getNyquistFrequency();
+    
+    // Use centralized coordinate utilities for consistent constraint handling
+    const constrained = CoordinateUtils.constrainBoundingBox(
+      box,
+      spectrogramDimensions.width,
+      spectrogramDimensions.height,
+      true // Account for frequency scale
+    );
+    
+    // Convert pixel coordinates to time/frequency using centralized utilities
+    return {
+      ...box,
+      x: constrained.x,
+      y: constrained.y,
+      width: constrained.width,
+      height: constrained.height,
+      start_time: duration ? CoordinateUtils.pixelToTime(
+        constrained.x,
+        duration,
+        spectrogramDimensions.width,
+        1,
+        false // x is already relative to content area
+      ) : 0,
+      end_time: duration ? CoordinateUtils.pixelToTime(
+        constrained.x + constrained.width,
+        duration,
+        spectrogramDimensions.width,
+        1,
+        false // x is already relative to content area
+      ) : 0,
+      max_frequency: CoordinateUtils.pixelToFrequency(
+        constrained.y,
+        nyquistFreq,
+        spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO
+      ),
+      min_frequency: CoordinateUtils.pixelToFrequency(
+        constrained.y + constrained.height,
+        nyquistFreq,
+        spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO
+      ),
+    };
+  };
+
   const cyclePlaybackSpeed = () => {
     const nextIndex = (currentSpeedIndex + 1) % PLAYBACK_SPEEDS.length;
     const nextSpeed = PLAYBACK_SPEEDS[nextIndex];
-    setCurrentSpeedIndex(nextIndex);
-    setPlaybackSpeed(nextSpeed);
     
     if (wavesurferRef.current) {
+      // Preserve current playback position and state
+      const currentTime = wavesurferRef.current.getCurrentTime();
+      const duration = wavesurferRef.current.getDuration();
+      const wasPlaying = wavesurferRef.current.isPlaying();
+      
+      // Pause if playing to prevent jump
+      if (wasPlaying) {
+        wavesurferRef.current.pause();
+      }
+      
+      // Set new playback rate
       wavesurferRef.current.setPlaybackRate(nextSpeed);
+      
+      // Restore position using relative position (prevents drift)
+      if (duration > 0) {
+        const relativePosition = currentTime / duration;
+        wavesurferRef.current.seekTo(relativePosition);
+      }
+      
+      // Resume playing if it was playing before
+      if (wasPlaying) {
+        // Small delay to ensure seekTo completes
+        setTimeout(() => {
+          if (wavesurferRef.current && wasPlaying) {
+            wavesurferRef.current.play();
+          }
+        }, 50); // Increased delay for more reliable restoration
+      }
     }
+    
+    setCurrentSpeedIndex(nextIndex);
+    setPlaybackSpeed(nextSpeed);
   };
 
 
+  const pauseAndNavigate = (path: string) => {
+    // Pause audio before navigating
+    if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
+      wavesurferRef.current.pause();
+    }
+    navigate(path);
+  };
+  
   const navigateToRecording = async (index: number) => {
     if (index >= 0 && index < projectRecordings.length) {
+      // Pause audio before navigating
+      if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
+        wavesurferRef.current.pause();
+      }
+      
       // Save current annotations before navigating
       if (hasUnsavedChanges && recording) {
         await saveAnnotations(recording.id, boundingBoxes);
@@ -769,35 +868,9 @@ const AnnotationEditor: React.FC = () => {
     // Get the paste position - use context menu position if available, otherwise mouse position
     const pasteAt = contextMenu || mousePosition;
     
-    // Adjust paste position for zoom level (convert from screen to spectrogram coordinates)
+    // Adjust paste position for zoom level (keep display coordinates)
     const adjustedPasteX = pasteAt.x / zoomLevel;
-    const adjustedPasteY = pasteAt.y / 0.75; // Adjust for spectrogram area
-    
-    // Helper function to constrain box within boundaries
-    const constrainBox = (box: BoundingBox) => {
-      const maxX = spectrogramDimensions.width;
-      const maxY = spectrogramDimensions.height;
-      
-      // Ensure box stays within boundaries
-      let constrainedX = Math.max(0, Math.min(box.x, maxX - box.width));
-      let constrainedY = Math.max(0, Math.min(box.y, maxY - box.height));
-      
-      // If box is too wide/tall for the space, resize it
-      const constrainedWidth = Math.min(box.width, maxX - constrainedX);
-      const constrainedHeight = Math.min(box.height, maxY - constrainedY);
-      
-      return {
-        ...box,
-        x: constrainedX,
-        y: constrainedY,
-        width: constrainedWidth,
-        height: constrainedHeight,
-        start_time: duration ? (constrainedX / spectrogramDimensions.width) * duration : 0,
-        end_time: duration ? ((constrainedX + constrainedWidth) / spectrogramDimensions.width) * duration : 0,
-        max_frequency: 22050 * (1 - constrainedY / spectrogramDimensions.height),
-        min_frequency: 22050 * (1 - (constrainedY + constrainedHeight) / spectrogramDimensions.height),
-      };
-    };
+    const adjustedPasteY = pasteAt.y; // Keep display coordinates
     
     if (Array.isArray(clipboardBox)) {
       // Multiple boxes - maintain relative positions
@@ -892,10 +965,11 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
-    const spectrogramHeight = containerHeight * 0.75;
+    const spectrogramHeight = containerHeight * 0.72;
     
-    // Check if clicking in waveform area (bottom 25%)
-    if (point.y > spectrogramHeight) {
+    // Check if clicking in waveform area (bottom 24%, after timeline at 76%)
+    const timelineHeight = containerHeight * 0.76; // Timeline ends at 76%
+    if (point.y > timelineHeight) {
       // Handle waveform click for seeking
       if (wavesurferRef.current && duration > 0) {
         const seekPosition = Math.max(0, Math.min(1, (point.x / zoomLevel) / spectrogramDimensions.width));
@@ -905,8 +979,8 @@ const AnnotationEditor: React.FC = () => {
       // Don't return - allow dragging in waveform area
     }
     
-    // Adjust coordinates for spectrogram area only (scale y back to full range)
-    const pos = { x: point.x / zoomLevel, y: point.y / 0.75 }; // Adjust x for zoom, y for spectrogram area
+    // Adjust coordinates for zoom only - keep display coordinates
+    const pos = { x: point.x / zoomLevel, y: point.y }; // Adjust x for zoom, keep y in display coordinates
     
     // Close context menu if open
     if (contextMenu) {
@@ -1043,8 +1117,8 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
-    const spectrogramHeight = containerHeight * 0.75;
-    const pos = { x: point.x / zoomLevel, y: point.y / 0.75 };  // Scale y back to full range for box coordinates
+    const spectrogramHeight = containerHeight * 0.72;
+    const pos = { x: point.x / zoomLevel, y: point.y };  // Use display coordinates directly
     setMousePosition(pos);
     
     // Handle panning for both horizontal and vertical
@@ -1082,18 +1156,14 @@ const AnnotationEditor: React.FC = () => {
           const initialPos = draggingBox.initialPositions!.get(index);
           if (initialPos) {
             const box = boundingBoxes[index];
-            const newX = Math.max(0, Math.min(spectrogramDimensions.width - box.width, initialPos.x + deltaX));
-            const newY = Math.max(0, Math.min(spectrogramDimensions.height - box.height, initialPos.y + deltaY));
-            
-            updatedBoxes[index] = {
+            const unconstrained = {
               ...box,
-              x: newX,
-              y: newY,
-              start_time: duration ? (newX / spectrogramDimensions.width) * duration : 0,
-              end_time: duration ? ((newX + box.width) / spectrogramDimensions.width) * duration : 0,
-              max_frequency: 22050 * (1 - newY / spectrogramDimensions.height),
-              min_frequency: 22050 * (1 - (newY + box.height) / spectrogramDimensions.height),
+              x: initialPos.x + deltaX,
+              y: initialPos.y + deltaY,
             };
+            
+            // Apply boundary constraints
+            updatedBoxes[index] = constrainBox(unconstrained);
           }
         });
       } else {
@@ -1101,19 +1171,14 @@ const AnnotationEditor: React.FC = () => {
         const newX = pos.x - draggingBox.dragOffset.x;
         const newY = pos.y - draggingBox.dragOffset.y;
         
-        // Keep box within bounds
-        const boundedX = Math.max(0, Math.min(spectrogramDimensions.width - draggingBox.initialBox.width, newX));
-        const boundedY = Math.max(0, Math.min(spectrogramDimensions.height - draggingBox.initialBox.height, newY));
-        
-        updatedBoxes[draggingBox.index] = {
+        const unconstrained = {
           ...boundingBoxes[draggingBox.index],
-          x: boundedX,
-          y: boundedY,
-          start_time: duration ? (boundedX / spectrogramDimensions.width) * duration : 0,
-          end_time: duration ? ((boundedX + draggingBox.initialBox.width) / spectrogramDimensions.width) * duration : 0,
-          max_frequency: 22050 * (1 - boundedY / spectrogramDimensions.height),
-          min_frequency: 22050 * (1 - (boundedY + draggingBox.initialBox.height) / spectrogramDimensions.height),
+          x: newX,
+          y: newY,
         };
+        
+        // Apply boundary constraints
+        updatedBoxes[draggingBox.index] = constrainBox(unconstrained);
         setSelectedBox(updatedBoxes[draggingBox.index]);
       }
       
@@ -1128,8 +1193,8 @@ const AnnotationEditor: React.FC = () => {
       const newBox = { ...box };
       const minSize = 2;
       
-      // Constrain y position to spectrogram area
-      const maxY = spectrogramDimensions.height / 0.75;
+      // Constrain y position to spectrogram area (display coordinates)
+      const maxY = spectrogramDimensions.height * 0.72; // 72% of container is spectrogram
       const constrainedY = Math.min(pos.y, maxY);
       
       switch (resizingBox.handle) {
@@ -1155,11 +1220,32 @@ const AnnotationEditor: React.FC = () => {
           break;
       }
       
-      // Update time and frequency based on new position
-      newBox.start_time = (newBox.x / spectrogramDimensions.width) * duration;
-      newBox.end_time = ((newBox.x + newBox.width) / spectrogramDimensions.width) * duration;
-      newBox.max_frequency = 10000 * (1 - newBox.y / spectrogramDimensions.height);
-      newBox.min_frequency = 10000 * (1 - (newBox.y + newBox.height) / spectrogramDimensions.height);
+      // Update time and frequency based on new position using centralized utilities
+      const nyquistFreq = getNyquistFrequency();
+      newBox.start_time = CoordinateUtils.pixelToTime(
+        newBox.x,
+        duration,
+        spectrogramDimensions.width,
+        1,
+        false
+      );
+      newBox.end_time = CoordinateUtils.pixelToTime(
+        newBox.x + newBox.width,
+        duration,
+        spectrogramDimensions.width,
+        1,
+        false
+      );
+      newBox.max_frequency = CoordinateUtils.pixelToFrequency(
+        newBox.y,
+        nyquistFreq,
+        spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO
+      );
+      newBox.min_frequency = CoordinateUtils.pixelToFrequency(
+        newBox.y + newBox.height,
+        nyquistFreq,
+        spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO
+      );
       
       const updatedBoxes = [...boundingBoxes];
       updatedBoxes[resizingBox.index] = newBox;
@@ -1202,7 +1288,7 @@ const AnnotationEditor: React.FC = () => {
     
     // Handle drawing new box (constrain to spectrogram area)
     if (isDrawing && drawingBox) {
-      const maxY = spectrogramDimensions.height / 0.75;  // Max y in original coordinate space
+      const maxY = spectrogramDimensions.height * 0.72;  // 72% of container is spectrogram (display coordinates)
       const constrainedY = Math.min(pos.y, maxY);
       setDrawingBox({
         ...drawingBox,
@@ -1263,17 +1349,33 @@ const AnnotationEditor: React.FC = () => {
       setIsDrawing(false);
       
       if (Math.abs(drawingBox.width) > 2 && Math.abs(drawingBox.height) > 2) {
+        // Normalize the drawing box - store in display coordinates (spectrogram area)
         const normalizedBox = {
           x: drawingBox.width < 0 ? drawingBox.x + drawingBox.width : drawingBox.x,
-          y: drawingBox.height < 0 ? drawingBox.y + drawingBox.height : drawingBox.y,
+          y: drawingBox.height < 0 ? drawingBox.y + drawingBox.height : drawingBox.y,  // Store in display coordinates
           width: Math.abs(drawingBox.width),
-          height: Math.abs(drawingBox.height),
+          height: Math.abs(drawingBox.height),  // Store in display coordinates
         };
         
-        const startTime = duration ? (normalizedBox.x / spectrogramDimensions.width) * duration : 0;
-        const endTime = duration ? ((normalizedBox.x + normalizedBox.width) / spectrogramDimensions.width) * duration : 0;
-        const maxFreq = 22050 * (1 - normalizedBox.y / spectrogramDimensions.height);  // Nyquist frequency
-        const minFreq = 22050 * (1 - (normalizedBox.y + normalizedBox.height) / spectrogramDimensions.height);
+        const startTime = duration ? CoordinateUtils.pixelToTime(
+          normalizedBox.x,
+          duration,
+          spectrogramDimensions.width,
+          1,
+          false
+        ) : 0;
+        const endTime = duration ? CoordinateUtils.pixelToTime(
+          normalizedBox.x + normalizedBox.width,
+          duration,
+          spectrogramDimensions.width,
+          1,
+          false
+        ) : 0;
+        // Convert display coordinates to full spectrogram height for frequency calculation
+        const spectrogramHeight = spectrogramDimensions.height * 0.72;  // 72% of container is spectrogram
+        const nyquistFreq = getNyquistFrequency();
+        const maxFreq = nyquistFreq * (1 - normalizedBox.y / spectrogramHeight);
+        const minFreq = nyquistFreq * (1 - (normalizedBox.y + normalizedBox.height) / spectrogramHeight);
         
         const newBox: BoundingBox = {
           ...normalizedBox,
@@ -1299,9 +1401,9 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     
-    // Adjust coordinates for zoom and spectrogram area
+    // Adjust coordinates for zoom only
     const adjustedX = point.x / zoomLevel;
-    const adjustedY = point.y / 0.75;
+    const adjustedY = point.y;
     
     // Check if right-clicking on a box
     const clickedBoxIndex = boundingBoxes.findIndex(
@@ -1379,11 +1481,6 @@ const AnnotationEditor: React.FC = () => {
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   // Zoom handlers
   const handleZoomIn = () => {
@@ -1528,8 +1625,20 @@ const AnnotationEditor: React.FC = () => {
         setSegmentDuration((box.end_time - box.start_time) * 1000); // Convert to milliseconds
       }
     } else if (drawingBox && duration > 0) {
-      const startTime = (Math.min(drawingBox.x, drawingBox.x + drawingBox.width) / spectrogramDimensions.width) * duration;
-      const endTime = (Math.max(drawingBox.x, drawingBox.x + drawingBox.width) / spectrogramDimensions.width) * duration;
+      const startTime = CoordinateUtils.pixelToTime(
+        Math.min(drawingBox.x, drawingBox.x + drawingBox.width),
+        duration,
+        spectrogramDimensions.width,
+        1,
+        false
+      );
+      const endTime = CoordinateUtils.pixelToTime(
+        Math.max(drawingBox.x, drawingBox.x + drawingBox.width),
+        duration,
+        spectrogramDimensions.width,
+        1,
+        false
+      );
       setSegmentDuration((endTime - startTime) * 1000);
     } else {
       setSegmentDuration(null);
@@ -1569,7 +1678,7 @@ const AnnotationEditor: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => navigate(recording ? `/projects/${recording.project_id}` : '/projects')}
+              onClick={() => pauseAndNavigate(recording ? `/projects/${recording.project_id}` : '/projects')}
               className="p-1 rounded-md hover:bg-gray-100"
               title="Back to Project"
             >
@@ -1611,13 +1720,6 @@ const AnnotationEditor: React.FC = () => {
           </div>
           
           <div className="flex items-center space-x-3">
-            {/* Segment Duration Display */}
-            {segmentDuration !== null && (
-              <div className="px-2 py-1 bg-blue-50 rounded text-sm text-blue-700 font-medium">
-                {segmentDuration < 1000 ? `${segmentDuration.toFixed(1)}ms` : `${(segmentDuration / 1000).toFixed(2)}s`}
-              </div>
-            )}
-            
             <button
               onClick={handleSaveAnnotations}
               disabled={isSaving || !hasUnsavedChanges}
@@ -1647,7 +1749,7 @@ const AnnotationEditor: React.FC = () => {
                 width={spectrogramDimensions.width}
                 height={spectrogramDimensions.height}
                 duration={duration}
-                maxFrequency={22050}
+                maxFrequency={getNyquistFrequency()}
                 zoomLevel={zoomLevel}
                 scrollOffset={scrollOffset}
               />
@@ -1658,7 +1760,7 @@ const AnnotationEditor: React.FC = () => {
               ref={unifiedScrollRef}
               className="absolute inset-0 overflow-auto"
               style={{ 
-                left: '40px', 
+                left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`, 
                 bottom: '64px',  // Increased to account for playback controls (32px + 32px)
                 width: 'calc(100% - 40px)',
                 height: 'calc(100% - 64px)'  // Adjusted height
@@ -1684,12 +1786,13 @@ const AnnotationEditor: React.FC = () => {
                   minHeight: '400px'
                 }}
               >
-                {/* Split view: 75% spectrogram, 25% waveform */}
+                {/* Split view: 72% spectrogram, 4% timeline, 24% waveform */}
+                {/* Spectrogram: 72% */}
                 <div className="absolute" style={{ 
                   top: 0,
                   left: 0,
                   width: '100%',
-                  height: '75%'
+                  height: '72%'
                 }}>
                   {spectrogramUrl ? (
                     <img 
@@ -1706,8 +1809,8 @@ const AnnotationEditor: React.FC = () => {
                       }}
                       style={{ 
                         top: '0',
-                        left: '40px',  // Offset for frequency scale
-                        width: 'calc(100% - 40px)',
+                        left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Offset for frequency scale
+                        width: `${(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,
                         height: '100%',
                         objectFit: 'fill',  // Stretch to fill the exact space
                         pointerEvents: 'none',
@@ -1717,7 +1820,7 @@ const AnnotationEditor: React.FC = () => {
                       }}
                     />
                   ) : (
-                    <div className="flex flex-col items-center justify-center w-full h-full bg-gray-50" style={{ left: '40px', width: 'calc(100% - 40px)' }}>
+                    <div className="flex flex-col items-center justify-center w-full h-full bg-gray-50" style={{ left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`, width: `calc(100% - ${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px)` }}>
                       {isLoadingSpectrogram ? (
                         <>
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-4"></div>
@@ -1756,15 +1859,103 @@ const AnnotationEditor: React.FC = () => {
                   )}
                 </div>
                 
+                {/* Timeline: 4% */}
+                <div 
+                  className="absolute bg-gray-800 bg-opacity-95"
+                  style={{ 
+                    top: '72%',
+                    left: 0,
+                    right: 0,
+                    height: '4%',
+                    overflow: 'hidden',
+                    borderBottom: '1px solid #374151'
+                  }}
+                >
+                  <div 
+                    className="relative"
+                    style={{ 
+                      width: `${(spectrogramDimensions.width - 40) * zoomLevel}px`,
+                      height: '100%',
+                      marginLeft: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`
+                    }}
+                  >
+                    <svg 
+                      width={(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel} 
+                      height={32}
+                      className="absolute"
+                      style={{ 
+                        transform: `translateX(-${scrollOffset}px)`,
+                        height: '100%'
+                      }}
+                    >
+                      {duration > 0 && (() => {
+                        const ticks = [];
+                        const totalWidth = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel;
+                        
+                        // Determine appropriate interval based on zoom level and duration
+                        let interval = 5; // Default 5 seconds
+                        if (zoomLevel > 2) interval = 2;
+                        if (zoomLevel > 4) interval = 1;
+                        if (zoomLevel > 8) interval = 0.5;
+                        if (duration > 60) interval = 10;
+                        if (duration > 300) interval = 30;
+                        
+                        const numTicks = Math.ceil(duration / interval);
+                        
+                        for (let i = 0; i <= numTicks; i++) {
+                          const time = i * interval;
+                          if (time <= duration) {
+                            const position = (time / duration) * totalWidth;
+                            const isMajor = i % (interval >= 5 ? 1 : 2) === 0;
+                            
+                            ticks.push(
+                              <g key={i}>
+                                <line
+                                  x1={position}
+                                  y1={0}
+                                  x2={position}
+                                  y2={isMajor ? 16 : 10}
+                                  stroke="#9CA3AF"
+                                  strokeWidth={isMajor ? 1.5 : 1}
+                                />
+                                {isMajor && (
+                                  <text
+                                    x={position}
+                                    y={28}
+                                    textAnchor="middle"
+                                    fontSize="10"
+                                    fill="white"
+                                    fontWeight="500"
+                                  >
+                                    {(() => {
+                                      const mins = Math.floor(time / 60);
+                                      const secs = time % 60;
+                                      if (mins > 0) {
+                                        return `${mins}:${secs.toFixed(0).padStart(2, '0')}`;
+                                      }
+                                      return `${secs.toFixed(secs % 1 === 0 ? 0 : 1)}s`;
+                                    })()}
+                                  </text>
+                                )}
+                              </g>
+                            );
+                          }
+                        }
+                        
+                        return ticks;
+                      })()}
+                    </svg>
+                  </div>
+                </div>
                 
-                {/* Waveform at bottom 25% */}
+                {/* Waveform at bottom 24% */}
                 <div 
                   className="absolute bg-gray-50"
                   style={{ 
-                    top: '75%',
+                    top: '76%',
                     left: 0,
                     right: 0,
-                    height: '25%',
+                    height: '24%',
                     overflow: 'hidden'
                   }}
                 >
@@ -1776,7 +1967,7 @@ const AnnotationEditor: React.FC = () => {
                       width: `${(spectrogramDimensions.width - 40) * zoomLevel}px`,  // Account for frequency scale
                       height: '100%',
                       position: 'relative',
-                      marginLeft: '40px',  // Align with spectrogram
+                      marginLeft: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Align with spectrogram
                       minHeight: '80px',
                       display: 'block'
                     }}
@@ -1786,7 +1977,7 @@ const AnnotationEditor: React.FC = () => {
                   <svg 
                     className="absolute top-0 pointer-events-none"
                     style={{ 
-                      left: '40px',  // Align with waveform
+                      left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Align with waveform
                       width: `${(spectrogramDimensions.width - 40) * zoomLevel}px`,
                       height: '100%'
                     }}
@@ -1794,9 +1985,21 @@ const AnnotationEditor: React.FC = () => {
                     {boundingBoxes.map((box, index) => {
                       const isSelected = selectedBoxes.has(index);
                       const labelColor = getLabelColor(box.label || 'None');
-                      const startX = duration > 0 ? ((box.start_time || 0) / duration) * (spectrogramDimensions.width - 40) * zoomLevel : 0;
-                      const endX = duration > 0 ? ((box.end_time || 0) / duration) * (spectrogramDimensions.width - 40) * zoomLevel : 0;
-                      const waveformHeight = spectrogramDimensions.height * 0.25;  // 25% for waveform
+                      const startX = duration > 0 ? CoordinateUtils.timeToPixel(
+                        box.start_time || 0,
+                        duration,
+                        spectrogramDimensions.width,
+                        zoomLevel,
+                        false
+                      ) : 0;
+                      const endX = duration > 0 ? CoordinateUtils.timeToPixel(
+                        box.end_time || 0,
+                        duration,
+                        spectrogramDimensions.width,
+                        zoomLevel,
+                        false
+                      ) : 0;
+                      const waveformHeight = spectrogramDimensions.height * 0.24;  // 24% for waveform
                       
                       return (
                         <g key={index}>
@@ -1847,7 +2050,7 @@ const AnnotationEditor: React.FC = () => {
                 
                 {/* Unified Canvas for annotations and cursor */}
                 <Stage
-                  width={(spectrogramDimensions.width - 40) * zoomLevel}  // Account for frequency scale
+                  width={(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}  // Account for frequency scale
                   height={spectrogramDimensions.height}  // Full height to include waveform
                   onMouseDown={handleMouseDown}
                   onMouseMove={handleMouseMove}
@@ -1857,7 +2060,7 @@ const AnnotationEditor: React.FC = () => {
                   style={{ 
                     position: 'absolute', 
                     top: '0',
-                    left: '40px',  // Offset for frequency scale
+                    left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Offset for frequency scale
                     cursor: isAnnotationMode ? 'crosshair' : 
                             isPanning ? 'grabbing' :
                             hoveredHandle ? ((hoveredHandle.handle.includes('n') && hoveredHandle.handle.includes('w')) || 
@@ -1869,7 +2072,7 @@ const AnnotationEditor: React.FC = () => {
                               mousePosition.x >= box.x && mousePosition.x <= box.x + box.width &&
                               mousePosition.y >= box.y && mousePosition.y <= box.y + box.height
                             ) ? 'move' : 
-                            mousePosition.y > Math.max(spectrogramDimensions.height, 600) * 0.75 ? 'pointer' : 'default'
+                            mousePosition.y > Math.max(spectrogramDimensions.height, 600) * 0.76 ? 'pointer' : 'default'
                   }}
                 >
                   <Layer>
@@ -1887,20 +2090,20 @@ const AnnotationEditor: React.FC = () => {
                       />
                     )}
                     
-                    {/* Bounding boxes - only in spectrogram area (top 75%) */}
+                    {/* Bounding boxes - only in spectrogram area (top 72%) */}
                     {boundingBoxes.map((box, index) => {
                       const isSelected = selectedBoxes.has(index);
                       const isSingleSelected = selectedBox === box;
                       const labelColor = getLabelColor(box.label || 'None');
                       
-                      // Scale box coordinates with zoom and adjust for spectrogram area only
+                      // Scale box coordinates with zoom only - boxes are already in display coordinates
                       // eslint-disable-next-line @typescript-eslint/no-unused-vars
                       const containerHeight = Math.max(spectrogramDimensions.height, 600);
                       const scaledBox = {
                         x: box.x * zoomLevel,
-                        y: box.y * 0.75,  // Scale y position to fit in top 75%
+                        y: box.y,  // Use stored coordinates directly - they're already in display space
                         width: box.width * zoomLevel,
-                        height: box.height * 0.75  // Scale height to fit in top 75%
+                        height: box.height  // Use stored height directly - already in display space
                       };
                       
                       // Use label color as base, but modify for selection states
@@ -1934,26 +2137,27 @@ const AnnotationEditor: React.FC = () => {
                             fill={fillColor}
                           />
                           
-                          {/* Label text */}
-                          {box.label && (
+                          {/* Label text - always show, including "None" */}
+                          {(
                             <>
                               {/* Background for label */}
                               <Rect
                                 x={scaledBox.x}
-                                y={scaledBox.y - 20}
-                                width={Math.min(scaledBox.width, box.label.length * 8 + 8)}
+                                y={Math.max(5, scaledBox.y - 20)}
+                                width={Math.min(scaledBox.width, Math.max(45, (box.label || 'None').length * 8 + 8))}
                                 height={18}
-                                fill="rgba(0, 0, 0, 0.7)"
-                                cornerRadius={2}
+                                fill={`rgba(0, 0, 0, ${box.label && box.label !== 'None' ? 0.8 : 0.6})`}
+                                cornerRadius={3}
                               />
                               {/* Label text */}
                               <Text
                                 x={scaledBox.x + 4}
-                                y={scaledBox.y - 15}
-                                text={box.label}
-                                fill="white"
+                                y={Math.max(10, scaledBox.y - 15)}
+                                text={box.label || 'None'}
+                                fill={box.label && box.label !== 'None' ? 'white' : '#cbd5e1'}
                                 fontSize={12}
                                 fontFamily="Inter, system-ui, sans-serif"
+                                fontStyle={!box.label || box.label === 'None' ? 'italic' : 'normal'}
                               />
                             </>
                           )}
@@ -2004,9 +2208,9 @@ const AnnotationEditor: React.FC = () => {
                     {drawingBox && (
                       <Rect
                         x={isNaN(drawingBox.x) || isNaN(drawingBox.width) ? 0 : (drawingBox.width < 0 ? drawingBox.x + drawingBox.width : drawingBox.x) * zoomLevel}
-                        y={isNaN(drawingBox.y) || isNaN(drawingBox.height) ? 0 : (drawingBox.height < 0 ? drawingBox.y + drawingBox.height : drawingBox.y) * 0.75}
+                        y={isNaN(drawingBox.y) || isNaN(drawingBox.height) ? 0 : (drawingBox.height < 0 ? drawingBox.y + drawingBox.height : drawingBox.y)}
                         width={isNaN(drawingBox.width) ? 0 : Math.abs(drawingBox.width || 0) * zoomLevel}
-                        height={isNaN(drawingBox.height) ? 0 : Math.abs(drawingBox.height || 0) * 0.75}
+                        height={isNaN(drawingBox.height) ? 0 : Math.abs(drawingBox.height || 0)}
                         stroke="#10B981"
                         strokeWidth={2}
                         fill="transparent"
@@ -2018,9 +2222,9 @@ const AnnotationEditor: React.FC = () => {
                     {duration > 0 && (
                       <Line
                         points={[
-                          (currentTime / duration) * (spectrogramDimensions.width - 40) * zoomLevel,
+                          (currentTime / duration) * (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel,
                           0,
-                          (currentTime / duration) * (spectrogramDimensions.width - 40) * zoomLevel,
+                          (currentTime / duration) * (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel,
                           spectrogramDimensions.height  // Full height including waveform
                         ]}
                         stroke="#EF4444"
@@ -2056,15 +2260,6 @@ const AnnotationEditor: React.FC = () => {
                   {playbackSpeed}×
                 </button>
                 
-                <div className="text-xs text-gray-600 flex items-center space-x-2">
-                  <span>{formatTime(currentTime)}</span>
-                  <span className="text-gray-400">/</span>
-                  <span>{formatTime(duration)}</span>
-                </div>
-                
-                <div className="text-xs text-gray-500 ml-4">
-                  Hold ← to rewind, → to fast-forward
-                </div>
                 
                 {/* Spectrogram Status Indicator */}
                 {(spectrogramStatus === 'processing' || spectrogramStatus === 'pending') && (
@@ -2076,29 +2271,6 @@ const AnnotationEditor: React.FC = () => {
                   </div>
                 )}
                 
-                {/* Spectrogram Resolution Selector */}
-                {availableResolutions.length > 1 && (
-                  <div className="flex items-center space-x-2 ml-6">
-                    <span className="text-xs text-gray-500">Quality:</span>
-                    <select 
-                      value={currentResolution}
-                      onChange={(e) => {
-                        const newResolution = e.target.value;
-                        setCurrentResolution(newResolution);
-                        if (recordingId) {
-                          loadSpectrogramImage(parseInt(recordingId), newResolution);
-                        }
-                      }}
-                      className="text-xs px-1 py-0.5 border border-gray-300 rounded bg-white"
-                    >
-                      {availableResolutions.map(res => (
-                        <option key={res} value={res}>
-                          {res === 'thumbnail' ? 'Fast' : res === 'standard' ? 'Standard' : 'High'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
             </div>
           </div>

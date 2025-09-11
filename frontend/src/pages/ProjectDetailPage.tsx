@@ -90,12 +90,15 @@ const ProjectDetailPage: React.FC = () => {
             recordingsFolder.file(`${recording.original_filename}`, audioBlob);
           }
           
-          // Download spectrogram
-          const spectrogramUrl = await recordingService.getSpectrogramUrl(recording.id);
-          if (spectrogramUrl && spectrogramsFolder) {
-            const spectrogramResponse = await fetch(spectrogramUrl);
-            const spectrogramBlob = await spectrogramResponse.blob();
-            spectrogramsFolder.file(`${recording.original_filename.replace(/\.[^/.]+$/, '')}_spectrogram.png`, spectrogramBlob);
+          // Download spectrogram using authenticated API
+          try {
+            const spectrogramBlob = await recordingService.getSpectrogramBlob(recording.id);
+            if (spectrogramBlob && spectrogramsFolder) {
+              spectrogramsFolder.file(`${recording.original_filename.replace(/\.[^/.]+$/, '')}_spectrogram.png`, spectrogramBlob);
+            }
+          } catch (spectrogramError) {
+            console.warn(`Spectrogram not available for ${recording.original_filename}`);
+            // Continue processing even if spectrogram is not available
           }
           
           // Get annotations
@@ -103,6 +106,8 @@ const ProjectDetailPage: React.FC = () => {
           
           // Save annotations as JSON
           if (annotationsFolder && annotations && annotations.length > 0) {
+            // Use the LATEST annotation (last in array), not the first one
+            const latestAnnotation = annotations[annotations.length - 1];
             const annotationData = {
               recording: {
                 id: recording.id,
@@ -110,7 +115,7 @@ const ProjectDetailPage: React.FC = () => {
                 duration: recording.duration,
                 sample_rate: recording.sample_rate,
               },
-              annotations: annotations[0].bounding_boxes.map((box: any) => ({
+              annotations: latestAnnotation.bounding_boxes.map((box: any) => ({
                 label: box.label || 'None',
                 start_time: box.start_time,
                 end_time: box.end_time,
@@ -127,20 +132,26 @@ const ProjectDetailPage: React.FC = () => {
             annotationsFolder.file(`${recording.original_filename.replace(/\.[^/.]+$/, '')}_annotations.json`, jsonStr);
             
             // Generate visualization with bounding boxes
-            if (spectrogramUrl && visualizationsFolder && annotations[0].bounding_boxes.length > 0) {
-              try {
-                const visualizationBlob = await generateVisualization(
-                  spectrogramUrl, 
-                  annotations[0].bounding_boxes,
-                  recording
-                );
-                visualizationsFolder.file(
-                  `${recording.original_filename.replace(/\.[^/.]+$/, '')}_annotated.png`, 
-                  visualizationBlob
-                );
-              } catch (err) {
-                console.error('Failed to generate visualization for', recording.original_filename, err);
+            // Skip visualization if spectrogram is not available
+            try {
+              const spectrogramUrl = await recordingService.getSpectrogramUrl(recording.id);
+              if (spectrogramUrl && visualizationsFolder && latestAnnotation.bounding_boxes.length > 0) {
+                try {
+                  const visualizationBlob = await generateVisualization(
+                    spectrogramUrl, 
+                    latestAnnotation.bounding_boxes,
+                    recording
+                  );
+                  visualizationsFolder.file(
+                    `${recording.original_filename.replace(/\.[^/.]+$/, '')}_annotated.png`, 
+                    visualizationBlob
+                  );
+                } catch (err) {
+                  console.error('Failed to generate visualization for', recording.original_filename, err);
+                }
               }
+            } catch (err) {
+              console.warn('Could not get spectrogram URL for visualization');
             }
           }
         } catch (err) {
@@ -218,34 +229,83 @@ const ProjectDetailPage: React.FC = () => {
           'E': 'rgba(139, 92, 246, 0.5)',
         };
         
-        // Draw bounding boxes
+        // Draw bounding boxes using time/frequency coordinates
         boundingBoxes.forEach((box) => {
-          // Calculate position on image
-          const scaleX = img.width / 800; // Assuming default width
-          const scaleY = img.height / 400; // Assuming default height
+          console.log('Processing box:', box); // Debug log
           
-          const x = box.x * scaleX;
-          const y = box.y * scaleY;
-          const width = box.width * scaleX;
-          const height = box.height * scaleY;
+          let xStart, boxWidth, yTop, boxHeight;
+          
+          // Determine coordinate system and calculate positions
+          if (recording.duration && box.start_time !== undefined && box.end_time !== undefined) {
+            // Time-based coordinates (preferred)
+            xStart = (box.start_time / recording.duration) * img.width;
+            const xEnd = (box.end_time / recording.duration) * img.width;
+            boxWidth = Math.max(1, xEnd - xStart);
+            
+            // Calculate y position based on frequency
+            const maxFreq = (recording.sample_rate || 44100) / 2; // Nyquist frequency
+            
+            if (box.max_frequency !== undefined && box.min_frequency !== undefined) {
+              // Frequency-based coordinates (Y-axis is inverted in spectrograms)
+              yTop = img.height - ((box.max_frequency / maxFreq) * img.height);
+              const yBottom = img.height - ((box.min_frequency / maxFreq) * img.height);
+              boxHeight = Math.max(1, yBottom - yTop);
+            } else if (box.y !== undefined && box.height !== undefined) {
+              // Fallback to pixel coordinates with scaling
+              const scaleY = img.height / 400; // Original canvas height
+              yTop = box.y * scaleY;
+              boxHeight = Math.max(1, box.height * scaleY);
+            } else {
+              // Default to full height if no frequency/pixel data
+              yTop = 0;
+              boxHeight = img.height;
+            }
+          } else if (box.x !== undefined && box.width !== undefined && 
+                     box.y !== undefined && box.height !== undefined) {
+            // Pure pixel coordinates with scaling
+            const scaleX = img.width / 800;  // Original canvas width
+            const scaleY = img.height / 400; // Original canvas height
+            xStart = box.x * scaleX;
+            boxWidth = Math.max(1, box.width * scaleX);
+            yTop = box.y * scaleY;
+            boxHeight = Math.max(1, box.height * scaleY);
+          } else {
+            // Skip boxes with insufficient data
+            console.warn('Box has insufficient coordinate data:', box);
+            return;
+          }
           
           // Get color for label
           const color = labelColors[box.label] || 'rgba(59, 130, 246, 0.5)';
           
-          // Draw box
-          ctx.strokeStyle = color.replace('0.5', '1');
-          ctx.lineWidth = 2;
-          ctx.strokeRect(x, y, width, height);
+          console.log(`Drawing box: x=${xStart}, y=${yTop}, w=${boxWidth}, h=${boxHeight}`); // Debug log
           
-          // Fill with semi-transparent color
-          ctx.fillStyle = color;
-          ctx.fillRect(x, y, width, height);
-          
-          // Draw label
-          if (box.label && box.label !== 'None') {
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 14px Arial';
-            ctx.fillText(box.label, x + 4, y + 16);
+          // Draw box with error handling
+          try {
+            ctx.strokeStyle = color.replace('0.5', '1');
+            ctx.lineWidth = 2;
+            ctx.strokeRect(xStart, yTop, boxWidth, boxHeight);
+            
+            // Fill with semi-transparent color
+            ctx.fillStyle = color;
+            ctx.fillRect(xStart, yTop, boxWidth, boxHeight);
+            
+            // Draw label
+            if (box.label && box.label !== 'None') {
+              // Set font before measuring text
+              ctx.font = 'bold 14px Arial';
+              
+              // Add background for label text
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+              const labelWidth = ctx.measureText(box.label).width + 8;
+              ctx.fillRect(xStart, yTop, labelWidth, 20);
+              
+              // Draw label text
+              ctx.fillStyle = 'white';
+              ctx.fillText(box.label, xStart + 4, yTop + 16);
+            }
+          } catch (drawError) {
+            console.error('Error drawing box:', drawError);
           }
         });
         

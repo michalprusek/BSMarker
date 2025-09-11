@@ -1,0 +1,255 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# BSMarker Advanced Pre-commit Hook
+# This hook runs comprehensive checks on both frontend and backend code
+
+echo "🚀 BSMarker Pre-commit Hook - Starting comprehensive checks..."
+echo "=================================================="
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Track overall status
+OVERALL_STATUS=0
+
+# Function to run checks and report status
+run_check() {
+    local name="$1"
+    local command="$2"
+    echo -e "${BLUE}▶ Running: ${name}${NC}"
+
+    if eval "$command"; then
+        echo -e "${GREEN}✓ ${name} passed${NC}\n"
+        return 0
+    else
+        echo -e "${RED}✗ ${name} failed${NC}\n"
+        return 1
+    fi
+}
+
+# Function to check if files of certain type were changed
+has_changed_files() {
+    local pattern="$1"
+    git diff --cached --name-only | grep -q "$pattern"
+}
+
+# 1. Backend Python Checks
+if has_changed_files "backend/.*\.py$"; then
+    echo -e "${YELLOW}📝 Python files detected - Running backend checks...${NC}\n"
+
+    # Black formatting check
+    run_check "Black (Python formatting)" \
+        "cd backend && black --check --line-length=100 app/" || OVERALL_STATUS=1
+
+    # isort import sorting check
+    run_check "isort (Import sorting)" \
+        "cd backend && isort --check-only --profile black --line-length 100 app/" || OVERALL_STATUS=1
+
+    # Flake8 linting
+    run_check "Flake8 (Linting)" \
+        "cd backend && flake8 --max-line-length=100 --extend-ignore=E203,W503 app/" || OVERALL_STATUS=1
+
+    # MyPy type checking
+    run_check "MyPy (Type checking)" \
+        "cd backend && mypy --ignore-missing-imports --strict-optional app/" || OVERALL_STATUS=1
+
+    # Pylint advanced checks
+    run_check "Pylint (Advanced checks)" \
+        "cd backend && pylint --max-line-length=100 --disable=C0114,C0115,C0116,R0903,R0801 app/" || OVERALL_STATUS=1
+
+    # Bandit security checks
+    run_check "Bandit (Security)" \
+        "cd backend && bandit -r app/ --skip B101 -ll" || OVERALL_STATUS=1
+
+    # Check for print statements
+    echo -e "${BLUE}▶ Checking for print statements...${NC}"
+    if grep -r "print(" backend/app/ --include="*.py" --exclude-dir=tests | grep -v "# noqa" | grep -v "logger"; then
+        echo -e "${RED}✗ Found print statements (use logging instead)${NC}\n"
+        OVERALL_STATUS=1
+    else
+        echo -e "${GREEN}✓ No print statements found${NC}\n"
+    fi
+
+    # Check for breakpoints
+    echo -e "${BLUE}▶ Checking for breakpoint() calls...${NC}"
+    if grep -r "breakpoint()" backend/ --include="*.py"; then
+        echo -e "${RED}✗ Found breakpoint() calls${NC}\n"
+        OVERALL_STATUS=1
+    else
+        echo -e "${GREEN}✓ No breakpoint() calls found${NC}\n"
+    fi
+
+    # Check for hardcoded credentials
+    echo -e "${BLUE}▶ Checking for hardcoded credentials...${NC}"
+    if grep -r 'password\s*=\s*["'"'"'][^"'"'"']*["'"'"']' backend/ --include="*.py" | grep -v ".env" | grep -v "example" | grep -v "test"; then
+        echo -e "${RED}✗ Found potential hardcoded credentials${NC}\n"
+        OVERALL_STATUS=1
+    else
+        echo -e "${GREEN}✓ No hardcoded credentials found${NC}\n"
+    fi
+fi
+
+# 2. Frontend TypeScript/React Checks
+if has_changed_files "frontend/.*\.(ts|tsx|js|jsx)$"; then
+    echo -e "${YELLOW}📝 TypeScript/JavaScript files detected - Running frontend checks...${NC}\n"
+
+    # ESLint
+    run_check "ESLint (JavaScript/TypeScript linting)" \
+        "cd frontend && npx eslint src/ --ext .ts,.tsx,.js,.jsx --max-warnings=0" || OVERALL_STATUS=1
+
+    # TypeScript compilation check
+    run_check "TypeScript (Type checking)" \
+        "cd frontend && npx tsc --noEmit" || OVERALL_STATUS=1
+
+    # Prettier formatting check
+    run_check "Prettier (Code formatting)" \
+        "cd frontend && npx prettier --check 'src/**/*.{ts,tsx,js,jsx,css,scss,json}'" || OVERALL_STATUS=1
+
+    # Check for console.log statements
+    echo -e "${BLUE}▶ Checking for console.log statements...${NC}"
+    if grep -r "console\.\(log\|error\|warn\|info\|debug\)" frontend/src/ --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" | grep -v "// eslint-disable" | grep -v "/* eslint-disable"; then
+        echo -e "${YELLOW}⚠ Found console statements (consider removing for production)${NC}\n"
+    else
+        echo -e "${GREEN}✓ No console statements found${NC}\n"
+    fi
+
+    # Check for TODO/FIXME comments
+    echo -e "${BLUE}▶ Checking for TODO/FIXME comments...${NC}"
+    if grep -r "TODO\|FIXME\|HACK\|XXX" frontend/src/ --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx"; then
+        echo -e "${YELLOW}⚠ Found TODO/FIXME comments - please review${NC}\n"
+    else
+        echo -e "${GREEN}✓ No TODO/FIXME comments found${NC}\n"
+    fi
+fi
+
+# 3. Docker checks
+if has_changed_files "Dockerfile\|docker-compose.*\.yml$"; then
+    echo -e "${YELLOW}🐳 Docker files detected - Running Docker checks...${NC}\n"
+
+    # Hadolint for Dockerfiles
+    for dockerfile in $(git diff --cached --name-only | grep -E "Dockerfile"); do
+        run_check "Hadolint (Dockerfile linting): $dockerfile" \
+            "hadolint $dockerfile --ignore DL3008 --ignore DL3009" || OVERALL_STATUS=1
+    done
+
+    # Validate docker-compose files
+    for compose_file in $(git diff --cached --name-only | grep -E "docker-compose.*\.yml$"); do
+        run_check "Docker Compose validation: $compose_file" \
+            "docker-compose -f $compose_file config --quiet" || OVERALL_STATUS=1
+    done
+fi
+
+# 4. YAML/JSON checks
+if has_changed_files "\.(yml|yaml)$"; then
+    echo -e "${YELLOW}📄 YAML files detected - Running YAML checks...${NC}\n"
+
+    for yaml_file in $(git diff --cached --name-only | grep -E "\.(yml|yaml)$"); do
+        run_check "YAML validation: $yaml_file" \
+            "python -c 'import yaml; yaml.safe_load(open(\"$yaml_file\"))'" || OVERALL_STATUS=1
+    done
+fi
+
+if has_changed_files "\.json$"; then
+    echo -e "${YELLOW}📄 JSON files detected - Running JSON checks...${NC}\n"
+
+    for json_file in $(git diff --cached --name-only | grep -E "\.json$" | grep -v "package-lock.json"); do
+        run_check "JSON validation: $json_file" \
+            "python -c 'import json; json.load(open(\"$json_file\"))'" || OVERALL_STATUS=1
+    done
+fi
+
+# 5. Shell script checks
+if has_changed_files "\.sh$"; then
+    echo -e "${YELLOW}🐚 Shell scripts detected - Running shellcheck...${NC}\n"
+
+    for shell_file in $(git diff --cached --name-only | grep -E "\.sh$"); do
+        if [ -f "$shell_file" ]; then
+            run_check "Shellcheck: $shell_file" \
+                "shellcheck $shell_file" || OVERALL_STATUS=1
+        fi
+    done
+fi
+
+# 6. Security checks for all files
+echo -e "${YELLOW}🔒 Running security checks...${NC}\n"
+
+# Check for AWS keys
+echo -e "${BLUE}▶ Checking for AWS keys...${NC}"
+if git diff --cached --name-only -z | xargs -0 grep -E "AKIA[0-9A-Z]{16}" 2>/dev/null; then
+    echo -e "${RED}✗ Potential AWS keys detected${NC}\n"
+    OVERALL_STATUS=1
+else
+    echo -e "${GREEN}✓ No AWS keys found${NC}\n"
+fi
+
+# Check for private keys
+echo -e "${BLUE}▶ Checking for private keys...${NC}"
+if git diff --cached --name-only -z | xargs -0 grep -l "BEGIN RSA PRIVATE KEY\|BEGIN OPENSSH PRIVATE KEY\|BEGIN DSA PRIVATE KEY\|BEGIN EC PRIVATE KEY" 2>/dev/null; then
+    echo -e "${RED}✗ Private keys detected - never commit private keys!${NC}\n"
+    OVERALL_STATUS=1
+else
+    echo -e "${GREEN}✓ No private keys found${NC}\n"
+fi
+
+# 7. File size check
+echo -e "${YELLOW}📏 Checking file sizes...${NC}\n"
+LARGE_FILES=$(git diff --cached --name-only -z | xargs -0 du -k 2>/dev/null | awk '$1 > 1000 {print $2 " (" $1 "KB)"}')
+if [ -n "$LARGE_FILES" ]; then
+    echo -e "${YELLOW}⚠ Large files detected (>1MB):${NC}"
+    echo "$LARGE_FILES"
+    echo ""
+fi
+
+# 8. Check for merge conflict markers
+echo -e "${YELLOW}🔍 Checking for merge conflict markers...${NC}\n"
+if git diff --cached --name-only -z | xargs -0 grep -E "^(<<<<<<<|=======|>>>>>>>)" 2>/dev/null; then
+    echo -e "${RED}✗ Merge conflict markers detected${NC}\n"
+    OVERALL_STATUS=1
+else
+    echo -e "${GREEN}✓ No merge conflict markers found${NC}\n"
+fi
+
+# 9. Run lint-staged for additional checks
+if [ -f "package.json" ] && grep -q "lint-staged" "package.json"; then
+    echo -e "${YELLOW}🎯 Running lint-staged...${NC}\n"
+    npx lint-staged || OVERALL_STATUS=1
+fi
+
+# 10. Test coverage check (optional - can be slow)
+if [ "$RUN_TESTS" = "true" ]; then
+    echo -e "${YELLOW}🧪 Running tests with coverage...${NC}\n"
+
+    if has_changed_files "backend/.*\.py$"; then
+        run_check "Backend tests" \
+            "cd backend && python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=70 tests/" || OVERALL_STATUS=1
+    fi
+
+    if has_changed_files "frontend/.*\.(ts|tsx|js|jsx)$"; then
+        run_check "Frontend tests" \
+            "cd frontend && npm test -- --coverage --watchAll=false" || OVERALL_STATUS=1
+    fi
+fi
+
+# Final status report
+echo "=================================================="
+if [ $OVERALL_STATUS -eq 0 ]; then
+    echo -e "${GREEN}✅ All pre-commit checks passed!${NC}"
+    echo -e "${GREEN}Your code is ready to be committed.${NC}"
+else
+    echo -e "${RED}❌ Pre-commit checks failed!${NC}"
+    echo -e "${RED}Please fix the issues above before committing.${NC}"
+    echo ""
+    echo -e "${YELLOW}Tips:${NC}"
+    echo "• To automatically fix formatting issues:"
+    echo "  - Python: cd backend && black app/ && isort app/"
+    echo "  - Frontend: cd frontend && npm run format"
+    echo "• To bypass hooks (not recommended): git commit --no-verify"
+    echo "• To run tests: RUN_TESTS=true git commit"
+fi
+
+exit $OVERALL_STATUS

@@ -1,0 +1,48 @@
+{
+  "commitlint": {
+    "extends": [
+      "@commitlint/config-conventional"
+    ]
+  },
+  "description": "BSMarker - Bird Song Annotation Tool",
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.5"
+  },
+  "lint-staged": {
+    "*.sh": [
+      "shellcheck"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ],
+    "*.{py,pyi}": [
+      "black --check --line-length=100",
+      "isort --check-only --profile black --line-length 100",
+      "flake8 --max-line-length=100 --extend-ignore=E203,W503"
+    ],
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix --max-warnings=0",
+      "prettier --write"
+    ]
+  },
+  "name": "bsmarker",
+  "private": true,
+  "scripts": {
+    "format": "npm run format:frontend && npm run format:backend",
+    "format:backend": "cd backend && black app/ && isort app/",
+    "format:frontend": "cd frontend && npm run format",
+    "lint": "npm run lint:frontend && npm run lint:backend",
+    "lint:backend": "cd backend && flake8 app/",
+    "lint:frontend": "cd frontend && npm run lint",
+    "pre-commit": "lint-staged",
+    "prepare": "husky",
+    "security:audit": "npm audit && cd frontend && npm audit",
+    "test": "npm run test:frontend && npm run test:backend",
+    "test:backend": "cd backend && python -m pytest",
+    "test:frontend": "cd frontend && npm test"
+  },
+  "version": "1.0.0"
+}

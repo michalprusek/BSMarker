@@ -2,16 +2,16 @@
 description: Automated commit with pre-commit hook validation and error fixing
 ---
 
-# Smart Commit Command
+# Overview
 
 Tento příkaz automaticky:
-1. Přepne na dev branch
-2. Zkontroluje a opraví pre-commit hook chyby
-3. Opakuje commit, dokud hook neprojde úspěšně
+1. Přepni na dev branch
+2. Zkontroluj a oprav pre-commit hook chyby
+3. Opakuj commit, dokud pre-commit hook neprojde úspěšně
 
-Použití: `/commit`
+## Workflow
 
-## Implementation
+VERY IMPORTANT: Preflight: zkontroluj, že se v local changes nenechází soubory, které se nemají dostat na github nebo citlivé informace, zbytečné jednorázové skripty atd. - všechno takové odstraň
 
 !git checkout dev
 
@@ -19,7 +19,7 @@ Použití: `/commit`
 
 !git add .
 
-# Pokus o commit s pre-commit hook validací
+# Commit
 !git commit -m "$ARGUMENTS" || echo "Pre-commit hook failed, analyzing errors..."
 
 # Analyzuj a oprav pre-commit chyby
@@ -39,10 +39,13 @@ Read package.json to understand available lint/format commands
 !npm run lint 2>&1 | head -20
 !npm run type-check 2>&1 | head -20
 
-Automaticky opravuji časté problémy:
+Automaticky opravuj časté problémy:
 - ESLint chyby pomocí --fix
 - Prettier formátování 
 - TypeScript type chyby
 - Git staged files
 
 Pokud hook stále selhává, zobrazuji detailní chyby pro manuální opravu.
+
+VERY IMPORTANT: Nikdy nepřeskakuj pre-commit hooky!
+VERY IMPORTANT: Na konci pushni změny a přidej do PR do main. Pokud PR do main větve neexistuje, vytvoř ho.

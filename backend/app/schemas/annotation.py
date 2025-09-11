@@ -1,6 +1,8 @@
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 
 class BoundingBoxBase(BaseModel):
     x: float
@@ -13,10 +15,11 @@ class BoundingBoxBase(BaseModel):
     max_frequency: Optional[float] = None
     label: str
     confidence: Optional[float] = None
-    metadata: Optional[Dict[str, Any]] = None
+
 
 class BoundingBoxCreate(BoundingBoxBase):
-    pass
+    extra_metadata: Optional[Dict[str, Any]] = None
+
 
 class BoundingBoxUpdate(BaseModel):
     x: Optional[float] = None
@@ -29,43 +32,28 @@ class BoundingBoxUpdate(BaseModel):
     max_frequency: Optional[float] = None
     label: Optional[str] = None
     confidence: Optional[float] = None
-    metadata: Optional[Dict[str, Any]] = None
+    extra_metadata: Optional[Dict[str, Any]] = None
+
 
 class BoundingBox(BoundingBoxBase):
     id: int
     annotation_id: int
+    extra_metadata: Optional[Dict[str, Any]] = None  # Match database column name
 
-    class Config:
-        from_attributes = True
-        
-    @classmethod
-    def from_orm(cls, obj):
-        # Map extra_metadata from DB to metadata in schema
-        data = {
-            'id': obj.id,
-            'annotation_id': obj.annotation_id,
-            'x': obj.x,
-            'y': obj.y,
-            'width': obj.width,
-            'height': obj.height,
-            'start_time': obj.start_time,
-            'end_time': obj.end_time,
-            'min_frequency': obj.min_frequency,
-            'max_frequency': obj.max_frequency,
-            'label': obj.label,
-            'confidence': obj.confidence,
-            'metadata': getattr(obj, 'extra_metadata', None)  # Map extra_metadata to metadata
-        }
-        return cls(**data)
+    model_config = ConfigDict(from_attributes=True)
+
 
 class AnnotationBase(BaseModel):
     recording_id: int
 
+
 class AnnotationCreate(AnnotationBase):
     bounding_boxes: List[BoundingBoxCreate] = []
 
+
 class AnnotationUpdate(BaseModel):
     bounding_boxes: Optional[List[BoundingBoxCreate]] = None
+
 
 class Annotation(AnnotationBase):
     id: int
@@ -74,5 +62,4 @@ class Annotation(AnnotationBase):
     updated_at: Optional[datetime] = None
     bounding_boxes: List[BoundingBox] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
