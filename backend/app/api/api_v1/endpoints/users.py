@@ -1,13 +1,18 @@
+"""User endpoints for BSMarker API."""
+
 from typing import Any, List
+
+from app.api import deps
+from app.core.rate_limiter import RATE_LIMITS, limiter
+from app.core.security import get_password_hash
+from app.models.user import User
+from app.schemas.user import User as UserSchema
+from app.schemas.user import UserCreate, UserUpdate
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from app.api import deps
-from app.core.security import get_password_hash
-from app.core.rate_limiter import limiter, RATE_LIMITS
-from app.models.user import User
-from app.schemas.user import User as UserSchema, UserCreate, UserUpdate
 
 router = APIRouter()
+
 
 @router.get("/", response_model=List[UserSchema])
 @limiter.limit(RATE_LIMITS["admin_operation"])
@@ -20,6 +25,7 @@ def read_users(
 ) -> Any:
     users = db.query(User).offset(skip).limit(limit).all()
     return users
+
 
 @router.post("/", response_model=UserSchema)
 @limiter.limit(RATE_LIMITS["admin_operation"])
@@ -42,12 +48,13 @@ def create_user(
         hashed_password=get_password_hash(user_in.password),
         full_name=user_in.full_name,
         is_active=user_in.is_active,
-        is_admin=user_in.is_admin
+        is_admin=user_in.is_admin,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
     return user
+
 
 @router.get("/{user_id}", response_model=UserSchema)
 @limiter.limit(RATE_LIMITS["admin_operation"])
@@ -62,6 +69,7 @@ def read_user(
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
+
 @router.put("/{user_id}", response_model=UserSchema)
 @limiter.limit(RATE_LIMITS["admin_operation"])
 def update_user(
@@ -75,16 +83,16 @@ def update_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     update_data = user_in.dict(exclude_unset=True)
     if "password" in update_data:
         hashed_password = get_password_hash(update_data["password"])
         del update_data["password"]
         update_data["hashed_password"] = hashed_password
-    
+
     for field, value in update_data.items():
         setattr(user, field, value)
-    
+
     db.add(user)
     db.commit()
     db.refresh(user)

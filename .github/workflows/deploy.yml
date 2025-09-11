@@ -158,20 +158,20 @@ jobs:
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           script: |
             cd /opt/bsmarker
-            
+
             # Pull latest code
             git pull origin main
-            
+
             # Update images
             export VERSION=${{ github.sha }}
             docker-compose -f docker-compose.prod.yml pull
-            
+
             # Run migrations
             docker-compose -f docker-compose.prod.yml run --rm backend alembic upgrade head
-            
+
             # Deploy with rolling update
             docker-compose -f docker-compose.prod.yml up -d --scale backend=4 --scale frontend=4
-            
+
             # Wait for new containers to be healthy before scaling down
             echo "Waiting for containers to become healthy..."
             for i in {1..60}; do
@@ -179,9 +179,9 @@ jobs:
               healthy_frontends=$(docker ps --filter "name=bsmarker_frontend" --filter "health=healthy" --format "{{.Names}}" | wc -l)
               running_backends=$(docker ps --filter "name=bsmarker_backend" --format "{{.Names}}" | wc -l)
               running_frontends=$(docker ps --filter "name=bsmarker_frontend" --format "{{.Names}}" | wc -l)
-              
+
               echo "Healthy backends: $healthy_backends/$running_backends, frontends: $healthy_frontends/$running_frontends"
-              
+
               # Check if at least 2 of each service are healthy or if no health check is defined, check if running
               if [ $healthy_backends -ge 2 ] && [ $healthy_frontends -ge 2 ]; then
                 echo "Sufficient healthy containers available, proceeding with scale down"
@@ -191,17 +191,17 @@ jobs:
                 echo "Containers running for 30+ seconds without health status, proceeding"
                 break
               fi
-              
+
               if [ $i -eq 60 ]; then
                 echo "Timeout waiting for containers to become healthy"
                 exit 1
               fi
-              
+
               sleep 5
             done
-            
+
             docker-compose -f docker-compose.prod.yml up -d --scale backend=2 --scale frontend=2 --remove-orphans
-            
+
             # Clean up old images
             docker image prune -f
 

@@ -1,12 +1,16 @@
-from typing import Optional
-from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel
+
 
 class RecordingBase(BaseModel):
     original_filename: str
 
+
 class RecordingCreate(RecordingBase):
     project_id: int
+
 
 class RecordingInDBBase(RecordingBase):
     id: int
@@ -19,6 +23,7 @@ class RecordingInDBBase(RecordingBase):
 
     class Config:
         from_attributes = True
+
 
 class Recording(RecordingInDBBase):
     pass

@@ -2,15 +2,15 @@
 Celery configuration for BSMarker background tasks.
 """
 
-from celery import Celery
 from app.core.config import settings
+from celery import Celery
 
 # Create Celery instance
 celery_app = Celery(
     "bsmarker",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.spectrogram_tasks"]
+    include=["app.tasks.spectrogram_tasks"],
 )
 
 # Configure Celery
