@@ -2028,9 +2028,9 @@ const AnnotationEditor: React.FC = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden" style={{ maxHeight: '100vh' }}>
+    <div className="h-screen flex flex-col bg-gray-50" style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Simplified Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200 px-4 py-2">
+      <div className="bg-white shadow-sm border-b border-gray-200 px-4 py-1" style={{ flexShrink: 0, height: '42px' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <button
@@ -2128,13 +2128,11 @@ const AnnotationEditor: React.FC = () => {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex" style={{ height: 'calc(100vh - 56px)', overflow: 'hidden' }}>
-        {/* Canvas Area */}
-        <div className="flex-1 flex" style={{ marginRight: showSidebar ? '448px' : '64px' }}>
-        {/* Editor Area */}
-        <div className="flex-1 flex flex-col" style={{ height: '100%', overflow: 'hidden', padding: '0' }}>
+      <div className="flex-1 flex relative" style={{ overflow: 'hidden', minHeight: 0 }}>
+        {/* Editor Area - Main Content */}
+        <div className="flex-1 flex flex-col" style={{ minWidth: 0 }}>
           {/* Unified Spectrogram and Waveform Container */}
-          <div className="relative bg-white border-l border-r border-b border-gray-300" style={{ height: '100%', overflow: 'hidden' }}>
+          <div className="flex-1 relative bg-white border-l border-r border-b border-gray-300" style={{ minHeight: 0 }}>
             {/* Scales */}
             {spectrogramUrl && duration > 0 && (
               <SpectrogramScales
@@ -2153,9 +2151,9 @@ const AnnotationEditor: React.FC = () => {
               className="absolute inset-0 overflow-x-auto overflow-y-hidden"
               style={{ 
                 left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`, 
-                bottom: '64px',  // Increased to account for playback controls (32px + 32px)
+                bottom: '32px',  // Space for playback controls
                 width: 'calc(100% - 40px)',
-                height: 'calc(100% - 64px)'  // Adjusted height
+                height: 'calc(100% - 32px)'  // Adjusted height
               }}
               onScroll={handleScrollOptimized}
               onWheel={handleWheelZoom}
@@ -2165,17 +2163,16 @@ const AnnotationEditor: React.FC = () => {
                 className="relative"
                 style={{
                   width: `${spectrogramDimensions.width * zoomLevel}px`,
-                  height: '100%',
-                  minHeight: '400px'
+                  height: '100%'
                 }}
               >
-                {/* Split view: 68% spectrogram, 8% timeline, 24% waveform */}
-                {/* Spectrogram: 68% */}
+                {/* Split view: 60% spectrogram, 8% timeline, 32% waveform */}
+                {/* Spectrogram: 60% */}
                 <div className="absolute" style={{ 
                   top: 0,
                   left: 0,
                   width: '100%',
-                  height: '67%'
+                  height: '60%'
                 }}>
                   {spectrogramUrl ? (
                     <img 
@@ -2245,11 +2242,11 @@ const AnnotationEditor: React.FC = () => {
                 <div 
                   className="absolute bg-white border-t-2 border-b-2 border-gray-300"
                   style={{ 
-                    top: '69%',
+                    top: '60%',
                     left: 0,
                     right: 0,
                     height: '8%',
-                    minHeight: '48px',
+                    minHeight: '32px',
                     overflow: 'hidden'
                   }}
                 >
@@ -2319,15 +2316,14 @@ const AnnotationEditor: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Waveform at bottom 24% - no separate scrolling */}
+                {/* Waveform at bottom 32% - no separate scrolling */}
                 <div 
                   className="absolute bg-gradient-to-b from-gray-50 to-gray-100"
                   style={{ 
-                    top: '77%',
+                    top: '68%',
                     left: 0,
                     right: 0,
-                    height: '23%',
-                    // Remove overflow hidden - let parent container handle scrolling
+                    height: '32%'
                   }}
                 >
                   <div 
@@ -2627,7 +2623,7 @@ const AnnotationEditor: React.FC = () => {
             </div>
             
             {/* Integrated Playback Controls - inside the unified frame */}
-            <div className="absolute bottom-0 left-0 right-0 h-8 bg-gray-50 border-t border-gray-300 flex items-center px-4">
+            <div className="absolute bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-300 flex items-center px-4" style={{ height: '32px' }}>
               <div className="flex items-center space-x-3">
                 <button
                   onClick={handlePlayPause}
@@ -2680,10 +2676,9 @@ const AnnotationEditor: React.FC = () => {
             </div>
           </div>
         </div>
-        </div>
 
         {/* Vertical Toolbar */}
-        <div className="fixed right-0 w-16 bg-white border-l border-gray-200 shadow-lg flex flex-col items-center py-4 space-y-2 z-10" style={{ top: '60px', bottom: '0' }}>
+        <div className="w-16 bg-white border-l border-gray-200 shadow-lg flex flex-col items-center py-2 space-y-1" style={{ flexShrink: 0 }}>
           {/* Undo/Redo */}
           <button
             onClick={undo}
@@ -2728,12 +2723,6 @@ const AnnotationEditor: React.FC = () => {
             <ArrowsPointingOutIcon className="h-5 w-5 text-gray-600" />
           </button>
           
-          {/* Performance monitor for development */}
-          {process.env.NODE_ENV === 'development' && (
-            <div className="px-2 py-1 text-xs text-gray-500 bg-gray-100 rounded-md" title="Frames per second">
-              FPS: {fps} | Boxes: {visibleBoundingBoxes.length}/{boundingBoxes.length} | Zoom: {zoomLevel.toFixed(1)}x
-            </div>
-          )}
           <div className="text-xs text-gray-500 px-1 text-center">
             {Math.round(zoomLevel * 100)}%
           </div>
@@ -2780,7 +2769,7 @@ const AnnotationEditor: React.FC = () => {
 
         {/* Collapsible Sidebar */}
         {showSidebar && (
-          <div className="fixed right-16 w-96 border-l border-gray-200 bg-white p-4 overflow-y-auto z-5" style={{ top: '60px', bottom: '0' }}>
+          <div className="w-96 border-l border-gray-200 bg-white p-4 overflow-y-auto" style={{ flexShrink: 0 }}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-medium text-gray-900">Annotations</h2>
               <button
