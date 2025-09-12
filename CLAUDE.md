@@ -337,5 +337,13 @@ JWT_SECRET_KEY=<secure-key>
 - `frontend/src/components/AudioPlayer.tsx` - WaveSurfer.js integration
 
 
-VERY IMPORTANT: po každé změně je potřeba rebuildnout aplikaci, aby se změny prijevily
-VERY IMPORTANT: Nikdy neskipuj pre-commit hoos (checks) - vždy chyby nalezené v pre-commit checks oprav!
+## VERY IMPORTANT: Deployment after changes
+Po každé změně frontendové aplikace je potřeba:
+1. Build: `docker-compose -f docker-compose.prod.yml build frontend`
+2. Stop: `docker-compose -f docker-compose.prod.yml stop frontend nginx`
+3. Remove: `docker-compose -f docker-compose.prod.yml rm -f frontend nginx`
+4. Start: `docker-compose -f docker-compose.prod.yml up -d frontend nginx`
+
+POZOR: Pouhý restart nestačí! Docker musí vytvořit nové kontejnery s novým image.
+
+VERY IMPORTANT: Nikdy neskipuj pre-commit hooks (checks) - vždy chyby nalezené v pre-commit checks oprav!
