@@ -1,9 +1,13 @@
 import enum
+from typing import TYPE_CHECKING
 
 from app.db.base_class import Base
 from sqlalchemy import JSON, Column, DateTime, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
+if TYPE_CHECKING:
+    from app.models.recording import Recording
 
 
 class SpectrogramStatus(enum.Enum):

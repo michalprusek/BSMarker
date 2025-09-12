@@ -3,6 +3,10 @@ Celery configuration for BSMarker background tasks.
 """
 
 from app.core.config import settings
+
+# Import all models to ensure SQLAlchemy relationships are properly configured
+# This must happen before creating the Celery app to avoid relationship errors
+from app.models import *  # noqa: F403,F401
 from celery import Celery
 
 # Create Celery instance

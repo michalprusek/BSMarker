@@ -1,7 +1,13 @@
+from typing import TYPE_CHECKING
+
 from app.db.base_class import Base
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
+if TYPE_CHECKING:
+    from app.models.recording import Recording
+    from app.models.user import User
 
 
 class Project(Base):
