@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeftIcon, PlayIcon, PauseIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon, PencilIcon, TrashIcon, ClipboardDocumentIcon, ArrowUturnLeftIcon, ArrowUturnRightIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
@@ -14,6 +14,7 @@ import { CoordinateUtils, LAYOUT_CONSTANTS } from '../utils/coordinates';
 import { AXIS_STYLES, formatTimeLabel, getTimeTickInterval } from '../utils/axisStyles';
 import { useAutosave } from '../hooks/useAutosave';
 import { useSpectrogramZoom } from '../hooks/useSpectrogramZoom';
+import { throttle } from 'lodash';
 
 const PLAYBACK_SPEEDS = [1, 2, 4];
 const MAX_HISTORY_SIZE = 20;
@@ -98,6 +99,8 @@ const AnnotationEditor: React.FC = () => {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const [lastSavedState, setLastSavedState] = useState<BoundingBox[]>([]);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [visibleBoundingBoxes, setVisibleBoundingBoxes] = useState<BoundingBox[]>([]);
+  const [fps, setFps] = useState(0);
   const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null);
   const [isAutoSaving, setIsAutoSaving] = useState<boolean>(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -125,6 +128,87 @@ const AnnotationEditor: React.FC = () => {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const unifiedScrollRef = useRef<HTMLDivElement>(null);
 
+  // Viewport culling for performance optimization
+  const calculateVisibleBounds = useCallback(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return { left: 0, right: 1000, top: 0, bottom: 1000 };
+    
+    const scrollLeft = scrollOffset;
+    const scrollRight = scrollLeft + container.clientWidth;
+    const viewportLeft = scrollLeft / zoomLevel;
+    const viewportRight = scrollRight / zoomLevel;
+    
+    return {
+      left: Math.max(0, viewportLeft - 50), // Add 50px buffer
+      right: viewportRight + 50,
+      top: 0,
+      bottom: spectrogramDimensions.height
+    };
+  }, [scrollOffset, zoomLevel, spectrogramDimensions.height]);
+
+  // Update visible boxes when viewport or boxes change
+  useEffect(() => {
+    const bounds = calculateVisibleBounds();
+    const visible = boundingBoxes.filter(box => {
+      // Check if box intersects with viewport
+      return box.x < bounds.right &&
+             box.x + box.width > bounds.left &&
+             box.y < bounds.bottom &&
+             box.y + box.height > bounds.top;
+    });
+    setVisibleBoundingBoxes(visible);
+  }, [boundingBoxes, calculateVisibleBounds]);
+
+  // Memoize color calculations for performance
+  const getLabelColorMemoized = useMemo(() => {
+    const cache = new Map<string, { stroke: string; fill: string }>();
+    return (label: string) => {
+      if (!cache.has(label)) {
+        const colorIndex = labelColorMap.get(label) || 0;
+        cache.set(label, LABEL_COLORS[colorIndex % LABEL_COLORS.length]);
+      }
+      return cache.get(label)!;
+    };
+  }, [labelColorMap]);
+
+  // Memoize coordinate transformations
+  const transformedBoxes = useMemo(() => 
+    visibleBoundingBoxes.map(box => ({
+      ...box,
+      screenX: box.x * zoomLevel - scrollOffset,
+      screenY: box.y,
+      screenWidth: box.width * zoomLevel,
+      screenHeight: box.height,
+      color: getLabelColorMemoized(box.label || 'None')
+    })),
+    [visibleBoundingBoxes, zoomLevel, scrollOffset, getLabelColorMemoized]
+  );
+
+  // FPS monitoring for development
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    
+    let frameCount = 0;
+    let lastTime = performance.now();
+    let animationId: number;
+    
+    const measureFPS = () => {
+      frameCount++;
+      const currentTime = performance.now();
+      
+      if (currentTime >= lastTime + 1000) {
+        setFps(Math.round((frameCount * 1000) / (currentTime - lastTime)));
+        frameCount = 0;
+        lastTime = currentTime;
+      }
+      
+      animationId = requestAnimationFrame(measureFPS);
+    };
+    
+    animationId = requestAnimationFrame(measureFPS);
+    
+    return () => cancelAnimationFrame(animationId);
+  }, []);
 
   // History management functions
   const addToHistory = useCallback((newBoxes: BoundingBox[]) => {
@@ -302,6 +386,15 @@ const AnnotationEditor: React.FC = () => {
       // Don't handle keyboard shortcuts if modal or custom input is open
       if (showLabelModal || showCustomLabelInput) {
         return;
+      }
+      
+      // Don't handle keyboard shortcuts if user is typing in an input field
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        // Only allow Escape key to work in input fields for canceling
+        if (e.key !== 'Escape') {
+          return;
+        }
       }
       
       // Handle 'A' key for annotation mode toggle
@@ -1612,56 +1705,104 @@ const AnnotationEditor: React.FC = () => {
     setZoomOffset({ x: 0, y: 0 });
   };
 
-  // Mouse wheel zoom handler with cursor-centered zooming
-  const handleWheelZoom = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
-    // Only zoom if cursor is over the spectrogram
-    const target = event.currentTarget;
-    const rect = target.getBoundingClientRect();
-    const isOverSpectrogram = event.clientX >= rect.left && 
-                             event.clientX <= rect.right && 
-                             event.clientY >= rect.top && 
-                             event.clientY <= rect.bottom;
-    
-    if (!isOverSpectrogram || !spectrogramDimensions.width) return;
-    
-    event.preventDefault();
-    event.stopPropagation();
-    
-    // Calculate zoom factor based on wheel delta
-    const zoomSpeed = 0.002;
-    const delta = -event.deltaY * zoomSpeed;
-    const zoomFactor = Math.exp(delta);
-    
-    // Calculate new zoom level with limits
-    const newZoom = Math.max(1, Math.min(10, zoomLevel * zoomFactor));
-    
-    if (newZoom === zoomLevel) return;
-    
-    // Get cursor position relative to spectrogram container
-    const cursorX = event.clientX - rect.left - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-    const cursorY = event.clientY - rect.top;
-    
-    // Calculate world coordinates at cursor position
-    const worldX = (cursorX + zoomOffset.x) / zoomLevel;
-    const worldY = (cursorY + zoomOffset.y) / zoomLevel;
-    
-    // Calculate new offset to keep cursor position fixed
-    const newOffsetX = Math.max(0, worldX * newZoom - cursorX);
-    const newOffsetY = Math.max(0, worldY * newZoom - cursorY);
-    
-    // Apply zoom and offset
-    setZoomLevel(newZoom);
-    setZoomOffset({ x: newOffsetX, y: newOffsetY });
-    
-    // Update horizontal scroll for waveform synchronization
-    const maxScrollOffset = Math.max(0, (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * (newZoom - 1));
-    setScrollOffset(Math.min(newOffsetX, maxScrollOffset));
-    
-    // Update WaveSurfer zoom if available
-    if (wavesurferRef.current) {
-      wavesurferRef.current.zoom(newZoom * 100); // WaveSurfer zoom is in pixels per second
-    }
-  }, [zoomLevel, zoomOffset, spectrogramDimensions.width]);
+  // Throttled mouse wheel zoom handler with cursor-centered zooming
+  const handleWheelZoom = useMemo(() =>
+    throttle((event: React.WheelEvent<HTMLDivElement>) => {
+      // Only zoom if cursor is over the spectrogram
+      const target = event.currentTarget;
+      const rect = target.getBoundingClientRect();
+      const isOverSpectrogram = event.clientX >= rect.left && 
+                               event.clientX <= rect.right && 
+                               event.clientY >= rect.top && 
+                               event.clientY <= rect.bottom;
+      
+      if (!isOverSpectrogram || !spectrogramDimensions.width) return;
+      
+      event.preventDefault();
+      event.stopPropagation();
+      
+      // Use requestAnimationFrame for smooth updates
+      requestAnimationFrame(() => {
+        // Calculate zoom factor based on wheel delta
+        const zoomSpeed = 0.002;
+        const delta = -event.deltaY * zoomSpeed;
+        const zoomFactor = Math.exp(delta);
+        
+        // Calculate new zoom level with limits
+        const newZoom = Math.max(1, Math.min(20, zoomLevel * zoomFactor)); // Increased max zoom to 20x
+        
+        if (newZoom === zoomLevel) return;
+        
+        // Get cursor position relative to spectrogram container
+        const cursorX = event.clientX - rect.left - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+        const cursorY = event.clientY - rect.top;
+        
+        // Calculate world coordinates at cursor position
+        const worldX = (cursorX + zoomOffset.x) / zoomLevel;
+        const worldY = (cursorY + zoomOffset.y) / zoomLevel;
+        
+        // Calculate new offset to keep cursor position fixed
+        const newOffsetX = Math.max(0, worldX * newZoom - cursorX);
+        const newOffsetY = Math.max(0, worldY * newZoom - cursorY);
+        
+        // Apply zoom and offset
+        setZoomLevel(newZoom);
+        setZoomOffset({ x: newOffsetX, y: newOffsetY });
+        
+        // Update horizontal scroll for waveform synchronization
+        const maxScrollOffset = Math.max(0, (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * (newZoom - 1));
+        setScrollOffset(Math.min(newOffsetX, maxScrollOffset));
+        
+        // Update WaveSurfer zoom if available
+        if (wavesurferRef.current) {
+          wavesurferRef.current.zoom(newZoom * 100); // WaveSurfer zoom is in pixels per second
+        }
+      });
+    }, 16), // 60 FPS throttle
+    [zoomLevel, zoomOffset, spectrogramDimensions.width]
+  );
+
+  // Clean up throttled function on unmount
+  useEffect(() => {
+    return () => {
+      handleWheelZoom.cancel?.();
+    };
+  }, [handleWheelZoom]);
+
+  // Throttled scroll handler for performance
+  const handleScrollOptimized = useMemo(() =>
+    throttle((e: React.UIEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement;
+      const horizontalScrollPercentage = target.scrollWidth > target.clientWidth 
+        ? (target.scrollLeft / (target.scrollWidth - target.clientWidth)) * 100 
+        : 0;
+      const verticalScrollPercentage = target.scrollHeight > target.clientHeight
+        ? (target.scrollTop / (target.scrollHeight - target.clientHeight)) * 100 
+        : 0;
+      
+      // Update scroll states
+      setScrollOffset(horizontalScrollPercentage);
+      setVerticalScrollOffset(verticalScrollPercentage);
+      
+      // Update visible bounds with requestAnimationFrame for smoothness
+      requestAnimationFrame(() => {
+        const bounds = calculateVisibleBounds();
+        const visible = boundingBoxes.filter(box => {
+          return box.x < bounds.right &&
+                 box.x + box.width > bounds.left;
+        });
+        setVisibleBoundingBoxes(visible);
+      });
+    }, 16), // 60 FPS throttle
+    [boundingBoxes, calculateVisibleBounds]
+  );
+
+  // Clean up scroll throttled function
+  useEffect(() => {
+    return () => {
+      handleScrollOptimized.cancel?.();
+    };
+  }, [handleScrollOptimized]);
 
   // Quick label handler for A-Z keys
   const handleQuickLabel = (label: string) => {
@@ -1968,17 +2109,7 @@ const AnnotationEditor: React.FC = () => {
                 width: 'calc(100% - 40px)',
                 height: 'calc(100% - 64px)'  // Adjusted height
               }}
-              onScroll={(e) => {
-                const target = e.target as HTMLElement;
-                const horizontalScrollPercentage = target.scrollWidth > target.clientWidth 
-                  ? (target.scrollLeft / (target.scrollWidth - target.clientWidth)) * 100 
-                  : 0;
-                const verticalScrollPercentage = target.scrollHeight > target.clientHeight
-                  ? (target.scrollTop / (target.scrollHeight - target.clientHeight)) * 100
-                  : 0;
-                setScrollOffset(horizontalScrollPercentage);
-                setVerticalScrollOffset(verticalScrollPercentage);
-              }}
+              onScroll={handleScrollOptimized}
               onWheel={handleWheelZoom}
             >
               <div 
@@ -2240,7 +2371,7 @@ const AnnotationEditor: React.FC = () => {
                   </svg>
                 </div>
                 
-                {/* Unified Canvas for annotations and cursor */}
+                {/* Optimized Canvas for annotations and cursor */}
                 <Stage
                   width={(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}  // Account for frequency scale
                   height={spectrogramDimensions.height}  // Full height to include waveform
@@ -2251,6 +2382,9 @@ const AnnotationEditor: React.FC = () => {
                   ref={stageRef}
                   x={-zoomOffset.x}
                   y={-zoomOffset.y}
+                  scaleX={1}
+                  scaleY={1}
+                  listening={true}
                   style={{ 
                     position: 'absolute', 
                     top: '0',
@@ -2269,7 +2403,12 @@ const AnnotationEditor: React.FC = () => {
                             mousePosition.y > Math.max(spectrogramDimensions.height, 600) * 0.80 ? 'pointer' : 'default'
                   }}
                 >
-                  <Layer>
+                  {/* Static layer for selection rectangle - cached */}
+                  <Layer
+                    listening={false}
+                    cache={false}
+                    clearBeforeDraw={true}
+                  >
                     {/* Selection rectangle - scale to spectrogram area */}
                     {selectionRect && (
                       <Rect
@@ -2283,21 +2422,27 @@ const AnnotationEditor: React.FC = () => {
                         dash={[5, 5]}
                       />
                     )}
-                    
-                    {/* Bounding boxes - only in spectrogram area (top 72%) */}
-                    {boundingBoxes.map((box, index) => {
-                      const isSelected = selectedBoxes.has(index);
-                      const isSingleSelected = selectedBox === box;
-                      const labelColor = getLabelColor(box.label || 'None');
+                  </Layer>
+
+                  {/* Dynamic layer for bounding boxes - optimized */}
+                  <Layer
+                    listening={true}
+                    clearBeforeDraw={true}
+                  >
+                    {/* Optimized Bounding boxes - only render visible boxes */}
+                    {transformedBoxes.map((transformedBox, index) => {
+                      const originalIndex = visibleBoundingBoxes.indexOf(transformedBox);
+                      const globalIndex = boundingBoxes.indexOf(transformedBox);
+                      const isSelected = selectedBoxes.has(globalIndex);
+                      const isSingleSelected = selectedBox === transformedBox;
+                      const labelColor = transformedBox.color;
                       
-                      // Scale box coordinates with zoom only - boxes are already in display coordinates
-                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                      const containerHeight = Math.max(spectrogramDimensions.height, 600);
+                      // Use transformed coordinates for better performance
                       const scaledBox = {
-                        x: box.x * zoomLevel,
-                        y: box.y,  // Use stored coordinates directly - they're already in display space
-                        width: box.width * zoomLevel,
-                        height: box.height  // Use stored height directly - already in display space
+                        x: transformedBox.screenX,
+                        y: transformedBox.screenY,
+                        width: transformedBox.screenWidth,
+                        height: transformedBox.screenHeight
                       };
                       
                       // Use label color as base, but modify for selection states
@@ -2320,7 +2465,7 @@ const AnnotationEditor: React.FC = () => {
                       }
                       
                       return (
-                        <Group key={index}>
+                        <Group key={globalIndex >= 0 ? globalIndex : `visible_${index}`}>
                           <Rect
                             x={scaledBox.x}
                             y={scaledBox.y}
@@ -2338,20 +2483,20 @@ const AnnotationEditor: React.FC = () => {
                               <Rect
                                 x={scaledBox.x}
                                 y={Math.max(5, scaledBox.y - 20)}
-                                width={Math.min(scaledBox.width, Math.max(45, (box.label || 'None').length * 8 + 8))}
+                                width={Math.min(scaledBox.width, Math.max(45, (transformedBox.label || 'None').length * 8 + 8))}
                                 height={18}
-                                fill={`rgba(0, 0, 0, ${box.label && box.label !== 'None' ? 0.8 : 0.6})`}
+                                fill={`rgba(0, 0, 0, ${transformedBox.label && transformedBox.label !== 'None' ? 0.8 : 0.6})`}
                                 cornerRadius={3}
                               />
                               {/* Label text */}
                               <Text
                                 x={scaledBox.x + 4}
                                 y={Math.max(10, scaledBox.y - 15)}
-                                text={box.label || 'None'}
-                                fill={box.label && box.label !== 'None' ? 'white' : '#cbd5e1'}
+                                text={transformedBox.label || 'None'}
+                                fill={transformedBox.label && transformedBox.label !== 'None' ? 'white' : '#cbd5e1'}
                                 fontSize={12}
                                 fontFamily="Inter, system-ui, sans-serif"
-                                fontStyle={!box.label || box.label === 'None' ? 'italic' : 'normal'}
+                                fontStyle={!transformedBox.label || transformedBox.label === 'None' ? 'italic' : 'normal'}
                               />
                             </>
                           )}
@@ -2525,6 +2670,13 @@ const AnnotationEditor: React.FC = () => {
           >
             <MagnifyingGlassMinusIcon className="h-5 w-5 text-gray-600" />
           </button>
+          
+          {/* Performance monitor for development */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="px-2 py-1 text-xs text-gray-500 bg-gray-100 rounded-md" title="Frames per second">
+              FPS: {fps} | Boxes: {visibleBoundingBoxes.length}/{boundingBoxes.length} | Zoom: {zoomLevel.toFixed(1)}x
+            </div>
+          )}
           <div className="text-xs text-gray-500 px-1 text-center">
             {Math.round(zoomLevel * 100)}%
           </div>
@@ -2589,6 +2741,7 @@ const AnnotationEditor: React.FC = () => {
               onUpdateLabel={handleUpdateLabel}
               selectedBoxes={selectedBoxes}
               onSelectMultiple={handleSelectMultiple}
+              onDeleteMultiple={handleDeleteSelectedBoxes}
             />
           </div>
         )}

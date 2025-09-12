@@ -11,6 +11,7 @@ interface BoundingBoxListProps {
   onUpdateLabel?: (index: number, newLabel: string) => void;
   selectedBoxes?: Set<number>;
   onSelectMultiple?: (indices: Set<number>) => void;
+  onDeleteMultiple?: () => void;
 }
 
 const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
@@ -21,6 +22,7 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
   onUpdateLabel,
   selectedBoxes = new Set(),
   onSelectMultiple,
+  onDeleteMultiple,
 }) => {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
@@ -75,17 +77,26 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
         {boxes.length > 0 && onSelectMultiple && (
           <div className="flex gap-2">
             <button
-              onClick={handleSelectAll}
+              onClick={() => {
+                if (selectedBoxes.size === boxes.length) {
+                  handleUnselectAll();
+                } else {
+                  handleSelectAll();
+                }
+              }}
               className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
             >
-              Select All
+              {selectedBoxes.size === boxes.length ? 'Unselect All' : 'Select All'}
             </button>
-            <button
-              onClick={handleUnselectAll}
-              className="px-3 py-1 text-xs font-medium text-gray-600 hover:text-gray-500 hover:bg-gray-50 rounded-md transition-colors"
-            >
-              Unselect All
-            </button>
+            {selectedBoxes.size > 0 && onDeleteMultiple && (
+              <button
+                onClick={onDeleteMultiple}
+                className="px-3 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors flex items-center gap-1"
+              >
+                <TrashIcon className="h-3.5 w-3.5" />
+                Delete Selected ({selectedBoxes.size})
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -116,14 +127,8 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Label
                 </th>
-                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Time Range
-                </th>
-                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Frequency Range
-                </th>
                 <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
+                  
                 </th>
               </tr>
             </thead>
@@ -195,22 +200,16 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {box.start_time.toFixed(2)}s - {box.end_time.toFixed(2)}s
-                  </td>
-                  <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {box.min_frequency?.toFixed(0)}Hz - {box.max_frequency?.toFixed(0)}Hz
-                  </td>
                   <td className="px-3 py-4 whitespace-nowrap text-center">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         onDelete(index);
                       }}
-                      className="inline-flex items-center px-2 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors"
+                      className="p-1 text-red-600 hover:text-red-700 transition-colors"
+                      title="Delete annotation"
                     >
-                      <TrashIcon className="h-4 w-4 mr-1" />
-                      Delete
+                      <TrashIcon className="h-4 w-4" />
                     </button>
                   </td>
                 </tr>
