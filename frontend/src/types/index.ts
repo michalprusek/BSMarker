@@ -27,6 +27,7 @@ export interface Recording {
   sample_rate?: number;
   project_id: number;
   created_at: string;
+  annotation_count?: number;
 }
 
 export interface Spectrogram {
