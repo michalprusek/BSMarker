@@ -13,6 +13,7 @@ import SpectrogramScales from '../components/SpectrogramScales';
 import { CoordinateUtils, LAYOUT_CONSTANTS } from '../utils/coordinates';
 import { AXIS_STYLES, formatTimeLabel, getTimeTickInterval } from '../utils/axisStyles';
 import { useAutosave } from '../hooks/useAutosave';
+import { useSpectrogramZoom } from '../hooks/useSpectrogramZoom';
 
 const PLAYBACK_SPEEDS = [1, 2, 4];
 const MAX_HISTORY_SIZE = 20;
@@ -103,6 +104,7 @@ const AnnotationEditor: React.FC = () => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [annotationId, setAnnotationId] = useState<number | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [zoomOffset, setZoomOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [scrollOffset, setScrollOffset] = useState<number>(0);
   const [segmentDuration, setSegmentDuration] = useState<number | null>(null);
   const [customLabelInput, setCustomLabelInput] = useState<string>('');
@@ -527,34 +529,99 @@ const AnnotationEditor: React.FC = () => {
     }
   };
 
-  const pollSpectrogramStatus = async (recordingId: number) => {
+  // Better status messages
+  const getSpectrogramStatusMessage = useCallback(() => {
+    switch (spectrogramStatus) {
+      case 'not_started':
+        return 'Spectrogram not generated yet';
+      case 'processing':
+        return 'Generating spectrogram... This may take a few moments';
+      case 'completed':
+        return null; // Don't show message when completed
+      case 'failed':
+        return 'Spectrogram generation failed. Click to retry.';
+      case 'timeout':
+        return 'Generation timed out. Please refresh the page.';
+      default:
+        return 'Checking spectrogram status...';
+    }
+  }, [spectrogramStatus]);
+
+  const pollSpectrogramStatus = useCallback(async (recordingId: number) => {
+    if (!recording?.id) return;
+    
+    // Add retry configuration
+    const MAX_POLLING_ATTEMPTS = 60; // 5 minutes at 5-second intervals
+    const POLLING_INTERVAL = 5000;
+    let pollingAttempts = 0;
+    let pollingErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 3;
+    
     const pollInterval = setInterval(async () => {
       try {
         const status = await recordingService.getSpectrogramStatus(recordingId);
+        
+        // Reset error counter on success
+        pollingErrors = 0;
+        
         setSpectrogramStatus(status.status);
         setSpectrogramAvailable(status.available);
         
         if (status.status === 'completed' && status.available) {
           clearInterval(pollInterval);
+          setSpectrogramStatus('completed');
           await loadSpectrogramImage(recordingId);
-          
-          toast.success('Spectrogram loaded successfully!');
+          toast.success('Spectrogram ready!');
         } else if (status.status === 'failed') {
+          setSpectrogramStatus('failed');
+          setSpectrogramError('Spectrogram generation failed');
           clearInterval(pollInterval);
-          setSpectrogramError(status.error_message || 'Generation failed');
-          toast.error(`Spectrogram generation failed: ${status.error_message || 'Unknown error'}`);
+          toast.error('Spectrogram generation failed. Please try again.');
+        } else if (status.status === 'processing') {
+          setSpectrogramStatus('processing');
+          pollingAttempts++;
+          
+          // Show progress message
+          if (pollingAttempts % 6 === 0) { // Every 30 seconds
+            toast.loading(`Still generating spectrogram... (${Math.floor(pollingAttempts * 5 / 60)} minutes)`, {
+              id: 'spectrogram-progress',
+              duration: 4000
+            });
+          }
+          
+          // Timeout after MAX_POLLING_ATTEMPTS
+          if (pollingAttempts >= MAX_POLLING_ATTEMPTS) {
+            clearInterval(pollInterval);
+            setSpectrogramStatus('timeout');
+            setSpectrogramError('Spectrogram generation timed out. Please refresh the page.');
+            toast.error('Spectrogram generation timed out. The process may still be running in the background.');
+          }
         }
-      } catch (error) {
+      } catch (error: any) {
+        pollingErrors++;
         console.error('Error polling spectrogram status:', error);
-        clearInterval(pollInterval);
+        
+        // Only stop polling after consecutive errors
+        if (pollingErrors >= MAX_CONSECUTIVE_ERRORS) {
+          clearInterval(pollInterval);
+          
+          // Check if it's an auth error
+          if (error.response?.status === 401 || error.response?.status === 403) {
+            setSpectrogramError('Authentication error. Please log in again.');
+            toast.error('Session expired. Please log in again.');
+          } else {
+            // Network or other error - might be temporary
+            setSpectrogramError('Failed to check spectrogram status. Please refresh the page.');
+            toast.error('Connection error. Please check your internet connection.');
+          }
+        }
+        // Continue polling if under error threshold
       }
-    }, 2000); // Poll every 2 seconds
-
-    // Stop polling after 5 minutes (avoid infinite polling)
-    setTimeout(() => {
-      clearInterval(pollInterval);
-    }, 5 * 60 * 1000);
-  };
+    }, POLLING_INTERVAL);
+    
+    // Store interval reference for cleanup
+    return pollInterval;
+  }, [recording?.id]);
 
   const fetchProjectRecordings = async () => {
     if (!recordingId) return;
@@ -1542,7 +1609,59 @@ const AnnotationEditor: React.FC = () => {
   const handleZoomReset = () => {
     setZoomLevel(1);
     setScrollOffset(0);
+    setZoomOffset({ x: 0, y: 0 });
   };
+
+  // Mouse wheel zoom handler with cursor-centered zooming
+  const handleWheelZoom = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    // Only zoom if cursor is over the spectrogram
+    const target = event.currentTarget;
+    const rect = target.getBoundingClientRect();
+    const isOverSpectrogram = event.clientX >= rect.left && 
+                             event.clientX <= rect.right && 
+                             event.clientY >= rect.top && 
+                             event.clientY <= rect.bottom;
+    
+    if (!isOverSpectrogram || !spectrogramDimensions.width) return;
+    
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Calculate zoom factor based on wheel delta
+    const zoomSpeed = 0.002;
+    const delta = -event.deltaY * zoomSpeed;
+    const zoomFactor = Math.exp(delta);
+    
+    // Calculate new zoom level with limits
+    const newZoom = Math.max(1, Math.min(10, zoomLevel * zoomFactor));
+    
+    if (newZoom === zoomLevel) return;
+    
+    // Get cursor position relative to spectrogram container
+    const cursorX = event.clientX - rect.left - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+    const cursorY = event.clientY - rect.top;
+    
+    // Calculate world coordinates at cursor position
+    const worldX = (cursorX + zoomOffset.x) / zoomLevel;
+    const worldY = (cursorY + zoomOffset.y) / zoomLevel;
+    
+    // Calculate new offset to keep cursor position fixed
+    const newOffsetX = Math.max(0, worldX * newZoom - cursorX);
+    const newOffsetY = Math.max(0, worldY * newZoom - cursorY);
+    
+    // Apply zoom and offset
+    setZoomLevel(newZoom);
+    setZoomOffset({ x: newOffsetX, y: newOffsetY });
+    
+    // Update horizontal scroll for waveform synchronization
+    const maxScrollOffset = Math.max(0, (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * (newZoom - 1));
+    setScrollOffset(Math.min(newOffsetX, maxScrollOffset));
+    
+    // Update WaveSurfer zoom if available
+    if (wavesurferRef.current) {
+      wavesurferRef.current.zoom(newZoom * 100); // WaveSurfer zoom is in pixels per second
+    }
+  }, [zoomLevel, zoomOffset, spectrogramDimensions.width]);
 
   // Quick label handler for A-Z keys
   const handleQuickLabel = (label: string) => {
@@ -1860,6 +1979,7 @@ const AnnotationEditor: React.FC = () => {
                 setScrollOffset(horizontalScrollPercentage);
                 setVerticalScrollOffset(verticalScrollPercentage);
               }}
+              onWheel={handleWheelZoom}
             >
               <div 
                 ref={canvasContainerRef}
@@ -1898,9 +2018,13 @@ const AnnotationEditor: React.FC = () => {
                         height: '100%',
                         objectFit: 'fill',  // Stretch to fill the exact space
                         pointerEvents: 'none',
-                        imageRendering: zoomLevel > 2 ? 'pixelated' : 'auto',
-                        transform: 'scale(1)',
-                        transformOrigin: 'top left'
+                        imageRendering: zoomLevel > 3 ? 'crisp-edges' : (zoomLevel > 1.5 ? 'auto' : 'auto'),
+                        transform: `translate(-${zoomOffset.x}px, -${zoomOffset.y}px)`,
+                        transformOrigin: 'top left',
+                        // Force GPU acceleration for smooth zooming
+                        willChange: 'transform',
+                        backfaceVisibility: 'hidden',
+                        perspective: 1000
                       }}
                     />
                   ) : (
@@ -1909,13 +2033,8 @@ const AnnotationEditor: React.FC = () => {
                         <>
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-4"></div>
                           <p className="text-gray-600 mb-2">
-                            {spectrogramStatus === 'processing' ? 'Generating spectrogram...' :
-                             spectrogramStatus === 'pending' ? 'Queued for processing...' :
-                             'Loading spectrogram...'}
+                            {getSpectrogramStatusMessage() || 'Loading spectrogram...'}
                           </p>
-                          {spectrogramStatus === 'processing' && (
-                            <p className="text-sm text-gray-500">This may take a few moments for longer recordings</p>
-                          )}
                         </>
                       ) : spectrogramError ? (
                         <div className="text-center">
@@ -1925,7 +2044,7 @@ const AnnotationEditor: React.FC = () => {
                             onClick={() => loadSpectrogram(parseInt(recordingId!))}
                             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
                           >
-                            Retry
+                            Retry Generation
                           </button>
                         </div>
                       ) : (
@@ -1935,7 +2054,7 @@ const AnnotationEditor: React.FC = () => {
                             onClick={() => loadSpectrogram(parseInt(recordingId!))}
                             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
                           >
-                            Spektrogram se generuje, čekejte prosím...
+                            Generate Spectrogram
                           </button>
                         </div>
                       )}
@@ -2130,6 +2249,8 @@ const AnnotationEditor: React.FC = () => {
                   onMouseUp={handleMouseUp}
                   onContextMenu={handleContextMenu}
                   ref={stageRef}
+                  x={-zoomOffset.x}
+                  y={-zoomOffset.y}
                   style={{ 
                     position: 'absolute', 
                     top: '0',
@@ -2335,13 +2456,29 @@ const AnnotationEditor: React.FC = () => {
                 
                 
                 {/* Spectrogram Status Indicator */}
-                {(spectrogramStatus === 'processing' || spectrogramStatus === 'pending') && (
+                {(spectrogramStatus === 'processing' || spectrogramStatus === 'pending' || spectrogramStatus === 'timeout') && (
                   <div className="flex items-center space-x-2 ml-6">
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
-                    <span className="text-xs text-blue-600">
-                      {spectrogramStatus === 'processing' ? 'Generating...' : 'Queued...'}
+                    {spectrogramStatus !== 'timeout' && (
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                    )}
+                    <span className={`text-xs ${
+                      spectrogramStatus === 'timeout' ? 'text-red-600' : 'text-blue-600'
+                    }`}>
+                      {spectrogramStatus === 'processing' ? 'Generating...' :
+                       spectrogramStatus === 'pending' ? 'Queued...' :
+                       spectrogramStatus === 'timeout' ? 'Timed out' : ''}
                     </span>
                   </div>
+                )}
+                
+                {/* Add retry button for failed/timeout states */}
+                {(spectrogramStatus === 'failed' || spectrogramStatus === 'timeout') && (
+                  <button
+                    onClick={() => loadSpectrogram(parseInt(recordingId!))}
+                    className="ml-4 px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                  >
+                    Retry Generation
+                  </button>
                 )}
                 
               </div>
