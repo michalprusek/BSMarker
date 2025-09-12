@@ -129,7 +129,7 @@ export class AnnotationDrawingService {
       y,
       width,
       height,
-      label: '',
+      label: undefined,
       start_time: startTime,
       end_time: endTime,
       min_frequency: minFrequency,

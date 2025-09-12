@@ -50,7 +50,7 @@ export interface BoundingBox {
   end_time: number;
   min_frequency?: number;
   max_frequency?: number;
-  label: string;
+  label?: string;
   confidence?: number;
   metadata?: any;
 }
