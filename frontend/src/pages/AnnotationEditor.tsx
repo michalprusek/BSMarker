@@ -171,14 +171,14 @@ const AnnotationEditor: React.FC = () => {
     };
   }, [labelColorMap]);
 
-  // Memoize coordinate transformations
+  // Memoize coordinate transformations - horizontal zoom only
   const transformedBoxes = useMemo(() => 
     visibleBoundingBoxes.map(box => ({
       ...box,
       screenX: box.x * zoomLevel - scrollOffset,
-      screenY: box.y,
+      screenY: box.y,  // No vertical zoom - keep Y as-is
       screenWidth: box.width * zoomLevel,
-      screenHeight: box.height,
+      screenHeight: box.height,  // No vertical zoom - keep height as-is
       color: getLabelColorMemoized(box.label || 'None')
     })),
     [visibleBoundingBoxes, zoomLevel, scrollOffset, getLabelColorMemoized]
@@ -472,56 +472,17 @@ const AnnotationEditor: React.FC = () => {
       }
     };
 
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const rect = canvasContainerRef.current?.getBoundingClientRect();
-        if (rect) {
-          const mouseX = e.clientX - rect.left - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH; // Account for frequency scale
-          const mouseY = e.clientY - rect.top - 32; // Account for top offset
-          
-          if (e.deltaY < 0) {
-            // Zoom in - maintain cursor position
-            const oldZoom = zoomLevel;
-            const newZoom = Math.min(oldZoom * 1.5, 10);
-            setZoomLevel(newZoom);
-            
-            // Adjust horizontal scroll to keep cursor position
-            if (unifiedScrollRef.current) {
-              const scrollContainer = unifiedScrollRef.current;
-              const newScrollLeft = (mouseX * newZoom) - (mouseX);
-              scrollContainer.scrollLeft = newScrollLeft;
-            }
-            
-            // Adjust vertical scale (zoom spectrogram vertically)
-            // This would require additional state for vertical zoom
-            // For now, we'll keep vertical zoom synchronized with horizontal
-          } else {
-            // Zoom out
-            const oldZoom = zoomLevel;
-            const newZoom = Math.max(oldZoom / 1.5, 1);
-            setZoomLevel(newZoom);
-            
-            // Adjust scroll to keep cursor position
-            if (unifiedScrollRef.current) {
-              const scrollContainer = unifiedScrollRef.current;
-              const newScrollLeft = (mouseX * newZoom) - (mouseX);
-              scrollContainer.scrollLeft = Math.max(0, newScrollLeft);
-            }
-          }
-        }
-      }
-    };
+    // Removed old handleWheel to prevent dual zoom system conflicts
+    // Using only handleWheelZoom for consistent behavior
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
-    const canvasContainer = canvasContainerRef.current;
-    canvasContainer?.addEventListener('wheel', handleWheel, { passive: false });
+    // Removed old wheel event listener - using React onWheel instead
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      canvasContainer?.removeEventListener('wheel', handleWheel);
+      // Removed old wheel event cleanup
       if (rewindIntervalRef.current) {
         clearInterval(rewindIntervalRef.current);
       }
@@ -1324,7 +1285,7 @@ const AnnotationEditor: React.FC = () => {
     const point = stage.getPointerPosition();
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.72;
-    const pos = { x: point.x / zoomLevel, y: point.y };  // Use display coordinates directly
+    const pos = { x: point.x / zoomLevel, y: point.y };  // Fixed coordinate transformation
     setMousePosition(pos);
     
     // Handle panning for both horizontal and vertical
@@ -1352,7 +1313,7 @@ const AnnotationEditor: React.FC = () => {
     // Handle dragging entire box (with multi-selection support)
     if (draggingBox) {
       const deltaX = pos.x - draggingBox.dragOffset.x - draggingBox.initialBox.x;
-      const deltaY = pos.y - draggingBox.dragOffset.y - draggingBox.initialBox.y;
+      const deltaY = pos.y - draggingBox.dragOffset.y - draggingBox.initialBox.y;  // Vertical drag works with no zoom
       
       const updatedBoxes = [...boundingBoxes];
       
@@ -1708,6 +1669,10 @@ const AnnotationEditor: React.FC = () => {
   // Throttled mouse wheel zoom handler with cursor-centered zooming
   const handleWheelZoom = useMemo(() =>
     throttle((event: React.WheelEvent<HTMLDivElement>) => {
+      // Always prevent default to stop page scrolling when over the editor
+      event.preventDefault();
+      event.stopPropagation();
+      
       // Only zoom if cursor is over the spectrogram
       const target = event.currentTarget;
       const rect = target.getBoundingClientRect();
@@ -1717,9 +1682,6 @@ const AnnotationEditor: React.FC = () => {
                                event.clientY <= rect.bottom;
       
       if (!isOverSpectrogram || !spectrogramDimensions.width) return;
-      
-      event.preventDefault();
-      event.stopPropagation();
       
       // Use requestAnimationFrame for smooth updates
       requestAnimationFrame(() => {
@@ -1737,13 +1699,12 @@ const AnnotationEditor: React.FC = () => {
         const cursorX = event.clientX - rect.left - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
         const cursorY = event.clientY - rect.top;
         
-        // Calculate world coordinates at cursor position
+        // Calculate world coordinates at cursor position (horizontal only)
         const worldX = (cursorX + zoomOffset.x) / zoomLevel;
-        const worldY = (cursorY + zoomOffset.y) / zoomLevel;
         
-        // Calculate new offset to keep cursor position fixed
+        // Calculate new offset to keep cursor position fixed (horizontal only)
         const newOffsetX = Math.max(0, worldX * newZoom - cursorX);
-        const newOffsetY = Math.max(0, worldY * newZoom - cursorY);
+        const newOffsetY = 0;  // No vertical zoom/offset
         
         // Apply zoom and offset
         setZoomLevel(newZoom);
@@ -2564,7 +2525,7 @@ const AnnotationEditor: React.FC = () => {
                           (currentTime / duration) * (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel,
                           0,
                           (currentTime / duration) * (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel,
-                          spectrogramDimensions.height  // Full height including waveform
+                          spectrogramDimensions.height  // Fixed height - no vertical zoom
                         ]}
                         stroke="#EF4444"
                         strokeWidth={2}
