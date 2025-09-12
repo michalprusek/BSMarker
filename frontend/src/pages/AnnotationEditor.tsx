@@ -541,14 +541,13 @@ const AnnotationEditor: React.FC = () => {
   // Handle zoom changes for waveform
   useEffect(() => {
     if (wavesurferRef.current && waveformRef.current) {
-      // Update waveform container width to match zoom
-      const newWidth = (spectrogramDimensions.width - 40) * zoomLevel;
-      waveformRef.current.style.width = `${newWidth}px`;
-      
-      // Let WaveSurfer handle the zoom (only if audio is loaded)
+      // WaveSurfer will automatically adjust to container width changes
+      // Just update the zoom level for pixel density
       try {
         if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
-          wavesurferRef.current.zoom(zoomLevel * 100);
+          // Use minPxPerSec for better zoom control
+          const pxPerSec = 50 * zoomLevel; // Base 50px per second, scale with zoom
+          wavesurferRef.current.zoom(pxPerSec);
         }
       } catch (e) {
         // Audio not loaded yet, ignore
@@ -821,20 +820,23 @@ const AnnotationEditor: React.FC = () => {
     
     const wavesurfer = WaveSurfer.create({
       container: waveformRef.current,
-      waveColor: '#6366F1',  // Improved indigo color
-      progressColor: '#4F46E5',  // Darker indigo for progress
+      waveColor: '#3B82F6',  // Modern blue gradient
+      progressColor: '#1E40AF',  // Deep blue for progress
       cursorColor: 'transparent',  // Hide wavesurfer cursor since we have unified cursor
-      barWidth: 2,
-      barRadius: 2,
+      barWidth: 3,
+      barRadius: 3,
       cursorWidth: 0,  // Hide cursor
       height: waveformHeight,  // 23% of total height
-      barGap: 1,
-      barHeight: 0.8,  // Slightly shorter bars for cleaner look
+      barGap: 2,
+      barHeight: 1,  // Full height bars for better visibility
       normalize: true,
       interact: true,
-      fillParent: true,  // Use fillParent instead of responsive
+      fillParent: false,  // Don't use fillParent - we control width manually
       backend: 'WebAudio',
       mediaControls: false,
+      minPxPerSec: 50,  // Minimum pixels per second for better zoom control
+      hideScrollbar: true,  // Hide WaveSurfer's own scrollbar
+      autoScroll: false,  // Disable auto-scroll
       // Remove unsupported options
     });
 
@@ -2333,15 +2335,15 @@ const AnnotationEditor: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Waveform at bottom 24% */}
+                {/* Waveform at bottom 24% - no separate scrolling */}
                 <div 
-                  className="absolute bg-gray-50"
+                  className="absolute bg-gradient-to-b from-gray-50 to-gray-100"
                   style={{ 
                     top: '77%',
                     left: 0,
                     right: 0,
                     height: '23%',
-                    overflow: 'hidden'
+                    // Remove overflow hidden - let parent container handle scrolling
                   }}
                 >
                   <div 
@@ -2349,13 +2351,13 @@ const AnnotationEditor: React.FC = () => {
                     id="waveform-container"
                     className="h-full"
                     style={{ 
-                      // Width is managed by zoom effect
+                      width: `${(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,  // Sync width with zoom
                       height: '100%',
                       position: 'relative',
                       marginLeft: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Align with spectrogram
                       minHeight: '80px',
                       display: 'block',
-                      overflow: 'hidden'  // Prevent overflow during resize
+                      // Remove overflow hidden to allow proper stretching
                     }}
                   />
                   
