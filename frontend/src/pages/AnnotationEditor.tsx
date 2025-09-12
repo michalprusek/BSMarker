@@ -130,13 +130,16 @@ const AnnotationEditor: React.FC = () => {
 
   // Viewport culling for performance optimization
   const calculateVisibleBounds = useCallback(() => {
-    const container = canvasContainerRef.current;
+    const container = unifiedScrollRef.current;
     if (!container) return { left: 0, right: 1000, top: 0, bottom: 1000 };
     
-    const scrollLeft = scrollOffset;
-    const scrollRight = scrollLeft + container.clientWidth;
+    // Get actual scroll position from the container
+    const scrollLeft = container.scrollLeft;
+    const containerWidth = container.clientWidth;
+    
+    // Convert to world coordinates (unzoomed space)
     const viewportLeft = scrollLeft / zoomLevel;
-    const viewportRight = scrollRight / zoomLevel;
+    const viewportRight = (scrollLeft + containerWidth) / zoomLevel;
     
     return {
       left: Math.max(0, viewportLeft - 50), // Add 50px buffer
@@ -144,7 +147,7 @@ const AnnotationEditor: React.FC = () => {
       top: 0,
       bottom: spectrogramDimensions.height
     };
-  }, [scrollOffset, zoomLevel, spectrogramDimensions.height]);
+  }, [zoomLevel, spectrogramDimensions.height]);
 
   // Update visible boxes when viewport or boxes change
   useEffect(() => {
@@ -175,13 +178,13 @@ const AnnotationEditor: React.FC = () => {
   const transformedBoxes = useMemo(() => 
     visibleBoundingBoxes.map(box => ({
       ...box,
-      screenX: box.x * zoomLevel - scrollOffset,  // scrollOffset is now in pixels
+      screenX: box.x * zoomLevel,  // Position in zoomed canvas space
       screenY: box.y,  // No vertical zoom - keep Y as-is
       screenWidth: box.width * zoomLevel,
       screenHeight: box.height,  // No vertical zoom - keep height as-is
       color: getLabelColorMemoized(box.label || 'None')
     })),
-    [visibleBoundingBoxes, zoomLevel, scrollOffset, getLabelColorMemoized]
+    [visibleBoundingBoxes, zoomLevel, getLabelColorMemoized]
   );
 
   // FPS monitoring for development
@@ -1139,15 +1142,17 @@ const AnnotationEditor: React.FC = () => {
     if (point.y > timelineHeight) {
       // Handle waveform click for seeking
       if (wavesurferRef.current && duration > 0) {
-        const seekPosition = Math.max(0, Math.min(1, (point.x / zoomLevel) / spectrogramDimensions.width));
+        const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
+        const seekPosition = Math.max(0, Math.min(1, ((point.x + scrollLeft) / zoomLevel) / spectrogramDimensions.width));
         wavesurferRef.current.seekTo(seekPosition);
         setCurrentTime(seekPosition * duration);
       }
       // Don't return - allow dragging in waveform area
     }
     
-    // Adjust coordinates for zoom only - keep display coordinates
-    const pos = { x: point.x / zoomLevel, y: point.y }; // Adjust x for zoom, keep y in display coordinates
+    // Convert from screen space to world space
+    const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
+    const pos = { x: (point.x + scrollLeft) / zoomLevel, y: point.y }; // Account for scroll and zoom
     
     // Close context menu if open
     if (contextMenu) {
@@ -1248,7 +1253,7 @@ const AnnotationEditor: React.FC = () => {
       if (!e.evt.shiftKey && !e.evt.ctrlKey && !e.evt.metaKey) {
         // Single click to seek in spectrogram
         if (wavesurferRef.current && duration > 0) {
-          const seekPosition = pos.x / spectrogramDimensions.width;
+          const seekPosition = Math.max(0, Math.min(1, pos.x / spectrogramDimensions.width));
           wavesurferRef.current.seekTo(seekPosition);
           setCurrentTime(seekPosition * duration);
         }
@@ -1285,7 +1290,9 @@ const AnnotationEditor: React.FC = () => {
     const point = stage.getPointerPosition();
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.72;
-    const pos = { x: point.x / zoomLevel, y: point.y };  // Fixed coordinate transformation
+    // Convert from screen space to world space  
+    const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
+    const pos = { x: (point.x + scrollLeft) / zoomLevel, y: point.y };  // Account for scroll and zoom
     setMousePosition(pos);
     
     // Handle panning for both horizontal and vertical
@@ -1303,7 +1310,8 @@ const AnnotationEditor: React.FC = () => {
     // Handle waveform drag to seek (continuous dragging)
     if (point.y > spectrogramHeight && e.evt.buttons === 1 && !isAnnotationMode && !isPanning && !draggingBox && !resizingBox) {
       if (wavesurferRef.current && duration > 0) {
-        const seekPosition = Math.max(0, Math.min(1, (point.x / zoomLevel) / spectrogramDimensions.width));
+        const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
+        const seekPosition = Math.max(0, Math.min(1, ((point.x + scrollLeft) / zoomLevel) / spectrogramDimensions.width));
         wavesurferRef.current.seekTo(seekPosition);
         setCurrentTime(seekPosition * duration);
       }
@@ -1569,8 +1577,9 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     
-    // Adjust coordinates for zoom only
-    const adjustedX = point.x / zoomLevel;
+    // Convert from screen space to world space
+    const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
+    const adjustedX = (point.x + scrollLeft) / zoomLevel;
     const adjustedY = point.y;
     
     // Check if right-clicking on a box
@@ -2275,14 +2284,14 @@ const AnnotationEditor: React.FC = () => {
                         spectrogramDimensions.width,
                         zoomLevel,
                         false
-                      ) - scrollOffset : 0;  // Apply scroll offset to waveform boxes
+                      ) : 0;  // No scroll offset needed - SVG is inside scrolling container
                       const endX = duration > 0 ? CoordinateUtils.timeToPixel(
                         box.end_time || 0,
                         duration,
                         spectrogramDimensions.width,
                         zoomLevel,
                         false
-                      ) - scrollOffset : 0;  // Apply scroll offset to waveform boxes
+                      ) : 0;  // No scroll offset needed - SVG is inside scrolling container
                       const waveformHeight = spectrogramDimensions.height * 0.24;  // 24% for waveform
                       
                       return (
