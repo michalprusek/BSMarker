@@ -9,7 +9,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, List, Optional
 
-import librosa
 from app.api import deps
 from app.core.config import settings
 from app.core.rate_limiter import RATE_LIMITS, limiter
@@ -18,11 +17,15 @@ from app.models.recording import Recording
 from app.models.spectrogram import Spectrogram, SpectrogramStatus
 from app.models.user import User
 from app.schemas.recording import Recording as RecordingSchema
+from app.services.audio_service import audio_service
 from app.services.minio_client import minio_client
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+
+# Set cache directory for numba/librosa to avoid permission issues in Docker
+os.environ["NUMBA_CACHE_DIR"] = "/tmp"
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -157,23 +160,20 @@ async def upload_recording(
                 status_code=500, detail=f"Storage error: {error_msg[:100]}"
             )  # Limit error message length
 
-    # Use secure temporary file for audio processing
+    # Extract audio metadata using centralized service
     audio_analysis_start = time.time()
-    with secure_temp_file(suffix=file_extension) as temp_path:
-        with open(temp_path, "wb") as f:
-            f.write(contents)
-
-        try:
-            y, sr = librosa.load(str(temp_path), sr=None)
-            duration = librosa.get_duration(y=y, sr=sr)
-            logger.info(
-                f"Audio analysis completed in {time.time() - audio_analysis_start:.2f}s - "
-                f"Duration: {duration:.2f}s, Sample Rate: {sr}"
-            )
-        except Exception as e:
-            logger.error(f"Audio analysis failed: {str(e)}")
-            duration = None
-            sr = None
+    try:
+        audio_metadata = audio_service.extract_audio_metadata(contents, file_extension)
+        duration = audio_metadata.duration
+        sr = audio_metadata.sample_rate
+        logger.info(
+            f"Audio analysis completed in {time.time() - audio_analysis_start:.2f}s - "
+            f"Duration: {duration:.2f}s, Sample Rate: {sr}"
+        )
+    except Exception as e:
+        logger.error(f"Audio analysis failed: {str(e)}")
+        duration = None
+        sr = None
 
     db_start = time.time()
     recording = Recording(
@@ -535,22 +535,22 @@ def backfill_missing_durations(
                 temp_path = temp_file.name
 
             try:
-                # Analyze audio to get duration
-                import librosa
-
-                y, sr = librosa.load(str(temp_path), sr=None)
-                duration = librosa.get_duration(y=y, sr=sr)
+                # Analyze audio to get duration using AudioService
+                audio_metadata = audio_service.extract_audio_metadata(
+                    open(temp_path, "rb").read(), os.path.splitext(recording.filename)[1]
+                )
 
                 # Update recording with duration and sample rate if missing
-                recording.duration = duration
+                recording.duration = audio_metadata.duration
                 if recording.sample_rate is None:
-                    recording.sample_rate = sr
+                    recording.sample_rate = audio_metadata.sample_rate
 
                 db.commit()
                 updated_count += 1
 
                 logger.info(
-                    f"Updated recording {recording.id} - Duration: {duration:.2f}s, Sample Rate: {sr}"
+                    f"Updated recording {recording.id} - Duration: {audio_metadata.duration:.2f}s, "
+                    f"Sample Rate: {audio_metadata.sample_rate}"
                 )
 
             except Exception as e:

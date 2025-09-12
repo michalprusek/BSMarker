@@ -4,6 +4,7 @@ Celery tasks for spectrogram generation.
 
 import io
 import logging
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -21,6 +22,9 @@ from celery.exceptions import SoftTimeLimitExceeded
 from matplotlib import cm
 from PIL import Image
 from sqlalchemy.orm import Session
+
+# Set cache directory for numba/librosa to avoid permission issues in Docker
+os.environ["NUMBA_CACHE_DIR"] = "/tmp"
 
 logger = logging.getLogger(__name__)
 
@@ -158,8 +162,17 @@ def generate_spectrogram_task(self, recording_id: int) -> Dict:
 
             # Load audio
             self.update_state(state="PROCESSING", meta={"stage": "loading_audio", "progress": 40})
+
             y, sr = librosa.load(temp_file.name, sr=None)
-            duration = len(y) / sr
+            duration = librosa.get_duration(y=y, sr=sr)
+
+            # Update recording duration if missing
+            if recording.duration is None:
+                recording.duration = duration
+                logger.info(
+                    f"Updated missing duration for recording {recording.id}: {recording.duration:.2f}s"
+                )
+                db.commit()
 
             # Calculate Nyquist frequency (maximum meaningful frequency)
             nyquist_frequency = sr // 2

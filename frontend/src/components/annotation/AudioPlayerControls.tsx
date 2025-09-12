@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { PlayIcon, PauseIcon } from '@heroicons/react/24/solid';
+import { formatDuration } from '../../utils/duration';
 
 export interface AudioPlayerControlsProps {
   isPlaying: boolean;
@@ -27,13 +28,7 @@ export const AudioPlayerControls: React.FC<AudioPlayerControlsProps> = ({
   onSeek,
   className = '',
 }) => {
-  const formatTime = (seconds: number): string => {
-    if (!seconds || isNaN(seconds)) return '0:00';
-    
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  // Use centralized duration formatting utility
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!onSeek || !duration) return;
@@ -72,9 +67,9 @@ export const AudioPlayerControls: React.FC<AudioPlayerControlsProps> = ({
 
       {/* Time Display */}
       <div className="flex items-center space-x-2 text-sm text-gray-600">
-        <span className="font-mono">{formatTime(currentTime)}</span>
+        <span className="font-mono">{formatDuration(currentTime, 'long')}</span>
         <span>/</span>
-        <span className="font-mono">{formatTime(duration)}</span>
+        <span className="font-mono">{formatDuration(duration, 'long')}</span>
       </div>
 
       {/* Progress Bar */}

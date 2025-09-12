@@ -38,8 +38,13 @@ WORKDIR /app
 # Copy application code
 COPY --chown=bsmarker:bsmarker . .
 
-# Create necessary directories
-RUN mkdir -p /app/logs && chown -R bsmarker:bsmarker /app/logs
+# Create necessary directories for logs and cache
+RUN mkdir -p /app/logs /tmp/librosa_cache /tmp/matplotlib_cache && \
+    chown -R bsmarker:bsmarker /app/logs /tmp/librosa_cache /tmp/matplotlib_cache
+
+# Set environment variables for cache directories
+ENV LIBROSA_CACHE_DIR=/tmp/librosa_cache
+ENV MPLCONFIGDIR=/tmp/matplotlib_cache
 
 # Switch to non-root user
 USER bsmarker
