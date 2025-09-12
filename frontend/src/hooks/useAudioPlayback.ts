@@ -70,7 +70,6 @@ export const useAudioPlayback = ({
         cursorColor: '#ef4444',
         barWidth: 2,
         barRadius: 3,
-        responsive: true,
         height: 80,
         normalize: true,
         backend: 'WebAudio',
