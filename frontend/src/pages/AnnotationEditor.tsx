@@ -509,25 +509,73 @@ const AnnotationEditor: React.FC = () => {
       // Don't revoke URLs here - they might still be needed
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recording, spectrogramUrl, spectrogramDimensions]);
+  }, [recording, spectrogramUrl]); // Removed spectrogramDimensions to prevent recreation on resize
+
+  // Handle waveform resize separately without recreating WaveSurfer
+  useEffect(() => {
+    if (wavesurferRef.current && waveformRef.current && spectrogramDimensions.width > 0) {
+      // Debounce resize to prevent excessive redraws
+      const resizeTimeout = setTimeout(() => {
+        try {
+          // Update the container dimensions
+          const waveformHeight = Math.max(50, spectrogramDimensions.height * 0.23);
+          if (waveformRef.current) {
+            waveformRef.current.style.height = `${waveformHeight}px`;
+          }
+          
+          // Trigger WaveSurfer to redraw at new size
+          if (wavesurferRef.current) {
+            // WaveSurfer will automatically redraw when container size changes
+            // Just ensure it's aware of the change
+            (wavesurferRef.current as any).setHeight?.(waveformHeight);
+          }
+        } catch (error) {
+          console.warn('Failed to resize waveform:', error);
+        }
+      }, 150); // 150ms debounce
+      
+      return () => clearTimeout(resizeTimeout);
+    }
+  }, [spectrogramDimensions]);
+  
+  // Handle zoom changes for waveform
+  useEffect(() => {
+    if (wavesurferRef.current && waveformRef.current) {
+      // Update waveform container width to match zoom
+      const newWidth = (spectrogramDimensions.width - 40) * zoomLevel;
+      waveformRef.current.style.width = `${newWidth}px`;
+      
+      // Let WaveSurfer handle the zoom
+      wavesurferRef.current.zoom(zoomLevel * 100);
+    }
+  }, [zoomLevel, spectrogramDimensions.width]);
 
   useEffect(() => {
+    let resizeTimeout: NodeJS.Timeout;
+    
     const updateDimensions = () => {
-      if (unifiedScrollRef.current) {
-        const containerWidth = unifiedScrollRef.current.clientWidth;
-        // Use full available height for the combined view
-        const containerHeight = unifiedScrollRef.current.clientHeight;
-        setSpectrogramDimensions({
-          width: containerWidth,
-          height: containerHeight
-        });
-      }
+      // Clear existing timeout
+      clearTimeout(resizeTimeout);
+      
+      // Debounce resize updates to prevent excessive re-renders
+      resizeTimeout = setTimeout(() => {
+        if (unifiedScrollRef.current) {
+          const containerWidth = unifiedScrollRef.current.clientWidth;
+          // Use full available height for the combined view
+          const containerHeight = unifiedScrollRef.current.clientHeight;
+          setSpectrogramDimensions({
+            width: containerWidth,
+            height: containerHeight
+          });
+        }
+      }, 100); // 100ms debounce for dimension updates
     };
 
     updateDimensions();
     window.addEventListener('resize', updateDimensions);
 
     return () => {
+      clearTimeout(resizeTimeout);
       window.removeEventListener('resize', updateDimensions);
     };
   }, [spectrogramUrl]);
@@ -763,23 +811,25 @@ const AnnotationEditor: React.FC = () => {
     }
     
     // Ensure container has proper dimensions
-    const waveformHeight = Math.max(50, spectrogramDimensions.height * 0.24);
+    const waveformHeight = Math.max(50, spectrogramDimensions.height * 0.23);
     
     const wavesurfer = WaveSurfer.create({
       container: waveformRef.current,
-      waveColor: '#4F46E5',
-      progressColor: '#818CF8',
+      waveColor: '#6366F1',  // Improved indigo color
+      progressColor: '#4F46E5',  // Darker indigo for progress
       cursorColor: 'transparent',  // Hide wavesurfer cursor since we have unified cursor
       barWidth: 2,
-      barRadius: 3,
+      barRadius: 2,
       cursorWidth: 0,  // Hide cursor
-      height: waveformHeight,  // 24% of total height
-      barGap: 3,
+      height: waveformHeight,  // 23% of total height
+      barGap: 1,
+      barHeight: 0.8,  // Slightly shorter bars for cleaner look
       normalize: true,
       interact: true,
       fillParent: true,  // Use fillParent instead of responsive
       backend: 'WebAudio',
       mediaControls: false,
+      // Remove unsupported options
     });
 
     wavesurferRef.current = wavesurfer;
@@ -1141,8 +1191,8 @@ const AnnotationEditor: React.FC = () => {
     const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
     const pos = { x: (point.x + scrollLeft) / zoomLevel, y: point.y }; // Account for scroll and zoom
     
-    // Check if clicking in waveform area (bottom 24%, after timeline at 76%)
-    const timelineHeight = containerHeight * 0.80; // Timeline ends at 80% (increased from 76%)
+    // Check if clicking in waveform area (bottom 23%, after timeline at 77%)
+    const timelineHeight = containerHeight * 0.77; // Timeline ends at 77% (69% + 8%)
     if (point.y > timelineHeight) {
       // Handle waveform click for seeking
       if (wavesurferRef.current && duration > 0) {
@@ -2117,7 +2167,7 @@ const AnnotationEditor: React.FC = () => {
                   top: 0,
                   left: 0,
                   width: '100%',
-                  height: '68%'
+                  height: '67%'
                 }}>
                   {spectrogramUrl ? (
                     <img 
@@ -2187,7 +2237,7 @@ const AnnotationEditor: React.FC = () => {
                 <div 
                   className="absolute bg-white border-t-2 border-b-2 border-gray-300"
                   style={{ 
-                    top: '68%',
+                    top: '69%',
                     left: 0,
                     right: 0,
                     height: '8%',
@@ -2265,24 +2315,25 @@ const AnnotationEditor: React.FC = () => {
                 <div 
                   className="absolute bg-gray-50"
                   style={{ 
-                    top: '76%',
+                    top: '77%',
                     left: 0,
                     right: 0,
-                    height: '24%',
+                    height: '23%',
                     overflow: 'hidden'
                   }}
                 >
                   <div 
                     ref={waveformRef} 
                     id="waveform-container"
-                    className="w-full h-full"
+                    className="h-full"
                     style={{ 
-                      width: `${(spectrogramDimensions.width - 40) * zoomLevel}px`,  // Account for frequency scale
+                      // Width is managed by zoom effect
                       height: '100%',
                       position: 'relative',
                       marginLeft: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Align with spectrogram
                       minHeight: '80px',
-                      display: 'block'
+                      display: 'block',
+                      overflow: 'hidden'  // Prevent overflow during resize
                     }}
                   />
                   
@@ -2313,7 +2364,7 @@ const AnnotationEditor: React.FC = () => {
                         zoomLevel,
                         false
                       ) : 0;
-                      const waveformHeight = spectrogramDimensions.height * 0.24;  // 24% for waveform
+                      const waveformHeight = spectrogramDimensions.height * 0.23;  // 23% for waveform
                       
                       return (
                         <g key={index}>
