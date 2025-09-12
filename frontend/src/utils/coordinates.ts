@@ -3,12 +3,14 @@
  * Ensures consistent alignment between spectrogram and waveform displays
  */
 
-// Layout constants
+// Layout constants - must match the actual layout in AnnotationEditor.tsx
 export const LAYOUT_CONSTANTS = {
   FREQUENCY_SCALE_WIDTH: 40,  // Width of the frequency scale on the left
-  SPECTROGRAM_HEIGHT_RATIO: 0.72,  // 72% of total height
-  TIMELINE_HEIGHT_RATIO: 0.04,  // 4% for timeline
-  WAVEFORM_HEIGHT_RATIO: 0.24,  // 24% for waveform
+  SPECTROGRAM_HEIGHT_RATIO: 0.60,  // 60% of total height for spectrogram
+  TIMELINE_TOP_RATIO: 0.60,  // Timeline starts at 60% (right after spectrogram)
+  TIMELINE_HEIGHT_RATIO: 0.08,  // 8% for timeline
+  WAVEFORM_TOP_RATIO: 0.68,  // Waveform starts at 68% (after timeline)
+  WAVEFORM_HEIGHT_RATIO: 0.32,  // 32% for waveform
 } as const;
 
 // Coordinate transformation utilities
