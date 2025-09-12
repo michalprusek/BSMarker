@@ -49,6 +49,52 @@ api.interceptors.request.use(
   }
 );
 
+// Token refresh configuration
+let refreshTimer: NodeJS.Timeout | null = null;
+
+const scheduleTokenRefresh = () => {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+  }
+  
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  
+  try {
+    // Decode JWT to get expiry (without verification, just for scheduling)
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const expiryTime = payload.exp * 1000; // Convert to milliseconds
+    const currentTime = Date.now();
+    const timeUntilExpiry = expiryTime - currentTime;
+    
+    // Refresh 5 minutes before expiry
+    const refreshTime = timeUntilExpiry - (5 * 60 * 1000);
+    
+    if (refreshTime > 0) {
+      refreshTimer = setTimeout(async () => {
+        try {
+          // Call refresh endpoint (if exists) or re-login
+          const response = await api.post('/auth/refresh');
+          if (response.data.access_token) {
+            localStorage.setItem('token', response.data.access_token);
+            scheduleTokenRefresh(); // Schedule next refresh
+          }
+        } catch (error) {
+          console.error('Token refresh failed:', error);
+        }
+      }, refreshTime);
+    }
+  } catch (error) {
+    console.error('Error scheduling token refresh:', error);
+  }
+};
+
+// Call on login success
+export const setAuthToken = (token: string) => {
+  localStorage.setItem('token', token);
+  scheduleTokenRefresh();
+};
+
 api.interceptors.response.use(
   (response) => {
     console.log('API Response Interceptor:', {
@@ -68,10 +114,28 @@ api.interceptors.response.use(
       code: error.code
     });
     
-    if (error.response?.status === 401) {
-      console.log('API Response Interceptor: 401 Unauthorized - removing token and redirecting to login');
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      // Check if it's a real auth error vs other 403 (like rate limiting)
+      const isAuthError = error.response?.data?.detail?.toLowerCase().includes('credential') ||
+                          error.response?.data?.detail?.toLowerCase().includes('token') ||
+                          error.response?.data?.detail?.toLowerCase().includes('expired') ||
+                          error.response?.data?.detail?.toLowerCase().includes('invalid') ||
+                          error.response?.data?.detail?.toLowerCase().includes('unauthorized') ||
+                          error.response?.status === 401; // Always treat 401 as auth error
+      
+      if (isAuthError) {
+        console.log('API Response Interceptor: Auth error detected - removing token and redirecting to login');
+        // Clear token and redirect to login
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        
+        // Only redirect if not already on login page
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
+      } else {
+        console.log('API Response Interceptor: 403 error but not auth-related, continuing...');
+      }
     }
     return Promise.reject(error);
   }

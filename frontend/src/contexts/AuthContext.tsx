@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, LoginCredentials } from '../types';
-import { authService } from '../services/api';
+import { authService, setAuthToken } from '../services/api';
 import toast from 'react-hot-toast';
 
 interface AuthContextType {
@@ -48,9 +48,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setLoading(false);
         console.log('AuthContext: Loading set to false (no token)');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('AuthContext: Failed to fetch user:', error);
-      localStorage.removeItem('token');
+      // Only remove token on actual auth errors
+      if (error.response?.status === 401 || 
+          (error.response?.status === 403 && 
+           (error.response?.data?.detail?.toLowerCase().includes('credential') ||
+            error.response?.data?.detail?.toLowerCase().includes('token') ||
+            error.response?.data?.detail?.toLowerCase().includes('expired') ||
+            error.response?.data?.detail?.toLowerCase().includes('invalid') ||
+            error.response?.data?.detail?.toLowerCase().includes('unauthorized')))) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
+      // For network errors, keep token but set user to null temporarily
       setUser(null);
       setLoading(false);
       console.log('AuthContext: Loading set to false (error)');
@@ -91,8 +102,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw new Error('No access token received');
       }
 
-      console.log('AuthContext: Storing token in localStorage');
-      localStorage.setItem('token', loginResponse.access_token);
+      console.log('AuthContext: Storing token in localStorage and scheduling refresh');
+      setAuthToken(loginResponse.access_token);
       
       console.log('AuthContext: About to call refreshUser()');
       const refreshStartTime = Date.now();
