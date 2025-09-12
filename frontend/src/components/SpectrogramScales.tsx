@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { LAYOUT_CONSTANTS } from '../utils/coordinates';
 import { AXIS_STYLES, formatTimeLabel, formatFrequencyLabel, getTimeTickInterval } from '../utils/axisStyles';
 
@@ -19,8 +19,8 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
   zoomLevel,
   scrollOffset = 0
 }) => {
-  // Generate time scale ticks
-  const generateTimeTicks = () => {
+  // Memoized time scale ticks generation for performance
+  const timeTicks = useMemo(() => {
     const ticks = [];
     const totalWidth = (width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel; // Account for frequency scale
     const visibleDuration = duration;
@@ -35,8 +35,8 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
       if (time <= duration) {
         const position = (time / duration) * totalWidth - scrollOffset;
         
-        // Only show ticks that are visible
-        if (position >= 0 && position <= width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) {
+        // Only show ticks that are visible (with buffer)
+        if (position >= -50 && position <= width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH + 50) {
           ticks.push({
             position,
             label: formatTimeLabel(time),
@@ -47,10 +47,10 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
     }
     
     return ticks;
-  };
+  }, [duration, zoomLevel, scrollOffset, width]);
 
-  // Generate frequency scale ticks
-  const generateFrequencyTicks = () => {
+  // Memoized frequency scale ticks generation for performance
+  const frequencyTicks = useMemo(() => {
     const ticks = [];
     const spectrogramHeight = height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO; // Use consistent ratio
     
@@ -68,11 +68,16 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
     }
     
     return ticks;
-  };
+  }, [maxFrequency, height]);
 
-
-  const timeTicks = generateTimeTicks();
-  const frequencyTicks = generateFrequencyTicks();
+  // Filter visible ticks for better performance
+  const visibleTimeTicks = useMemo(() => 
+    timeTicks.filter(tick => 
+      tick.position >= -10 && 
+      tick.position <= width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH + 10
+    ),
+    [timeTicks, width]
+  );
 
   return (
     <React.Fragment>
@@ -146,8 +151,8 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
           />
         ))}
         
-        {/* Vertical grid lines (time) */}
-        {timeTicks.filter(tick => tick.major).map((tick, index) => (
+        {/* Vertical grid lines (time) - only visible and major ticks */}
+        {visibleTimeTicks.filter(tick => tick.major).map((tick, index) => (
           <line
             key={`v-${index}`}
             x1={tick.position}
