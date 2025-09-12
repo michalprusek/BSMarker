@@ -1206,25 +1206,31 @@ const AnnotationEditor: React.FC = () => {
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.72;
     
-    // Convert from Stage coordinate space to world space
-    // point.x is in Stage coordinates (0 to stageWidth)
-    // We need to add scroll offset and convert to unzoomed world coordinates
+    // INVARIANT COORDINATE TRANSFORMATION
+    // point.x is in Stage pixel coordinates (relative to visible Stage area)
+    // Stage width = (spectrogramDimensions.width - FREQUENCY_SCALE_WIDTH) * zoomLevel
+    const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+    const stageWidth = effectiveWidth * zoomLevel;
     const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
-    // point.x is relative to visible Stage area, scrollLeft is in pixels
-    // Convert both to unzoomed world coordinates
-    const worldX = (point.x + scrollLeft) / zoomLevel;
-    const pos = { x: worldX, y: point.y }; // x is now in unzoomed world coordinates
     
-    // Check if clicking in waveform area (bottom 23%, after timeline at 77%)
-    const timelineHeight = containerHeight * 0.77; // Timeline ends at 77% (69% + 8%)
+    // For seeking: convert click position to timeline position (0 to 1)
+    // point.x is position in visible Stage, scrollLeft is how much we've scrolled
+    const absoluteX = point.x + scrollLeft; // Absolute position in the full zoomed Stage
+    const seekPosition = absoluteX / stageWidth; // Normalized position (0 to 1)
+    
+    // For bounding boxes: convert to unzoomed world coordinates
+    const worldX = absoluteX / zoomLevel;
+    const pos = { x: worldX, y: point.y }; // Used for bounding box operations
+    
+    // Check if clicking in waveform area (bottom 25%, after timeline at 75%)
+    const timelineHeight = containerHeight * 0.75; // Timeline ends at 75% (65% + 10%)
     if (point.y > timelineHeight) {
       // Handle waveform click for seeking
       if (wavesurferRef.current && duration > 0) {
-        // Now pos.x is already in unzoomed coordinates relative to the effective width
-        const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-        const seekPosition = Math.max(0, Math.min(1, worldX / effectiveWidth));
-        wavesurferRef.current.seekTo(seekPosition);
-        setCurrentTime(seekPosition * duration);
+        // Use the pre-calculated seekPosition which is invariant to zoom and scroll
+        const clampedSeekPosition = Math.max(0, Math.min(1, seekPosition));
+        wavesurferRef.current.seekTo(clampedSeekPosition);
+        setCurrentTime(clampedSeekPosition * duration);
       }
       // Don't return - allow dragging in waveform area
     }
@@ -1328,11 +1334,10 @@ const AnnotationEditor: React.FC = () => {
       if (!e.evt.shiftKey && !e.evt.ctrlKey && !e.evt.metaKey) {
         // Single click to seek in spectrogram
         if (wavesurferRef.current && duration > 0) {
-          // Account for frequency scale offset when calculating seek position
-          const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-          const seekPosition = Math.max(0, Math.min(1, pos.x / effectiveWidth));
-          wavesurferRef.current.seekTo(seekPosition);
-          setCurrentTime(seekPosition * duration);
+          // Use the pre-calculated seekPosition from above (invariant to zoom and scroll)
+          const clampedSeekPosition = Math.max(0, Math.min(1, seekPosition));
+          wavesurferRef.current.seekTo(clampedSeekPosition);
+          setCurrentTime(clampedSeekPosition * duration);
         }
         
         // Start panning for drag (both horizontal and vertical)
@@ -1367,11 +1372,19 @@ const AnnotationEditor: React.FC = () => {
     const point = stage.getPointerPosition();
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.72;
-    // Convert from Stage coordinate space to world space
-    // point.x is relative to visible Stage area, scrollLeft is in pixels
+    
+    // INVARIANT COORDINATE TRANSFORMATION (same as handleMouseDown)
+    const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+    const stageWidth = effectiveWidth * zoomLevel;
     const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
-    const worldX = (point.x + scrollLeft) / zoomLevel;
-    const pos = { x: worldX, y: point.y };  // x is now in unzoomed world coordinates
+    
+    // For seeking: convert to timeline position (0 to 1)
+    const absoluteX = point.x + scrollLeft;
+    const seekPosition = absoluteX / stageWidth;
+    
+    // For bounding boxes: convert to unzoomed world coordinates
+    const worldX = absoluteX / zoomLevel;
+    const pos = { x: worldX, y: point.y };
     setMousePosition(pos);
     
     // Handle panning for both horizontal and vertical
@@ -1389,11 +1402,10 @@ const AnnotationEditor: React.FC = () => {
     // Handle waveform drag to seek (continuous dragging)
     if (point.y > spectrogramHeight && e.evt.buttons === 1 && !isAnnotationMode && !isPanning && !draggingBox && !resizingBox) {
       if (wavesurferRef.current && duration > 0) {
-        // Now worldX is already in unzoomed coordinates relative to the effective width
-        const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-        const seekPosition = Math.max(0, Math.min(1, worldX / effectiveWidth));
-        wavesurferRef.current.seekTo(seekPosition);
-        setCurrentTime(seekPosition * duration);
+        // Use the pre-calculated seekPosition which is invariant to zoom and scroll
+        const clampedSeekPosition = Math.max(0, Math.min(1, seekPosition));
+        wavesurferRef.current.seekTo(clampedSeekPosition);
+        setCurrentTime(clampedSeekPosition * duration);
       }
       return;
     }
@@ -1657,9 +1669,10 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     
-    // Convert from Stage coordinate space to world space
+    // INVARIANT COORDINATE TRANSFORMATION (same as other handlers)
     const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
-    const adjustedX = (point.x + scrollLeft) / zoomLevel;
+    const absoluteX = point.x + scrollLeft;
+    const adjustedX = absoluteX / zoomLevel; // Convert to unzoomed world coordinates
     const adjustedY = point.y;
     
     // Check if right-clicking on a box
@@ -2341,15 +2354,15 @@ const AnnotationEditor: React.FC = () => {
                   <div 
                     ref={waveformRef} 
                     id="waveform-container"
-                    className="h-full"
+                    className="absolute inset-0"
                     style={{ 
                       width: `${(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,  // Sync width with zoom
                       height: '100%',
-                      position: 'relative',
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
                       marginLeft: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Align with spectrogram
-                      minHeight: '80px',
-                      display: 'block',
-                      // Remove overflow hidden to allow proper stretching
+                      display: 'block'
                     }}
                   />
                   
@@ -2644,7 +2657,7 @@ const AnnotationEditor: React.FC = () => {
             </div>
             
             {/* Integrated Playback Controls - inside the unified frame */}
-            <div className="absolute bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-300 flex items-center px-4" style={{ height: '32px' }}>
+            <div className="absolute bottom-0 left-0 right-0 bg-gray-50 border-t border-gray-300 flex items-center px-3" style={{ height: '30px', zIndex: 10 }}>
               <div className="flex items-center space-x-3">
                 <button
                   onClick={handlePlayPause}
