@@ -14,7 +14,7 @@ import { CoordinateUtils, LAYOUT_CONSTANTS } from '../utils/coordinates';
 import { AXIS_STYLES, formatTimeLabel, getTimeTickInterval } from '../utils/axisStyles';
 import { useAutosave } from '../hooks/useAutosave';
 
-const PLAYBACK_SPEEDS = [1, 2, 4, 8, 16];
+const PLAYBACK_SPEEDS = [1, 2, 4];
 const MAX_HISTORY_SIZE = 20;
 
 // Enhanced color palette for better visibility in spectrogram
@@ -1394,7 +1394,8 @@ const AnnotationEditor: React.FC = () => {
     if (isDrawing && drawingBox) {
       setIsDrawing(false);
       
-      if (Math.abs(drawingBox.width) > 2 && Math.abs(drawingBox.height) > 2) {
+      // Allow creating bounding boxes of any size (removed minimum area restriction)
+      if (drawingBox.width !== 0 || drawingBox.height !== 0) {
         // Normalize the drawing box - store in display coordinates (spectrogram area)
         const normalizedBox = {
           x: drawingBox.width < 0 ? drawingBox.x + drawingBox.width : drawingBox.x,
@@ -1504,6 +1505,17 @@ const AnnotationEditor: React.FC = () => {
     setBoundingBoxes(boundingBoxes.filter((_, i) => i !== index));
     setSelectedBox(null);
     setHasUnsavedChanges(true);
+  };
+
+  const handleUpdateLabel = (index: number, newLabel: string) => {
+    setBoundingBoxes(prev => prev.map((box, i) => 
+      i === index ? { ...box, label: newLabel } : box
+    ));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleSelectMultiple = (indices: Set<number>) => {
+    setSelectedBoxes(indices);
   };
 
   const handleSaveAnnotations = async () => {
@@ -2437,6 +2449,9 @@ const AnnotationEditor: React.FC = () => {
               selectedBox={selectedBox}
               onSelect={setSelectedBox}
               onDelete={handleDeleteBox}
+              onUpdateLabel={handleUpdateLabel}
+              selectedBoxes={selectedBoxes}
+              onSelectMultiple={handleSelectMultiple}
             />
           </div>
         )}
