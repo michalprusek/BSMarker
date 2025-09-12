@@ -335,4 +335,7 @@ JWT_SECRET_KEY=<secure-key>
 - `frontend/src/services/api.ts` - Axios client configuration
 - `frontend/src/pages/AnnotationEditor.tsx` - Complex Konva canvas implementation
 - `frontend/src/components/AudioPlayer.tsx` - WaveSurfer.js integration
-- VERY IMPORTANT: po každé změně je potřeba rebuildnout aplikaci, aby se změny prijevily
+
+
+VERY IMPORTANT: po každé změně je potřeba rebuildnout aplikaci, aby se změny prijevily
+VERY IMPORTANT: Nikdy neskipuj pre-commit hoos (checks) - vždy chyby nalezené v pre-commit checks oprav!

@@ -1,3 +1,5 @@
+"""Configuration settings for BSMarker application."""
+
 import re
 import warnings
 from typing import List
@@ -7,6 +9,8 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+
     model_config = ConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
     # Application Settings
@@ -34,8 +38,11 @@ class Settings(BaseSettings):
     MINIO_BUCKET_RECORDINGS: str = "recordings"
     MINIO_BUCKET_SPECTROGRAMS: str = "spectrograms"
 
-    # CORS Settings
-    CORS_ORIGINS: List[str] = ["http://localhost:3456"]
+    # CORS Settings - Environment-specific
+    CORS_ORIGINS: List[str] = Field(
+        default_factory=lambda: ["https://bsmarker.utia.cas.cz"],
+        description="List of allowed CORS origins",
+    )
 
     # Initial Admin User - NO HARDCODED DEFAULTS
     FIRST_ADMIN_EMAIL: str = Field(default="admin@bsmarker.com", description="Initial admin email")
@@ -53,7 +60,7 @@ class Settings(BaseSettings):
     @field_validator("SECRET_KEY")
     @classmethod
     def validate_secret_key(cls, v: str) -> str:
-        """Validate SECRET_KEY meets security requirements"""
+        """Validate SECRET_KEY meets security requirements."""
         if len(v) < 32:
             raise ValueError("SECRET_KEY must be at least 32 characters long")
 
@@ -78,7 +85,7 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL")
     @classmethod
     def validate_database_url(cls, v: str) -> str:
-        """Validate DATABASE_URL format"""
+        """Validate DATABASE_URL format."""
         if not v.startswith("postgresql://"):
             raise ValueError("DATABASE_URL must start with 'postgresql://'")
 
@@ -90,14 +97,14 @@ class Settings(BaseSettings):
 
         # Check for weak passwords in URL
         if ":password@" in v or ":admin@" in v or ":123@" in v:
-            warnings.warn("Database URL contains weak credentials", UserWarning)
+            warnings.warn("Database URL contains weak credentials", UserWarning, stacklevel=2)
 
         return v
 
     @field_validator("REDIS_URL")
     @classmethod
     def validate_redis_url(cls, v: str) -> str:
-        """Validate REDIS_URL format"""
+        """Validate REDIS_URL format."""
         if not v.startswith("redis://"):
             raise ValueError("REDIS_URL must start with 'redis://'")
         return v
@@ -105,31 +112,39 @@ class Settings(BaseSettings):
     @field_validator("MINIO_ACCESS_KEY")
     @classmethod
     def validate_minio_access_key(cls, v: str) -> str:
-        """Validate MinIO access key"""
+        """Validate MinIO access key."""
         if len(v) < 8:
             raise ValueError("MINIO_ACCESS_KEY must be at least 8 characters long")
 
         if v == "minioadmin":
-            warnings.warn("Using default MinIO credentials in production is insecure", UserWarning)
+            warnings.warn(
+                "Using default MinIO credentials in production is insecure",
+                UserWarning,
+                stacklevel=2,
+            )
 
         return v
 
     @field_validator("MINIO_SECRET_KEY")
     @classmethod
     def validate_minio_secret_key(cls, v: str) -> str:
-        """Validate MinIO secret key"""
+        """Validate MinIO secret key."""
         if len(v) < 8:
             raise ValueError("MINIO_SECRET_KEY must be at least 8 characters long")
 
         if v == "minioadmin":
-            warnings.warn("Using default MinIO credentials in production is insecure", UserWarning)
+            warnings.warn(
+                "Using default MinIO credentials in production is insecure",
+                UserWarning,
+                stacklevel=2,
+            )
 
         return v
 
     @field_validator("FIRST_ADMIN_PASSWORD")
     @classmethod
     def validate_admin_password(cls, v: str) -> str:
-        """Validate initial admin password"""
+        """Validate initial admin password."""
         if len(v) < 8:
             raise ValueError("FIRST_ADMIN_PASSWORD must be at least 8 characters long")
 
@@ -142,7 +157,7 @@ class Settings(BaseSettings):
     @field_validator("CORS_ORIGINS")
     @classmethod
     def validate_cors_origins(cls, v: List[str]) -> List[str]:
-        """Validate CORS origins"""
+        """Validate CORS origins."""
         for origin in v:
             if not origin.startswith(("http://", "https://")):
                 raise ValueError(f"CORS origin must start with http:// or https://: {origin}")
