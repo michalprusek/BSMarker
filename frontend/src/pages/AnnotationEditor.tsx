@@ -1207,15 +1207,14 @@ const AnnotationEditor: React.FC = () => {
     const spectrogramHeight = containerHeight * 0.60;
     
     // INVARIANT COORDINATE TRANSFORMATION
-    // point.x is in Stage pixel coordinates (relative to visible Stage area)
+    // point.x is in Stage pixel coordinates (already correct relative to Stage content)
     // Stage width = (spectrogramDimensions.width - FREQUENCY_SCALE_WIDTH) * zoomLevel
     const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
     const stageWidth = effectiveWidth * zoomLevel;
-    const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
     
     // For seeking: convert click position to timeline position (0 to 1)
-    // point.x is position in visible Stage, scrollLeft is how much we've scrolled
-    const absoluteX = point.x + scrollLeft; // Absolute position in the full zoomed Stage
+    // point.x is already the correct position on the Stage (no scroll offset needed)
+    const absoluteX = point.x; // Absolute position in the full zoomed Stage
     const seekPosition = absoluteX / stageWidth; // Normalized position (0 to 1)
     
     // For bounding boxes: convert to unzoomed world coordinates
@@ -1376,10 +1375,9 @@ const AnnotationEditor: React.FC = () => {
     // INVARIANT COORDINATE TRANSFORMATION (same as handleMouseDown)
     const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
     const stageWidth = effectiveWidth * zoomLevel;
-    const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
     
     // For seeking: convert to timeline position (0 to 1)
-    const absoluteX = point.x + scrollLeft;
+    const absoluteX = point.x;
     const seekPosition = absoluteX / stageWidth;
     
     // For bounding boxes: convert to unzoomed world coordinates
@@ -1670,8 +1668,7 @@ const AnnotationEditor: React.FC = () => {
     const point = stage.getPointerPosition();
     
     // INVARIANT COORDINATE TRANSFORMATION (same as other handlers)
-    const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
-    const absoluteX = point.x + scrollLeft;
+    const absoluteX = point.x;
     const adjustedX = absoluteX / zoomLevel; // Convert to unzoomed world coordinates
     const adjustedY = point.y;
     
