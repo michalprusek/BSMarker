@@ -12,6 +12,7 @@ from typing import Any, List, Optional
 from app.api import deps
 from app.core.config import settings
 from app.core.rate_limiter import RATE_LIMITS, limiter
+from app.models.annotation import Annotation
 from app.models.project import Project
 from app.models.recording import Recording
 from app.models.spectrogram import Spectrogram, SpectrogramStatus
@@ -21,7 +22,7 @@ from app.services.audio_service import audio_service
 from app.services.minio_client import minio_client
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 # Set cache directory for numba/librosa to avoid permission issues in Docker
@@ -229,7 +230,13 @@ def read_recordings(
     if not current_user.is_admin and project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    query = db.query(Recording).filter(Recording.project_id == project_id)
+    # Build query with annotation count
+    query = (
+        db.query(Recording, func.count(Annotation.id).label("annotation_count"))
+        .outerjoin(Annotation, Recording.id == Annotation.recording_id)
+        .filter(Recording.project_id == project_id)
+        .group_by(Recording.id)
+    )
 
     # Apply search filter
     if search:
@@ -259,8 +266,26 @@ def read_recordings(
     else:
         query = query.order_by(order_field.desc())
 
-    recordings = query.offset(skip).limit(limit).all()
-    return recordings
+    # Execute query and build response
+    results = query.offset(skip).limit(limit).all()
+
+    # Convert to schema format with annotation count
+    recordings_with_counts = []
+    for recording, annotation_count in results:
+        recording_dict = {
+            "id": recording.id,
+            "filename": recording.filename,
+            "original_filename": recording.original_filename,
+            "file_path": recording.file_path,
+            "duration": recording.duration,
+            "sample_rate": recording.sample_rate,
+            "project_id": recording.project_id,
+            "created_at": recording.created_at,
+            "annotation_count": annotation_count or 0,
+        }
+        recordings_with_counts.append(RecordingSchema.model_validate(recording_dict))
+
+    return recordings_with_counts
 
 
 @router.get("/{recording_id}", response_model=RecordingSchema)

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeftIcon, CloudArrowUpIcon, MusicalNoteIcon, TrashIcon, MagnifyingGlassIcon, FunnelIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, CloudArrowUpIcon, MusicalNoteIcon, TrashIcon, MagnifyingGlassIcon, FunnelIcon, ArrowDownTrayIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { Project, Recording } from '../types';
 import { projectService, recordingService, annotationService } from '../services/api';
 import toast from 'react-hot-toast';
@@ -567,7 +567,15 @@ const ProjectDetailPage: React.FC = () => {
                     >
                       <MusicalNoteIcon className="h-10 w-10 text-gray-400 mr-4" />
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">{recording.original_filename}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-gray-900">{recording.original_filename}</p>
+                          {recording.annotation_count && recording.annotation_count > 0 && (
+                            <span className="inline-flex items-center rounded-full px-2 text-xs font-semibold leading-5 bg-green-100 text-green-800">
+                              <CheckIcon className="h-3 w-3 mr-1" />
+                              Annotated
+                            </span>
+                          )}
+                        </div>
                         <div className="text-sm text-gray-500">
                           <span>Duration: {formatRecordingDuration(recording.duration)}</span>
                           <span className="mx-2">•</span>
