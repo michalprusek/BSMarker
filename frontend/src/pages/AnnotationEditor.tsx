@@ -1215,8 +1215,9 @@ const AnnotationEditor: React.FC = () => {
     if (point.y > timelineHeight) {
       // Handle waveform click for seeking
       if (wavesurferRef.current && duration > 0) {
-        // Use pos.x which is already in world space coordinates
-        const seekPosition = Math.max(0, Math.min(1, pos.x / spectrogramDimensions.width));
+        // Account for frequency scale offset when calculating seek position
+        const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+        const seekPosition = Math.max(0, Math.min(1, pos.x / effectiveWidth));
         wavesurferRef.current.seekTo(seekPosition);
         setCurrentTime(seekPosition * duration);
       }
@@ -1322,7 +1323,9 @@ const AnnotationEditor: React.FC = () => {
       if (!e.evt.shiftKey && !e.evt.ctrlKey && !e.evt.metaKey) {
         // Single click to seek in spectrogram
         if (wavesurferRef.current && duration > 0) {
-          const seekPosition = Math.max(0, Math.min(1, pos.x / spectrogramDimensions.width));
+          // Account for frequency scale offset when calculating seek position
+          const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+          const seekPosition = Math.max(0, Math.min(1, pos.x / effectiveWidth));
           wavesurferRef.current.seekTo(seekPosition);
           setCurrentTime(seekPosition * duration);
         }
@@ -1379,8 +1382,9 @@ const AnnotationEditor: React.FC = () => {
     // Handle waveform drag to seek (continuous dragging)
     if (point.y > spectrogramHeight && e.evt.buttons === 1 && !isAnnotationMode && !isPanning && !draggingBox && !resizingBox) {
       if (wavesurferRef.current && duration > 0) {
-        // Use pos.x which is already in world space coordinates
-        const seekPosition = Math.max(0, Math.min(1, pos.x / spectrogramDimensions.width));
+        // Account for frequency scale offset when calculating seek position
+        const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+        const seekPosition = Math.max(0, Math.min(1, pos.x / effectiveWidth));
         wavesurferRef.current.seekTo(seekPosition);
         setCurrentTime(seekPosition * duration);
       }
@@ -2495,17 +2499,23 @@ const AnnotationEditor: React.FC = () => {
                       let strokeColor = labelColor.stroke;
                       let fillColor = labelColor.fill;
                       let strokeWidth = 2;
+                      let shadowBlur = 0;
+                      let shadowColor = 'transparent';
+                      let dashArray: number[] | undefined = undefined;
                       
                       if (isSelected || isSingleSelected) {
-                        strokeWidth = 3;
+                        strokeWidth = 4; // Increased from 3 to 4 for better visibility
+                        shadowBlur = 8; // Add shadow for selected boxes
+                        shadowColor = 'rgba(0, 0, 0, 0.3)';
+                        dashArray = []; // Solid line for selected
                         // Use brighter version of the same label color for selection
                         fillColor = fillColor.replace('0.15', '0.35');
-                        // Make stroke slightly brighter too
+                        // Make stroke significantly brighter for selection
                         const rgb = strokeColor.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
                         if (rgb) {
-                          const r = Math.min(255, parseInt(rgb[1], 16) + 30);
-                          const g = Math.min(255, parseInt(rgb[2], 16) + 30);
-                          const b = Math.min(255, parseInt(rgb[3], 16) + 30);
+                          const r = Math.min(255, parseInt(rgb[1], 16) + 50); // Increased brightness
+                          const g = Math.min(255, parseInt(rgb[2], 16) + 50);
+                          const b = Math.min(255, parseInt(rgb[3], 16) + 50);
                           strokeColor = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
                         }
                       }
@@ -2520,6 +2530,9 @@ const AnnotationEditor: React.FC = () => {
                             stroke={strokeColor}
                             strokeWidth={strokeWidth}
                             fill={fillColor}
+                            shadowBlur={shadowBlur}
+                            shadowColor={shadowColor}
+                            dash={dashArray}
                           />
                           
                           {/* Label text - always show, including "None" */}
