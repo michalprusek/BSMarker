@@ -13,7 +13,7 @@ import SpectrogramScales from '../components/SpectrogramScales';
 import { CoordinateUtils, LAYOUT_CONSTANTS } from '../utils/coordinates';
 import { AXIS_STYLES, formatTimeLabel, getTimeTickInterval } from '../utils/axisStyles';
 import { useAutosave } from '../hooks/useAutosave';
-import { useSpectrogramZoom } from '../hooks/useSpectrogramZoom';
+// import { useSpectrogramZoom } from '../hooks/useSpectrogramZoom'; // Unused - replaced with custom throttled zoom
 import { throttle } from 'lodash';
 
 const PLAYBACK_SPEEDS = [1, 2, 4];
@@ -2431,7 +2431,7 @@ const AnnotationEditor: React.FC = () => {
                   >
                     {/* Optimized Bounding boxes - only render visible boxes */}
                     {transformedBoxes.map((transformedBox, index) => {
-                      const originalIndex = visibleBoundingBoxes.indexOf(transformedBox);
+                      // const originalIndex = visibleBoundingBoxes.indexOf(transformedBox); // Unused
                       const globalIndex = boundingBoxes.indexOf(transformedBox);
                       const isSelected = selectedBoxes.has(globalIndex);
                       const isSingleSelected = selectedBox === transformedBox;
