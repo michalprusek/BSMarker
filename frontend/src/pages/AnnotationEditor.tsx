@@ -175,7 +175,7 @@ const AnnotationEditor: React.FC = () => {
   const transformedBoxes = useMemo(() => 
     visibleBoundingBoxes.map(box => ({
       ...box,
-      screenX: box.x * zoomLevel - scrollOffset,
+      screenX: box.x * zoomLevel - scrollOffset,  // scrollOffset is now in pixels
       screenY: box.y,  // No vertical zoom - keep Y as-is
       screenWidth: box.width * zoomLevel,
       screenHeight: box.height,  // No vertical zoom - keep height as-is
@@ -1708,11 +1708,12 @@ const AnnotationEditor: React.FC = () => {
         
         // Apply zoom and offset
         setZoomLevel(newZoom);
-        setZoomOffset({ x: newOffsetX, y: newOffsetY });
+        setZoomOffset({ x: 0, y: 0 });  // Reset zoom offset, use scroll only
         
-        // Update horizontal scroll for waveform synchronization
-        const maxScrollOffset = Math.max(0, (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * (newZoom - 1));
-        setScrollOffset(Math.min(newOffsetX, maxScrollOffset));
+        // Update horizontal scroll to keep cursor position fixed
+        if (unifiedScrollRef.current) {
+          unifiedScrollRef.current.scrollLeft = newOffsetX;
+        }
         
         // Update WaveSurfer zoom if available
         if (wavesurferRef.current) {
@@ -1734,15 +1735,14 @@ const AnnotationEditor: React.FC = () => {
   const handleScrollOptimized = useMemo(() =>
     throttle((e: React.UIEvent<HTMLDivElement>) => {
       const target = e.target as HTMLElement;
-      const horizontalScrollPercentage = target.scrollWidth > target.clientWidth 
-        ? (target.scrollLeft / (target.scrollWidth - target.clientWidth)) * 100 
-        : 0;
+      // Store actual pixel scroll position, not percentage
+      const actualScrollLeft = target.scrollLeft;
       const verticalScrollPercentage = target.scrollHeight > target.clientHeight
         ? (target.scrollTop / (target.scrollHeight - target.clientHeight)) * 100 
         : 0;
       
-      // Update scroll states
-      setScrollOffset(horizontalScrollPercentage);
+      // Update scroll states - use pixels for horizontal
+      setScrollOffset(actualScrollLeft);
       setVerticalScrollOffset(verticalScrollPercentage);
       
       // Update visible bounds with requestAnimationFrame for smoothness
@@ -1941,7 +1941,7 @@ const AnnotationEditor: React.FC = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden" style={{ maxHeight: '100vh' }}>
       {/* Simplified Header */}
       <div className="bg-white shadow-sm border-b border-gray-200 px-4 py-2">
         <div className="flex items-center justify-between">
@@ -2063,7 +2063,7 @@ const AnnotationEditor: React.FC = () => {
             {/* Unified container with both horizontal and vertical scroll */}
             <div 
               ref={unifiedScrollRef}
-              className="absolute inset-0 overflow-auto"
+              className="absolute inset-0 overflow-x-auto overflow-y-hidden"
               style={{ 
                 left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`, 
                 bottom: '64px',  // Increased to account for playback controls (32px + 32px)
@@ -2275,14 +2275,14 @@ const AnnotationEditor: React.FC = () => {
                         spectrogramDimensions.width,
                         zoomLevel,
                         false
-                      ) : 0;
+                      ) - scrollOffset : 0;  // Apply scroll offset to waveform boxes
                       const endX = duration > 0 ? CoordinateUtils.timeToPixel(
                         box.end_time || 0,
                         duration,
                         spectrogramDimensions.width,
                         zoomLevel,
                         false
-                      ) : 0;
+                      ) - scrollOffset : 0;  // Apply scroll offset to waveform boxes
                       const waveformHeight = spectrogramDimensions.height * 0.24;  // 24% for waveform
                       
                       return (
@@ -2341,7 +2341,7 @@ const AnnotationEditor: React.FC = () => {
                   onMouseUp={handleMouseUp}
                   onContextMenu={handleContextMenu}
                   ref={stageRef}
-                  x={-zoomOffset.x}
+                  x={0}  // Remove zoomOffset.x to prevent double transformation
                   y={-zoomOffset.y}
                   scaleX={1}
                   scaleY={1}
