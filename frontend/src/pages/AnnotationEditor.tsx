@@ -545,8 +545,14 @@ const AnnotationEditor: React.FC = () => {
       const newWidth = (spectrogramDimensions.width - 40) * zoomLevel;
       waveformRef.current.style.width = `${newWidth}px`;
       
-      // Let WaveSurfer handle the zoom
-      wavesurferRef.current.zoom(zoomLevel * 100);
+      // Let WaveSurfer handle the zoom (only if audio is loaded)
+      try {
+        if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
+          wavesurferRef.current.zoom(zoomLevel * 100);
+        }
+      } catch (e) {
+        // Audio not loaded yet, ignore
+      }
     }
   }, [zoomLevel, spectrogramDimensions.width]);
 
@@ -1715,8 +1721,12 @@ const AnnotationEditor: React.FC = () => {
     const newZoom = Math.min(zoomLevel * 1.5, 6); // Limit to 600%
     setZoomLevel(newZoom);
     // Sync WaveSurfer zoom
-    if (wavesurferRef.current) {
-      wavesurferRef.current.zoom(newZoom * 100);
+    try {
+      if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
+        wavesurferRef.current.zoom(newZoom * 100);
+      }
+    } catch (e) {
+      // Audio not loaded yet, ignore
     }
   };
 
@@ -1724,8 +1734,12 @@ const AnnotationEditor: React.FC = () => {
     const newZoom = Math.max(zoomLevel / 1.5, 1);
     setZoomLevel(newZoom);
     // Sync WaveSurfer zoom
-    if (wavesurferRef.current) {
-      wavesurferRef.current.zoom(newZoom * 100);
+    try {
+      if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
+        wavesurferRef.current.zoom(newZoom * 100);
+      }
+    } catch (e) {
+      // Audio not loaded yet, ignore
     }
   };
 
@@ -1734,8 +1748,12 @@ const AnnotationEditor: React.FC = () => {
     setScrollOffset(0);
     setZoomOffset({ x: 0, y: 0 });
     // Reset WaveSurfer zoom
-    if (wavesurferRef.current) {
-      wavesurferRef.current.zoom(100);
+    try {
+      if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
+        wavesurferRef.current.zoom(100);
+      }
+    } catch (e) {
+      // Audio not loaded yet, ignore
     }
     // Reset scroll position
     if (unifiedScrollRef.current) {
@@ -1795,8 +1813,12 @@ const AnnotationEditor: React.FC = () => {
         }
         
         // Update WaveSurfer zoom if available
-        if (wavesurferRef.current) {
-          wavesurferRef.current.zoom(newZoom * 100); // WaveSurfer zoom is in pixels per second
+        try {
+          if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
+            wavesurferRef.current.zoom(newZoom * 100); // WaveSurfer zoom is in pixels per second
+          }
+        } catch (e) {
+          // Audio not loaded yet, ignore
         }
       });
     }, 16), // 60 FPS throttle
