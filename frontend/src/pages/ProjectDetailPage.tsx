@@ -5,6 +5,7 @@ import { Project, Recording } from '../types';
 import { projectService, recordingService, annotationService } from '../services/api';
 import toast from 'react-hot-toast';
 import UploadRecordingModal from '../components/UploadRecordingModal';
+import { formatRecordingDuration } from '../utils/duration';
 // @ts-ignore
 import JSZip from 'jszip';
 
@@ -568,7 +569,7 @@ const ProjectDetailPage: React.FC = () => {
                       <div className="flex-1">
                         <p className="text-sm font-medium text-gray-900">{recording.original_filename}</p>
                         <div className="text-sm text-gray-500">
-                          <span>Duration: {recording.duration ? `${recording.duration.toFixed(2)}s` : 'Unknown'}</span>
+                          <span>Duration: {formatRecordingDuration(recording.duration)}</span>
                           <span className="mx-2">•</span>
                           <span>Sample Rate: {recording.sample_rate ? `${recording.sample_rate}Hz` : 'Unknown'}</span>
                           <span className="mx-2">•</span>

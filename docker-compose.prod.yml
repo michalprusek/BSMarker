@@ -81,6 +81,9 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       CORS_ORIGINS: '["https://bsmarker.utia.cas.cz"]'
+      LIBROSA_CACHE_DIR: /tmp/librosa_cache
+      MPLCONFIGDIR: /tmp/matplotlib_cache
+      NUMBA_CACHE_DIR: /tmp
     # volumes:
     #   - ./backend/logs:/app/logs
     depends_on:
@@ -124,6 +127,8 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       NUMBA_CACHE_DIR: /tmp
+      LIBROSA_CACHE_DIR: /tmp/librosa_cache
+      MPLCONFIGDIR: /tmp/matplotlib_cache
     # volumes:
     #   - ./backend/logs:/app/logs
     depends_on:
