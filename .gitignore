@@ -1,6 +1,10 @@
 # Environment variables
 .env
 .env.local
+.env.production
+.env.blue
+.env.green
+.env.*
 
 # Python
 __pycache__/
@@ -85,3 +89,13 @@ package-lock.json.backup
 *~
 .*.swp
 .*.swo
+
+# SSL Certificates and sensitive keys
+certbot/conf/live/
+certbot/conf/archive/
+certbot/conf/renewal/
+*.pem
+*.key
+*.crt
+*.csr
+ssl-dhparams.pem
