@@ -1206,18 +1206,23 @@ const AnnotationEditor: React.FC = () => {
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.72;
     
-    // Convert from screen space to world space FIRST
+    // Convert from Stage coordinate space to world space
+    // point.x is in Stage coordinates (0 to stageWidth)
+    // We need to add scroll offset and convert to unzoomed world coordinates
     const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
-    const pos = { x: (point.x + scrollLeft) / zoomLevel, y: point.y }; // Account for scroll and zoom
+    // point.x is relative to visible Stage area, scrollLeft is in pixels
+    // Convert both to unzoomed world coordinates
+    const worldX = (point.x + scrollLeft) / zoomLevel;
+    const pos = { x: worldX, y: point.y }; // x is now in unzoomed world coordinates
     
     // Check if clicking in waveform area (bottom 23%, after timeline at 77%)
     const timelineHeight = containerHeight * 0.77; // Timeline ends at 77% (69% + 8%)
     if (point.y > timelineHeight) {
       // Handle waveform click for seeking
       if (wavesurferRef.current && duration > 0) {
-        // Account for frequency scale offset when calculating seek position
+        // Now pos.x is already in unzoomed coordinates relative to the effective width
         const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-        const seekPosition = Math.max(0, Math.min(1, pos.x / effectiveWidth));
+        const seekPosition = Math.max(0, Math.min(1, worldX / effectiveWidth));
         wavesurferRef.current.seekTo(seekPosition);
         setCurrentTime(seekPosition * duration);
       }
@@ -1362,9 +1367,11 @@ const AnnotationEditor: React.FC = () => {
     const point = stage.getPointerPosition();
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.72;
-    // Convert from screen space to world space  
+    // Convert from Stage coordinate space to world space
+    // point.x is relative to visible Stage area, scrollLeft is in pixels
     const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
-    const pos = { x: (point.x + scrollLeft) / zoomLevel, y: point.y };  // Account for scroll and zoom
+    const worldX = (point.x + scrollLeft) / zoomLevel;
+    const pos = { x: worldX, y: point.y };  // x is now in unzoomed world coordinates
     setMousePosition(pos);
     
     // Handle panning for both horizontal and vertical
@@ -1382,9 +1389,9 @@ const AnnotationEditor: React.FC = () => {
     // Handle waveform drag to seek (continuous dragging)
     if (point.y > spectrogramHeight && e.evt.buttons === 1 && !isAnnotationMode && !isPanning && !draggingBox && !resizingBox) {
       if (wavesurferRef.current && duration > 0) {
-        // Account for frequency scale offset when calculating seek position
+        // Now worldX is already in unzoomed coordinates relative to the effective width
         const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-        const seekPosition = Math.max(0, Math.min(1, pos.x / effectiveWidth));
+        const seekPosition = Math.max(0, Math.min(1, worldX / effectiveWidth));
         wavesurferRef.current.seekTo(seekPosition);
         setCurrentTime(seekPosition * duration);
       }
@@ -1650,7 +1657,7 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     
-    // Convert from screen space to world space
+    // Convert from Stage coordinate space to world space
     const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
     const adjustedX = (point.x + scrollLeft) / zoomLevel;
     const adjustedY = point.y;
@@ -2032,9 +2039,9 @@ const AnnotationEditor: React.FC = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50" style={{ height: '100vh', overflow: 'hidden' }}>
+    <div className="fixed inset-0 flex flex-col bg-gray-50 overflow-hidden">
       {/* Simplified Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200 px-4 py-1" style={{ flexShrink: 0, height: '42px' }}>
+      <div className="bg-white shadow-sm border-b border-gray-200 px-4 py-1 flex-shrink-0" style={{ height: '40px' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <button
@@ -2132,11 +2139,11 @@ const AnnotationEditor: React.FC = () => {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex relative" style={{ overflow: 'hidden', minHeight: 0 }}>
+      <div className="flex-1 flex overflow-hidden" style={{ minHeight: 0 }}>
         {/* Editor Area - Main Content */}
-        <div className="flex-1 flex flex-col" style={{ minWidth: 0 }}>
+        <div className="flex-1 flex flex-col overflow-hidden">
           {/* Unified Spectrogram and Waveform Container */}
-          <div className="flex-1 relative bg-white border-l border-r border-b border-gray-300" style={{ minHeight: 0 }}>
+          <div className="flex-1 relative bg-white border-l border-r border-b border-gray-300 overflow-hidden">
             {/* Scales */}
             {spectrogramUrl && duration > 0 && (
               <SpectrogramScales
@@ -2149,15 +2156,16 @@ const AnnotationEditor: React.FC = () => {
               />
             )}
             
-            {/* Unified container with both horizontal and vertical scroll */}
+            {/* Unified container with horizontal scroll only */}
             <div 
               ref={unifiedScrollRef}
-              className="absolute inset-0 overflow-x-auto overflow-y-hidden"
+              className="absolute overflow-x-auto overflow-y-hidden"
               style={{ 
+                top: 0,
                 left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`, 
-                bottom: '32px',  // Space for playback controls
-                width: 'calc(100% - 40px)',
-                height: 'calc(100% - 32px)'  // Adjusted height
+                right: 0,
+                bottom: '30px',
+                height: 'calc(100% - 30px)'
               }}
               onScroll={handleScrollOptimized}
               onWheel={handleWheelZoom}
@@ -2170,13 +2178,13 @@ const AnnotationEditor: React.FC = () => {
                   height: '100%'
                 }}
               >
-                {/* Split view: 60% spectrogram, 8% timeline, 32% waveform */}
-                {/* Spectrogram: 60% */}
+                {/* Split view: 65% spectrogram, 10% timeline, 25% waveform */}
+                {/* Spectrogram: 65% */}
                 <div className="absolute" style={{ 
                   top: 0,
                   left: 0,
                   width: '100%',
-                  height: '60%'
+                  height: '65%'
                 }}>
                   {spectrogramUrl ? (
                     <img 
@@ -2242,15 +2250,14 @@ const AnnotationEditor: React.FC = () => {
                   )}
                 </div>
                 
-                {/* Timeline: 8% with white background and improved visibility */}
+                {/* Timeline: 10% with white background and improved visibility */}
                 <div 
                   className="absolute bg-white border-t-2 border-b-2 border-gray-300"
                   style={{ 
-                    top: '60%',
+                    top: '65%',
                     left: 0,
                     right: 0,
-                    height: '8%',
-                    minHeight: '32px',
+                    height: '10%',
                     overflow: 'hidden'
                   }}
                 >
@@ -2320,14 +2327,15 @@ const AnnotationEditor: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Waveform at bottom 32% - no separate scrolling */}
+                {/* Waveform at bottom 25% - no separate scrolling */}
                 <div 
                   className="absolute bg-gradient-to-b from-gray-50 to-gray-100"
                   style={{ 
-                    top: '68%',
+                    top: '75%',
                     left: 0,
                     right: 0,
-                    height: '32%'
+                    height: '25%',
+                    bottom: 0
                   }}
                 >
                   <div 
@@ -2691,7 +2699,7 @@ const AnnotationEditor: React.FC = () => {
         </div>
 
         {/* Vertical Toolbar */}
-        <div className="w-16 bg-white border-l border-gray-200 shadow-lg flex flex-col items-center py-2 space-y-1" style={{ flexShrink: 0 }}>
+        <div className="bg-white border-l border-gray-200 flex flex-col items-center py-2 gap-1 flex-shrink-0" style={{ width: '56px' }}>
           {/* Undo/Redo */}
           <button
             onClick={undo}
@@ -2782,7 +2790,7 @@ const AnnotationEditor: React.FC = () => {
 
         {/* Collapsible Sidebar */}
         {showSidebar && (
-          <div className="w-96 border-l border-gray-200 bg-white p-4 overflow-y-auto" style={{ flexShrink: 0 }}>
+          <div className="border-l border-gray-200 bg-white p-3 overflow-y-auto flex-shrink-0" style={{ width: '320px' }}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-medium text-gray-900">Annotations</h2>
               <button
