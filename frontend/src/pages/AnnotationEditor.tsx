@@ -2191,7 +2191,7 @@ const AnnotationEditor: React.FC = () => {
                   height: '100%'
                 }}
               >
-                {/* Split view: 60% spectrogram, 5% gap, 10% timeline, 25% waveform */}
+                {/* Split view: 60% spectrogram, 8% timeline, 32% waveform */}
                 {/* Spectrogram: 60% */}
                 <div className="absolute" style={{ 
                   top: 0,
@@ -2263,15 +2263,16 @@ const AnnotationEditor: React.FC = () => {
                   )}
                 </div>
                 
-                {/* Timeline: 10% with white background and improved visibility */}
+                {/* Timeline: 8% with white background and improved visibility */}
                 <div 
                   className="absolute bg-white border-t-2 border-b-2 border-gray-300"
                   style={{ 
-                    top: '65%',
+                    top: '60%',  // Start right after spectrogram
                     left: 0,
                     right: 0,
-                    height: '10%',
-                    overflow: 'hidden'
+                    height: '8%',
+                    overflow: 'hidden',
+                    zIndex: 10  // Ensure timeline is above spectrogram
                   }}
                 >
                   <div 
@@ -2340,15 +2341,14 @@ const AnnotationEditor: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Waveform at bottom 25% - no separate scrolling */}
+                {/* Waveform at bottom 32% - no separate scrolling */}
                 <div 
                   className="absolute bg-gradient-to-b from-gray-50 to-gray-100"
                   style={{ 
-                    top: '75%',
+                    top: '68%',  // Start right after timeline (60% + 8%)
                     left: 0,
                     right: 0,
-                    height: '25%',
-                    bottom: 0
+                    height: '32%'
                   }}
                 >
                   <div 
