@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeftIcon, PlayIcon, PauseIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon, PencilIcon, TrashIcon, ClipboardDocumentIcon, ArrowUturnLeftIcon, ArrowUturnRightIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon } from '@heroicons/react/24/solid';
+import { ArrowLeftIcon, PlayIcon, PauseIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon, PencilIcon, TrashIcon, ClipboardDocumentIcon, ArrowUturnLeftIcon, ArrowUturnRightIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, ArrowsPointingOutIcon } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
 import WaveSurfer from 'wavesurfer.js';
 import { Stage, Layer, Rect, Line, Circle, Group, Text } from 'react-konva';
@@ -1662,16 +1662,36 @@ const AnnotationEditor: React.FC = () => {
 
   // Zoom handlers
   const handleZoomIn = () => {
-    setZoomLevel(prev => Math.min(prev * 1.5, 10));
+    const newZoom = Math.min(zoomLevel * 1.5, 6); // Limit to 600%
+    setZoomLevel(newZoom);
+    // Sync WaveSurfer zoom
+    if (wavesurferRef.current) {
+      wavesurferRef.current.zoom(newZoom * 100);
+    }
   };
 
   const handleZoomOut = () => {
-    setZoomLevel(prev => Math.max(prev / 1.5, 1));
+    const newZoom = Math.max(zoomLevel / 1.5, 1);
+    setZoomLevel(newZoom);
+    // Sync WaveSurfer zoom
+    if (wavesurferRef.current) {
+      wavesurferRef.current.zoom(newZoom * 100);
+    }
   };
 
   const handleZoomReset = () => {
     setZoomLevel(1);
     setScrollOffset(0);
+    setZoomOffset({ x: 0, y: 0 });
+    // Reset WaveSurfer zoom
+    if (wavesurferRef.current) {
+      wavesurferRef.current.zoom(100);
+    }
+    // Reset scroll position
+    if (unifiedScrollRef.current) {
+      unifiedScrollRef.current.scrollLeft = 0;
+      unifiedScrollRef.current.scrollTop = 0;
+    }
     setZoomOffset({ x: 0, y: 0 });
   };
 
@@ -1700,7 +1720,7 @@ const AnnotationEditor: React.FC = () => {
         const zoomFactor = Math.exp(delta);
         
         // Calculate new zoom level with limits
-        const newZoom = Math.max(1, Math.min(20, zoomLevel * zoomFactor)); // Increased max zoom to 20x
+        const newZoom = Math.max(1, Math.min(6, zoomLevel * zoomFactor)); // Limit max zoom to 600%
         
         if (newZoom === zoomLevel) return;
         
@@ -2278,20 +2298,21 @@ const AnnotationEditor: React.FC = () => {
                     {boundingBoxes.map((box, index) => {
                       const isSelected = selectedBoxes.has(index);
                       const labelColor = getLabelColor(box.label || 'None');
+                      // Calculate pixel positions for waveform boxes - ensure same scale as spectrogram
                       const startX = duration > 0 ? CoordinateUtils.timeToPixel(
                         box.start_time || 0,
                         duration,
-                        spectrogramDimensions.width,
+                        spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH,
                         zoomLevel,
                         false
-                      ) : 0;  // No scroll offset needed - SVG is inside scrolling container
+                      ) : 0;
                       const endX = duration > 0 ? CoordinateUtils.timeToPixel(
                         box.end_time || 0,
                         duration,
-                        spectrogramDimensions.width,
+                        spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH,
                         zoomLevel,
                         false
-                      ) : 0;  // No scroll offset needed - SVG is inside scrolling container
+                      ) : 0;
                       const waveformHeight = spectrogramDimensions.height * 0.24;  // 24% for waveform
                       
                       return (
@@ -2639,6 +2660,13 @@ const AnnotationEditor: React.FC = () => {
             title="Zoom Out (Ctrl+-)"
           >
             <MagnifyingGlassMinusIcon className="h-5 w-5 text-gray-600" />
+          </button>
+          <button
+            onClick={handleZoomReset}
+            className="p-2 rounded-md hover:bg-gray-100 group"
+            title="Reset View (Ctrl+0)"
+          >
+            <ArrowsPointingOutIcon className="h-5 w-5 text-gray-600" />
           </button>
           
           {/* Performance monitor for development */}
