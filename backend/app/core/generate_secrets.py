@@ -1,7 +1,6 @@
-#!/usr/bin/env python3
-"""
-Secret generation utility for BSMarker
-Generates cryptographically secure secrets for various purposes
+"""Secret generation utility for BSMarker.
+
+Generates cryptographically secure secrets for various purposes.
 """
 
 import base64
@@ -203,19 +202,24 @@ def write_env_file(secrets_dict: Dict[str, Any], output_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    """Generate new secrets and write to .env file"""
+    # Generate new secrets and write to .env file
+    import logging
+    
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    
     secrets_dict = generate_all_secrets()
 
-    print("Generated secrets for BSMarker:")
-    print("=" * 40)
+    logger.info("Generated secrets for BSMarker:")
+    logger.info("=" * 40)
     for key, value in secrets_dict.items():
         if "PASSWORD" in key or "SECRET" in key or "KEY" in key:
-            print(f"{key}: {'*' * 20}")
+            logger.info(f"{key}: {'*' * 20}")
         else:
-            print(f"{key}: {value}")
+            logger.info(f"{key}: {value}")
 
     # Write to .env file
     env_path = Path(__file__).parent.parent.parent / ".env"
     write_env_file(secrets_dict, env_path)
-    print(f"\n✓ Secrets written to: {env_path}")
-    print("⚠️  Remember to update your database and MinIO with new credentials!")
+    logger.info(f"\n✓ Secrets written to: {env_path}")
+    logger.info("⚠️  Remember to update your database and MinIO with new credentials!")

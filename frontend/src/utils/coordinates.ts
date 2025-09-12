@@ -15,6 +15,12 @@ export const LAYOUT_CONSTANTS = {
 export const CoordinateUtils = {
   /**
    * Convert time to pixel position (accounting for frequency scale offset)
+   * @param time - Time in seconds
+   * @param duration - Total duration of the recording in seconds
+   * @param totalWidth - Total width of the canvas in pixels
+   * @param zoomLevel - Current zoom level (default: 1)
+   * @param includeFrequencyScale - Whether to include frequency scale offset (default: false)
+   * @returns Pixel position on the x-axis
    */
   timeToPixel(
     time: number,
