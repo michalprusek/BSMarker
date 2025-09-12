@@ -1137,22 +1137,22 @@ const AnnotationEditor: React.FC = () => {
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.72;
     
+    // Convert from screen space to world space FIRST
+    const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
+    const pos = { x: (point.x + scrollLeft) / zoomLevel, y: point.y }; // Account for scroll and zoom
+    
     // Check if clicking in waveform area (bottom 24%, after timeline at 76%)
     const timelineHeight = containerHeight * 0.80; // Timeline ends at 80% (increased from 76%)
     if (point.y > timelineHeight) {
       // Handle waveform click for seeking
       if (wavesurferRef.current && duration > 0) {
-        const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
-        const seekPosition = Math.max(0, Math.min(1, ((point.x + scrollLeft) / zoomLevel) / spectrogramDimensions.width));
+        // Use pos.x which is already in world space coordinates
+        const seekPosition = Math.max(0, Math.min(1, pos.x / spectrogramDimensions.width));
         wavesurferRef.current.seekTo(seekPosition);
         setCurrentTime(seekPosition * duration);
       }
       // Don't return - allow dragging in waveform area
     }
-    
-    // Convert from screen space to world space
-    const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
-    const pos = { x: (point.x + scrollLeft) / zoomLevel, y: point.y }; // Account for scroll and zoom
     
     // Close context menu if open
     if (contextMenu) {
@@ -1310,8 +1310,8 @@ const AnnotationEditor: React.FC = () => {
     // Handle waveform drag to seek (continuous dragging)
     if (point.y > spectrogramHeight && e.evt.buttons === 1 && !isAnnotationMode && !isPanning && !draggingBox && !resizingBox) {
       if (wavesurferRef.current && duration > 0) {
-        const scrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
-        const seekPosition = Math.max(0, Math.min(1, ((point.x + scrollLeft) / zoomLevel) / spectrogramDimensions.width));
+        // Use pos.x which is already in world space coordinates
+        const seekPosition = Math.max(0, Math.min(1, pos.x / spectrogramDimensions.width));
         wavesurferRef.current.seekTo(seekPosition);
         setCurrentTime(seekPosition * duration);
       }
