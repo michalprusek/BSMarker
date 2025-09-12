@@ -1204,7 +1204,7 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
-    const spectrogramHeight = containerHeight * 0.72;
+    const spectrogramHeight = containerHeight * 0.60;
     
     // INVARIANT COORDINATE TRANSFORMATION
     // point.x is in Stage pixel coordinates (relative to visible Stage area)
@@ -1222,8 +1222,8 @@ const AnnotationEditor: React.FC = () => {
     const worldX = absoluteX / zoomLevel;
     const pos = { x: worldX, y: point.y }; // Used for bounding box operations
     
-    // Check if clicking in waveform area (bottom 25%, after timeline at 75%)
-    const timelineHeight = containerHeight * 0.75; // Timeline ends at 75% (65% + 10%)
+    // Check if clicking in waveform area (starts after spectrogram at 65%)
+    const timelineHeight = containerHeight * 0.65; // Timeline starts at 65%
     if (point.y > timelineHeight) {
       // Handle waveform click for seeking
       if (wavesurferRef.current && duration > 0) {
@@ -1371,7 +1371,7 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
-    const spectrogramHeight = containerHeight * 0.72;
+    const spectrogramHeight = containerHeight * 0.60;
     
     // INVARIANT COORDINATE TRANSFORMATION (same as handleMouseDown)
     const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
@@ -1461,7 +1461,7 @@ const AnnotationEditor: React.FC = () => {
       const minSize = 2;
       
       // Constrain y position to spectrogram area (display coordinates)
-      const maxY = spectrogramDimensions.height * 0.72; // 72% of container is spectrogram
+      const maxY = spectrogramDimensions.height * 0.60; // 60% of container is spectrogram
       const constrainedY = Math.min(pos.y, maxY);
       
       switch (resizingBox.handle) {
@@ -1555,7 +1555,7 @@ const AnnotationEditor: React.FC = () => {
     
     // Handle drawing new box (constrain to spectrogram area)
     if (isDrawing && drawingBox) {
-      const maxY = spectrogramDimensions.height * 0.72;  // 72% of container is spectrogram (display coordinates)
+      const maxY = spectrogramDimensions.height * 0.60;  // 60% of container is spectrogram (display coordinates)
       const constrainedY = Math.min(pos.y, maxY);
       setDrawingBox({
         ...drawingBox,
@@ -1640,7 +1640,7 @@ const AnnotationEditor: React.FC = () => {
           false
         ) : 0;
         // Convert display coordinates to full spectrogram height for frequency calculation
-        const spectrogramHeight = spectrogramDimensions.height * 0.72;  // 72% of container is spectrogram
+        const spectrogramHeight = spectrogramDimensions.height * 0.60;  // 60% of container is spectrogram
         const nyquistFreq = getNyquistFrequency();
         const maxFreq = nyquistFreq * (1 - normalizedBox.y / spectrogramHeight);
         const minFreq = nyquistFreq * (1 - (normalizedBox.y + normalizedBox.height) / spectrogramHeight);
@@ -2191,13 +2191,13 @@ const AnnotationEditor: React.FC = () => {
                   height: '100%'
                 }}
               >
-                {/* Split view: 65% spectrogram, 10% timeline, 25% waveform */}
-                {/* Spectrogram: 65% */}
+                {/* Split view: 60% spectrogram, 5% gap, 10% timeline, 25% waveform */}
+                {/* Spectrogram: 60% */}
                 <div className="absolute" style={{ 
                   top: 0,
                   left: 0,
                   width: '100%',
-                  height: '65%'
+                  height: '60%'
                 }}>
                   {spectrogramUrl ? (
                     <img 
