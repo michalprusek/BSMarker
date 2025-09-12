@@ -15,8 +15,8 @@ import numpy as np
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.models.recording import Recording
-from app.models.spectrogram import Spectrogram, SpectrogramStatus
+from app.models import Recording, Spectrogram
+from app.models.spectrogram import SpectrogramStatus
 from app.services.minio_client import minio_client
 from celery.exceptions import SoftTimeLimitExceeded
 from matplotlib import cm

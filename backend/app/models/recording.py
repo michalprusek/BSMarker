@@ -1,7 +1,14 @@
+from typing import TYPE_CHECKING
+
 from app.db.base_class import Base
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
+if TYPE_CHECKING:
+    from app.models.annotation import Annotation
+    from app.models.project import Project
+    from app.models.spectrogram import Spectrogram
 
 
 class Recording(Base):
