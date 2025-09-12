@@ -516,7 +516,7 @@ const ProjectDetailPage: React.FC = () => {
 
       <div className="mt-6">
         <h2 className="text-lg font-medium text-gray-900 mb-4">
-          Recordings ({recordings.length})
+          Recordings ({recordings.length}) • Annotated ({recordings.filter(r => r.annotation_count && r.annotation_count > 0).length})
         </h2>
         {recordings.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
