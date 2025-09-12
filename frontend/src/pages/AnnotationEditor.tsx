@@ -1459,7 +1459,7 @@ const AnnotationEditor: React.FC = () => {
       const minSize = 2;
       
       // Constrain y position to spectrogram area (display coordinates)
-      const maxY = spectrogramDimensions.height * 0.60; // 60% of container is spectrogram
+      const maxY = spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO; // Use layout constant for spectrogram height
       const constrainedY = Math.min(pos.y, maxY);
       
       switch (resizingBox.handle) {
@@ -1553,7 +1553,7 @@ const AnnotationEditor: React.FC = () => {
     
     // Handle drawing new box (constrain to spectrogram area)
     if (isDrawing && drawingBox) {
-      const maxY = spectrogramDimensions.height * 0.60;  // 60% of container is spectrogram (display coordinates)
+      const maxY = spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;  // Use layout constant for spectrogram height (display coordinates)
       const constrainedY = Math.min(pos.y, maxY);
       setDrawingBox({
         ...drawingBox,
@@ -1638,7 +1638,7 @@ const AnnotationEditor: React.FC = () => {
           false
         ) : 0;
         // Convert display coordinates to full spectrogram height for frequency calculation
-        const spectrogramHeight = spectrogramDimensions.height * 0.60;  // 60% of container is spectrogram
+        const spectrogramHeight = spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;  // Use layout constant for spectrogram height
         const nyquistFreq = getNyquistFrequency();
         const maxFreq = nyquistFreq * (1 - normalizedBox.y / spectrogramHeight);
         const minFreq = nyquistFreq * (1 - (normalizedBox.y + normalizedBox.height) / spectrogramHeight);
@@ -2188,13 +2188,13 @@ const AnnotationEditor: React.FC = () => {
                   height: '100%'
                 }}
               >
-                {/* Split view: 60% spectrogram, 8% timeline, 32% waveform */}
-                {/* Spectrogram: 60% */}
+                {/* Split view: 65% spectrogram, 8% timeline, 27% waveform */}
+                {/* Spectrogram: 65% */}
                 <div className="absolute" style={{ 
                   top: 0,
                   left: 0,
                   width: '100%',
-                  height: '60%'
+                  height: '65%'
                 }}>
                   {spectrogramUrl ? (
                     <img 
@@ -2264,7 +2264,7 @@ const AnnotationEditor: React.FC = () => {
                 <div 
                   className="absolute bg-white border-t-2 border-b-2 border-gray-300"
                   style={{ 
-                    top: '60%',  // Start right after spectrogram
+                    top: '65%',  // Start right after spectrogram
                     left: 0,
                     right: 0,
                     height: '8%',
@@ -2338,14 +2338,14 @@ const AnnotationEditor: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Waveform at bottom 32% - no separate scrolling */}
+                {/* Waveform at bottom 27% - no separate scrolling */}
                 <div 
                   className="absolute bg-gradient-to-b from-gray-50 to-gray-100"
                   style={{ 
-                    top: '68%',  // Start right after timeline (60% + 8%)
+                    top: '73%',  // Start right after timeline (65% + 8%)
                     left: 0,
                     right: 0,
-                    height: '32%'
+                    height: '27%'
                   }}
                 >
                   <div 
@@ -2369,7 +2369,8 @@ const AnnotationEditor: React.FC = () => {
                     style={{ 
                       left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Align with waveform
                       width: `${(spectrogramDimensions.width - 40) * zoomLevel}px`,
-                      height: '100%'
+                      height: '100%',
+                      transform: `translateX(-${scrollOffset}px)`  // Apply same scroll offset as spectrogram
                     }}
                   >
                     {boundingBoxes.map((box, index) => {
@@ -2390,7 +2391,7 @@ const AnnotationEditor: React.FC = () => {
                         zoomLevel,
                         false
                       ) : 0;
-                      const waveformHeight = spectrogramDimensions.height * 0.23;  // 23% for waveform
+                      const waveformHeight = spectrogramDimensions.height * LAYOUT_CONSTANTS.WAVEFORM_HEIGHT_RATIO;  // Use layout constant for waveform height
                       
                       return (
                         <g key={index}>
@@ -2400,9 +2401,10 @@ const AnnotationEditor: React.FC = () => {
                             y1="0"
                             x2={isNaN(startX) ? 0 : startX}
                             y2={waveformHeight}
-                            stroke={labelColor.stroke}
-                            strokeWidth={isSelected ? 2 : 1}
-                            opacity={0.7}
+                            stroke={isSelected ? '#FFD700' : labelColor.stroke}
+                            strokeWidth={isSelected ? 3 : 1}
+                            opacity={isSelected ? 1 : 0.7}
+                            strokeDasharray={isSelected ? '5,3' : undefined}
                           />
                           {/* End line */}
                           <line
@@ -2410,9 +2412,10 @@ const AnnotationEditor: React.FC = () => {
                             y1="0"
                             x2={isNaN(endX) ? 0 : endX}
                             y2={waveformHeight}
-                            stroke={labelColor.stroke}
-                            strokeWidth={isSelected ? 2 : 1}
-                            opacity={0.7}
+                            stroke={isSelected ? '#FFD700' : labelColor.stroke}
+                            strokeWidth={isSelected ? 3 : 1}
+                            opacity={isSelected ? 1 : 0.7}
+                            strokeDasharray={isSelected ? '5,3' : undefined}
                           />
                           {/* Horizontal connector at top */}
                           <line
@@ -2420,9 +2423,10 @@ const AnnotationEditor: React.FC = () => {
                             y1="2"
                             x2={isNaN(endX) ? 0 : endX}
                             y2="2"
-                            stroke={labelColor.stroke}
-                            strokeWidth={isSelected ? 2 : 1}
-                            opacity={0.7}
+                            stroke={isSelected ? '#FFD700' : labelColor.stroke}
+                            strokeWidth={isSelected ? 3 : 1}
+                            opacity={isSelected ? 1 : 0.7}
+                            strokeDasharray={isSelected ? '5,3' : undefined}
                           />
                           {/* Fill area */}
                           <rect
@@ -2430,8 +2434,8 @@ const AnnotationEditor: React.FC = () => {
                             y="0"
                             width={isNaN(endX - startX) || (endX - startX) < 0 ? 0 : endX - startX}
                             height={waveformHeight}
-                            fill={labelColor.fill}
-                            opacity={0.3}
+                            fill={isSelected ? 'rgba(255, 215, 0, 0.3)' : labelColor.fill}
+                            opacity={isSelected ? 0.5 : 0.3}
                           />
                         </g>
                       );
@@ -2522,20 +2526,16 @@ const AnnotationEditor: React.FC = () => {
                       let dashArray: number[] | undefined = undefined;
                       
                       if (isSelected || isSingleSelected) {
-                        strokeWidth = 4; // Increased from 3 to 4 for better visibility
-                        shadowBlur = 8; // Add shadow for selected boxes
-                        shadowColor = 'rgba(0, 0, 0, 0.3)';
-                        dashArray = []; // Solid line for selected
-                        // Use brighter version of the same label color for selection
-                        fillColor = fillColor.replace('0.15', '0.35');
-                        // Make stroke significantly brighter for selection
-                        const rgb = strokeColor.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
-                        if (rgb) {
-                          const r = Math.min(255, parseInt(rgb[1], 16) + 50); // Increased brightness
-                          const g = Math.min(255, parseInt(rgb[2], 16) + 50);
-                          const b = Math.min(255, parseInt(rgb[3], 16) + 50);
-                          strokeColor = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-                        }
+                        strokeWidth = 5; // Increased to 5 for maximum visibility
+                        shadowBlur = 12; // Stronger shadow for selected boxes
+                        shadowColor = 'rgba(0, 0, 255, 0.4)'; // Blue shadow for selection
+                        dashArray = [10, 5]; // Dashed line for clear selection indication
+                        // Use much brighter version of the same label color for selection
+                        fillColor = fillColor.replace('0.15', '0.45'); // More opaque fill
+                        // Make stroke bright yellow for maximum contrast
+                        strokeColor = '#FFD700'; // Gold color for selected boxes
+                        // Alternative: Use bright cyan for selection
+                        // strokeColor = '#00FFFF';
                       }
                       
                       return (
@@ -2585,33 +2585,33 @@ const AnnotationEditor: React.FC = () => {
                               <Circle
                                 x={scaledBox.x}
                                 y={scaledBox.y}
-                                radius={4}
-                                fill="white"
-                                stroke={strokeColor}
+                                radius={6}
+                                fill="#FFD700"
+                                stroke="white"
                                 strokeWidth={2}
                               />
                               <Circle
                                 x={scaledBox.x + scaledBox.width}
                                 y={scaledBox.y}
-                                radius={4}
-                                fill="white"
-                                stroke={strokeColor}
+                                radius={6}
+                                fill="#FFD700"
+                                stroke="white"
                                 strokeWidth={2}
                               />
                               <Circle
                                 x={scaledBox.x}
                                 y={scaledBox.y + scaledBox.height}
-                                radius={4}
-                                fill="white"
-                                stroke={strokeColor}
+                                radius={6}
+                                fill="#FFD700"
+                                stroke="white"
                                 strokeWidth={2}
                               />
                               <Circle
                                 x={scaledBox.x + scaledBox.width}
                                 y={scaledBox.y + scaledBox.height}
-                                radius={4}
-                                fill="white"
-                                stroke={strokeColor}
+                                radius={6}
+                                fill="#FFD700"
+                                stroke="white"
                                 strokeWidth={2}
                               />
                             </>
