@@ -2376,18 +2376,18 @@ const AnnotationEditor: React.FC = () => {
                     {boundingBoxes.map((box, index) => {
                       const isSelected = selectedBoxes.has(index);
                       const labelColor = getLabelColor(box.label || 'None');
-                      // Calculate pixel positions for waveform boxes - ensure same scale as spectrogram
+                      // Calculate pixel positions for waveform boxes - use full width like spectrogram
                       const startX = duration > 0 ? CoordinateUtils.timeToPixel(
                         box.start_time || 0,
                         duration,
-                        spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH,
+                        spectrogramDimensions.width,  // Use full width, function will subtract FREQUENCY_SCALE_WIDTH
                         zoomLevel,
                         false
                       ) : 0;
                       const endX = duration > 0 ? CoordinateUtils.timeToPixel(
                         box.end_time || 0,
                         duration,
-                        spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH,
+                        spectrogramDimensions.width,  // Use full width, function will subtract FREQUENCY_SCALE_WIDTH
                         zoomLevel,
                         false
                       ) : 0;
@@ -2480,6 +2480,7 @@ const AnnotationEditor: React.FC = () => {
                     listening={false}
                     cache={false}
                     clearBeforeDraw={true}
+                    offsetX={scrollOffset}
                   >
                     {/* Selection rectangle - scale to spectrogram area */}
                     {selectionRect && (
@@ -2500,7 +2501,39 @@ const AnnotationEditor: React.FC = () => {
                   <Layer
                     listening={true}
                     clearBeforeDraw={true}
+                    offsetX={scrollOffset}
                   >
+                    {/* Mirror highlights for selected boxes - render first so they appear behind */}
+                    {transformedBoxes.map((transformedBox, index) => {
+                      const globalIndex = boundingBoxes.indexOf(transformedBox);
+                      const isSelected = selectedBoxes.has(globalIndex);
+                      
+                      if (!isSelected) return null;
+                      
+                      // Render a highlight rectangle for selected boxes
+                      const scaledBox = {
+                        x: transformedBox.screenX,
+                        y: transformedBox.screenY,
+                        width: transformedBox.screenWidth,
+                        height: transformedBox.screenHeight
+                      };
+                      
+                      return (
+                        <Rect
+                          key={`highlight-${globalIndex}`}
+                          x={scaledBox.x - 3}
+                          y={scaledBox.y - 3}
+                          width={scaledBox.width + 6}
+                          height={scaledBox.height + 6}
+                          fill="rgba(255, 215, 0, 0.2)"
+                          stroke="#FFD700"
+                          strokeWidth={2}
+                          dash={[8, 4]}
+                          listening={false}
+                        />
+                      );
+                    })}
+                    
                     {/* Optimized Bounding boxes - only render visible boxes */}
                     {transformedBoxes.map((transformedBox, index) => {
                       // const originalIndex = visibleBoundingBoxes.indexOf(transformedBox); // Unused
