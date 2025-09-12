@@ -521,6 +521,9 @@ const AnnotationEditor: React.FC = () => {
           const waveformHeight = Math.max(50, spectrogramDimensions.height * 0.23);
           if (waveformRef.current) {
             waveformRef.current.style.height = `${waveformHeight}px`;
+            // Set container width to match spectrogram exactly
+            const zoomedWidth = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel;
+            waveformRef.current.style.width = `${zoomedWidth}px`;
           }
           
           // Trigger WaveSurfer to redraw at new size
@@ -528,6 +531,7 @@ const AnnotationEditor: React.FC = () => {
             // WaveSurfer will automatically redraw when container size changes
             // Just ensure it's aware of the change
             (wavesurferRef.current as any).setHeight?.(waveformHeight);
+            // With fillParent: true, WaveSurfer automatically adjusts to container size
           }
         } catch (error) {
           console.warn('Failed to resize waveform:', error);
@@ -536,18 +540,21 @@ const AnnotationEditor: React.FC = () => {
       
       return () => clearTimeout(resizeTimeout);
     }
-  }, [spectrogramDimensions]);
+  }, [spectrogramDimensions, zoomLevel]);
   
-  // Handle zoom changes for waveform
+  // Handle zoom changes for waveform - removed internal zoom to rely on container width only
   useEffect(() => {
     if (wavesurferRef.current && waveformRef.current) {
-      // WaveSurfer will automatically adjust to container width changes
-      // Just update the zoom level for pixel density
+      // Don't use WaveSurfer's internal zoom - let container width handle it
+      // This ensures perfect synchronization with spectrogram
       try {
         if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
-          // Use minPxPerSec for better zoom control
-          const pxPerSec = 50 * zoomLevel; // Base 50px per second, scale with zoom
-          wavesurferRef.current.zoom(pxPerSec);
+          // Update container width to match spectrogram
+          const zoomedWidth = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel;
+          if (waveformRef.current) {
+            waveformRef.current.style.width = `${zoomedWidth}px`;
+          }
+          // With fillParent: true, WaveSurfer automatically adjusts to container size
         }
       } catch (e) {
         // Audio not loaded yet, ignore
@@ -835,10 +842,10 @@ const AnnotationEditor: React.FC = () => {
       barHeight: 1,  // Full height bars for better visibility
       normalize: true,
       interact: true,
-      fillParent: false,  // Don't use fillParent - we control width manually
+      fillParent: true,  // Use fillParent to match container width exactly
       backend: 'WebAudio',
       mediaControls: false,
-      minPxPerSec: 50,  // Minimum pixels per second for better zoom control
+      minPxPerSec: 1,  // Lower minimum to allow fillParent to work properly
       hideScrollbar: true,  // Hide WaveSurfer's own scrollbar
       autoScroll: false,  // Disable auto-scroll
       // Remove unsupported options
@@ -1726,41 +1733,20 @@ const AnnotationEditor: React.FC = () => {
   const handleZoomIn = () => {
     const newZoom = Math.min(zoomLevel * 1.5, 6); // Limit to 600%
     setZoomLevel(newZoom);
-    // Sync WaveSurfer zoom
-    try {
-      if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
-        wavesurferRef.current.zoom(newZoom * 100);
-      }
-    } catch (e) {
-      // Audio not loaded yet, ignore
-    }
+    // No need to sync WaveSurfer zoom - container width handles it
   };
 
   const handleZoomOut = () => {
     const newZoom = Math.max(zoomLevel / 1.5, 1);
     setZoomLevel(newZoom);
-    // Sync WaveSurfer zoom
-    try {
-      if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
-        wavesurferRef.current.zoom(newZoom * 100);
-      }
-    } catch (e) {
-      // Audio not loaded yet, ignore
-    }
+    // No need to sync WaveSurfer zoom - container width handles it
   };
 
   const handleZoomReset = () => {
     setZoomLevel(1);
     setScrollOffset(0);
     setZoomOffset({ x: 0, y: 0 });
-    // Reset WaveSurfer zoom
-    try {
-      if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
-        wavesurferRef.current.zoom(100);
-      }
-    } catch (e) {
-      // Audio not loaded yet, ignore
-    }
+    // No need to reset WaveSurfer zoom - container width handles it
     // Reset scroll position
     if (unifiedScrollRef.current) {
       unifiedScrollRef.current.scrollLeft = 0;
@@ -1818,14 +1804,8 @@ const AnnotationEditor: React.FC = () => {
           unifiedScrollRef.current.scrollLeft = newOffsetX;
         }
         
-        // Update WaveSurfer zoom if available
-        try {
-          if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
-            wavesurferRef.current.zoom(newZoom * 100); // WaveSurfer zoom is in pixels per second
-          }
-        } catch (e) {
-          // Audio not loaded yet, ignore
-        }
+        // No need to update WaveSurfer zoom - container width handles it
+        // WaveSurfer will automatically adjust to the new container width
       });
     }, 16), // 60 FPS throttle
     [zoomLevel, zoomOffset, spectrogramDimensions.width]
