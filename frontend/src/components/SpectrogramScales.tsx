@@ -1,4 +1,6 @@
 import React from 'react';
+import { LAYOUT_CONSTANTS } from '../utils/coordinates';
+import { AXIS_STYLES, formatTimeLabel, formatFrequencyLabel, getTimeTickInterval } from '../utils/axisStyles';
 
 interface SpectrogramScalesProps {
   width: number;
@@ -20,16 +22,11 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
   // Generate time scale ticks
   const generateTimeTicks = () => {
     const ticks = [];
-    const totalWidth = (width - 40) * zoomLevel; // Account for frequency scale
+    const totalWidth = (width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel; // Account for frequency scale
     const visibleDuration = duration;
     
-    // Determine appropriate interval based on zoom level
-    let interval = 1; // seconds
-    if (zoomLevel > 4) interval = 0.5;
-    if (zoomLevel > 8) interval = 0.25;
-    if (duration > 60) interval = 10;
-    if (duration > 300) interval = 30;
-    if (duration > 600) interval = 60;
+    // Use consistent interval calculation
+    const interval = getTimeTickInterval(duration, zoomLevel);
     
     const numTicks = Math.ceil(visibleDuration / interval);
     
@@ -39,10 +36,10 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
         const position = (time / duration) * totalWidth - scrollOffset;
         
         // Only show ticks that are visible
-        if (position >= 0 && position <= width - 40) {
+        if (position >= 0 && position <= width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) {
           ticks.push({
             position,
-            label: formatTime(time),
+            label: formatTimeLabel(time),
             major: i % 5 === 0
           });
         }
@@ -55,7 +52,7 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
   // Generate frequency scale ticks
   const generateFrequencyTicks = () => {
     const ticks = [];
-    const spectrogramHeight = height * 0.75; // 75% height for spectrogram
+    const spectrogramHeight = height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO; // Use consistent ratio
     
     // Generate ticks from 0 to maxFrequency
     const numTicks = 10;
@@ -65,7 +62,7 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
       
       ticks.push({
         position,
-        label: freq >= 1000 ? `${(freq / 1000).toFixed(0)}k` : `${freq.toFixed(0)}`,
+        label: formatFrequencyLabel(freq),
         major: i % 2 === 0
       });
     }
@@ -73,67 +70,41 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
     return ticks;
   };
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    if (mins > 0) {
-      return `${mins}:${secs.toFixed(0).padStart(2, '0')}`;
-    }
-    return `${secs.toFixed(1)}s`;
-  };
 
   const timeTicks = generateTimeTicks();
   const frequencyTicks = generateFrequencyTicks();
 
   return (
     <React.Fragment>
-      {/* Time scale is now rendered in main component between spectrogram and waveform */}
-      <svg width={width} height={32} className="absolute">
-        {timeTicks.map((tick, index) => (
-          <g key={index}>
-            <line
-              x1={tick.position}
-              y1={0}
-              x2={tick.position}
-              y2={tick.major ? 8 : 5}
-              stroke="#999"
-              strokeWidth={tick.major ? 1.5 : 1}
-            />
-            {tick.major && (
-              <text
-                x={tick.position}
-                y={20}
-                textAnchor="middle"
-                fontSize="11"
-                fill="#666"
-              >
-                {tick.label}
-              </text>
-            )}
-          </g>
-        ))}
-      </svg>
 
       {/* Frequency scale (vertical) - aligned with spectrogram */}
-      <div className="absolute left-0 w-10 bg-white border-r border-gray-300" style={{ top: '0', height: '75%' }}>
-        <svg width={40} height={height * 0.75} className="absolute">
+      <div 
+        className="absolute left-0 bg-white border-r border-gray-300" 
+        style={{ 
+          top: '0', 
+          height: `${LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO * 100}%`,
+          width: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`
+        }}
+      >
+        <svg width={LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH} height={height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO} className="absolute">
           {frequencyTicks.map((tick, index) => (
             <g key={index}>
               <line
                 x1={32}
                 y1={tick.position}
-                x2={tick.major ? 32 : 35}
+                x2={tick.major ? 30 : 35}
                 y2={tick.position}
-                stroke="#999"
-                strokeWidth={tick.major ? 1.5 : 1}
+                stroke={tick.major ? AXIS_STYLES.TICK_MAJOR.stroke : AXIS_STYLES.TICK_MINOR.stroke}
+                strokeWidth={tick.major ? AXIS_STYLES.TICK_MAJOR.strokeWidth : AXIS_STYLES.TICK_MINOR.strokeWidth}
               />
               {tick.major && (
                 <text
                   x={28}
                   y={tick.position + 4}
                   textAnchor="end"
-                  fontSize="10"
-                  fill="#666"
+                  fontSize={AXIS_STYLES.TICK_LABEL.fontSize}
+                  fill={AXIS_STYLES.TICK_LABEL.fill}
+                  fontWeight={AXIS_STYLES.TICK_LABEL.fontWeight}
                 >
                   {tick.label}
                 </text>
@@ -142,11 +113,12 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
           ))}
           <text
             x={12}
-            y={(height * 0.75) / 2}
+            y={(height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO) / 2}
             textAnchor="middle"
-            fontSize="11"
-            fill="#666"
-            transform={`rotate(-90, 12, ${(height * 0.75) / 2})`}
+            fontSize={AXIS_STYLES.AXIS_LABEL.fontSize}
+            fill={AXIS_STYLES.AXIS_LABEL.fill}
+            fontWeight={AXIS_STYLES.AXIS_LABEL.fontWeight}
+            transform={`rotate(-90, 12, ${(height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO) / 2})`}
           >
             Frequency (Hz)
           </text>
@@ -155,10 +127,10 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
 
       {/* Grid lines - only for spectrogram area */}
       <svg 
-        width={width - 40} 
-        height={height * 0.75} 
+        width={width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH} 
+        height={height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO} 
         className="absolute pointer-events-none"
-        style={{ left: '40px', top: '0' }}
+        style={{ left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`, top: '0' }}
       >
         {/* Horizontal grid lines (frequency) */}
         {frequencyTicks.filter(tick => tick.major).map((tick, index) => (
@@ -168,9 +140,9 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
             y1={tick.position}
             x2={width}
             y2={tick.position}
-            stroke="#e5e7eb"
-            strokeWidth={0.5}
-            strokeDasharray="2,2"
+            stroke={AXIS_STYLES.GRID_LINE.stroke}
+            strokeWidth={AXIS_STYLES.GRID_LINE.strokeWidth}
+            strokeDasharray={AXIS_STYLES.GRID_LINE.strokeDasharray}
           />
         ))}
         
@@ -181,10 +153,10 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
             x1={tick.position}
             y1={0}
             x2={tick.position}
-            y2={height * 0.75}
-            stroke="#e5e7eb"
-            strokeWidth={0.5}
-            strokeDasharray="2,2"
+            y2={height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO}
+            stroke={AXIS_STYLES.GRID_LINE.stroke}
+            strokeWidth={AXIS_STYLES.GRID_LINE.strokeWidth}
+            strokeDasharray={AXIS_STYLES.GRID_LINE.strokeDasharray}
           />
         ))}
       </svg>

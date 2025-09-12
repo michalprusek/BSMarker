@@ -11,6 +11,7 @@ import LabelModal from '../components/LabelModal';
 import ContextMenu from '../components/ContextMenu';
 import SpectrogramScales from '../components/SpectrogramScales';
 import { CoordinateUtils, LAYOUT_CONSTANTS } from '../utils/coordinates';
+import { AXIS_STYLES, formatTimeLabel, getTimeTickInterval } from '../utils/axisStyles';
 
 const PLAYBACK_SPEEDS = [1, 2, 4, 8, 16];
 const MAX_HISTORY_SIZE = 20;
@@ -1893,13 +1894,8 @@ const AnnotationEditor: React.FC = () => {
                         const totalWidth = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel;
                         const containerHeight = Math.max(48, spectrogramDimensions.height * 0.08);
                         
-                        // Determine appropriate interval based on zoom level and duration
-                        let interval = 5; // Default 5 seconds
-                        if (zoomLevel > 2) interval = 2;
-                        if (zoomLevel > 4) interval = 1;
-                        if (zoomLevel > 8) interval = 0.5;
-                        if (duration > 60) interval = 10;
-                        if (duration > 300) interval = 30;
+                        // Use consistent interval calculation
+                        const interval = getTimeTickInterval(duration, zoomLevel);
                         
                         const numTicks = Math.ceil(duration / interval);
                         
@@ -1916,26 +1912,19 @@ const AnnotationEditor: React.FC = () => {
                                   y1={0}
                                   x2={position}
                                   y2={isMajor ? containerHeight * 0.4 : containerHeight * 0.25}
-                                  stroke="#374151"
-                                  strokeWidth={isMajor ? 2 : 1}
+                                  stroke={isMajor ? AXIS_STYLES.TICK_MAJOR.stroke : AXIS_STYLES.TICK_MINOR.stroke}
+                                  strokeWidth={isMajor ? AXIS_STYLES.TICK_MAJOR.strokeWidth : AXIS_STYLES.TICK_MINOR.strokeWidth}
                                 />
                                 {isMajor && (
                                   <text
                                     x={position}
                                     y={containerHeight * 0.75}
                                     textAnchor="middle"
-                                    fontSize={Math.max(12, containerHeight * 0.3)}
-                                    fill="#111827"
-                                    fontWeight="600"
+                                    fontSize={AXIS_STYLES.TICK_LABEL.fontSize}
+                                    fill={AXIS_STYLES.TICK_LABEL.fill}
+                                    fontWeight={AXIS_STYLES.TICK_LABEL.fontWeight}
                                   >
-                                    {(() => {
-                                      const mins = Math.floor(time / 60);
-                                      const secs = time % 60;
-                                      if (mins > 0) {
-                                        return `${mins}:${secs.toFixed(0).padStart(2, '0')}`;
-                                      }
-                                      return `${secs.toFixed(secs % 1 === 0 ? 0 : 1)}s`;
-                                    })()}
+                                    {formatTimeLabel(time)}
                                   </text>
                                 )}
                               </g>
