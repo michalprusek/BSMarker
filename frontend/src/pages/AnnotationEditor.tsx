@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeftIcon, PlayIcon, PauseIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon, PencilIcon, TrashIcon, ClipboardDocumentIcon, ArrowUturnLeftIcon, ArrowUturnRightIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon } from '@heroicons/react/24/solid';
-import { toast } from 'react-toastify';
+import toast from 'react-hot-toast';
 import WaveSurfer from 'wavesurfer.js';
 import { Stage, Layer, Rect, Line, Circle, Group, Text } from 'react-konva';
 import { recordingService, annotationService } from '../services/api';
@@ -12,6 +12,7 @@ import ContextMenu from '../components/ContextMenu';
 import SpectrogramScales from '../components/SpectrogramScales';
 import { CoordinateUtils, LAYOUT_CONSTANTS } from '../utils/coordinates';
 import { AXIS_STYLES, formatTimeLabel, getTimeTickInterval } from '../utils/axisStyles';
+import { useAutosave } from '../hooks/useAutosave';
 
 const PLAYBACK_SPEEDS = [1, 2, 4, 8, 16];
 const MAX_HISTORY_SIZE = 20;
@@ -31,6 +32,24 @@ const LABEL_COLORS = [
   { stroke: '#0891B2', fill: 'rgba(8, 145, 178, 0.25)' },   // Cyan (enhanced)
   { stroke: '#9333EA', fill: 'rgba(147, 51, 234, 0.25)' },  // Purple (enhanced)
 ];
+
+// Utility function to format timestamps
+const formatTimestamp = (date: Date): string => {
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  
+  if (diffInSeconds < 60) {
+    return 'just now';
+  } else if (diffInSeconds < 3600) {
+    const minutes = Math.floor(diffInSeconds / 60);
+    return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+  } else if (diffInSeconds < 86400) {
+    const hours = Math.floor(diffInSeconds / 3600);
+    return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+  } else {
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+  }
+};
 
 const AnnotationEditor: React.FC = () => {
   const { recordingId } = useParams<{ recordingId: string }>();
@@ -77,9 +96,10 @@ const AnnotationEditor: React.FC = () => {
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const [lastSavedState, setLastSavedState] = useState<BoundingBox[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [lastAutoSave, setLastAutoSave] = useState<Date>(new Date());
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null);
+  const [isAutoSaving, setIsAutoSaving] = useState<boolean>(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [annotationId, setAnnotationId] = useState<number | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -94,7 +114,6 @@ const AnnotationEditor: React.FC = () => {
   const rewindIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const wasPlayingRef = useRef<boolean>(false);
   const keyDownArrowRef = useRef<boolean>(false);
-  const autosaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const waveformRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
@@ -103,6 +122,7 @@ const AnnotationEditor: React.FC = () => {
   const audioUrlRef = useRef<string | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const unifiedScrollRef = useRef<HTMLDivElement>(null);
+
 
   // History management functions
   const addToHistory = useCallback((newBoxes: BoundingBox[]) => {
@@ -137,8 +157,8 @@ const AnnotationEditor: React.FC = () => {
     }
   }, [history, historyIndex]);
 
-  // Save annotations with recording change detection
-  const saveAnnotations = useCallback(async (recordingIdToSave?: number, boxesToSave?: BoundingBox[]) => {
+  // Enhanced save annotations with retry logic and better state management
+  const saveAnnotations = useCallback(async (recordingIdToSave?: number, boxesToSave?: BoundingBox[], isAutoSave = false) => {
     const recId = recordingIdToSave || (recording?.id);
     const boxes = boxesToSave || boundingBoxes;
     
@@ -148,25 +168,79 @@ const AnnotationEditor: React.FC = () => {
     }
     
     try {
-      setIsSaving(true);
+      if (isAutoSave) {
+        setIsAutoSaving(true);
+      } else {
+        setIsSaving(true);
+      }
+      setSaveError(null);
+      
       await annotationService.createOrUpdateAnnotation(recId, boxes);
       setLastSavedState([...boxes]);
       setHasUnsavedChanges(false);
-      setLastAutoSave(new Date());
+      setLastSaveTime(new Date());
+      
       return true;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to save annotations:', error);
+      setSaveError(errorMessage);
       return false;
     } finally {
-      setIsSaving(false);
+      if (isAutoSave) {
+        setIsAutoSaving(false);
+      } else {
+        setIsSaving(false);
+      }
     }
   }, [recording, boundingBoxes]);
+
+  // Create a wrapper function for saveAnnotations that works with useAutosave
+  const autosaveWrapper = useCallback(async () => {
+    return await saveAnnotations(recording?.id, boundingBoxes, true);
+  }, [saveAnnotations, recording?.id, boundingBoxes]);
+
+  // Integrate autosave functionality
+  const { triggerSave: manualSave } = useAutosave({
+    data: boundingBoxes,
+    onSave: autosaveWrapper,
+    hasUnsavedChanges,
+    isSaving: isSaving || isAutoSaving,
+    enabled: !!recording?.id
+  });
+
+  // React Router navigation blocking (enhanced beforeunload)
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      // Always pause audio on page unload
+      if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
+        wavesurferRef.current.pause();
+      }
+
+      if (hasUnsavedChanges && !isAutoSaving && !isSaving) {
+        // Enhanced beforeunload with save attempt
+        manualSave().catch(() => {
+          // Silent fail - we can't do much during beforeunload
+        });
+        
+        event.preventDefault();
+        event.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        return event.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges, isAutoSaving, isSaving, manualSave]);
 
   useEffect(() => {
     if (recordingId) {
       // Save current annotations before switching
       if (recording && hasUnsavedChanges) {
-        saveAnnotations(recording.id, boundingBoxes);
+        saveAnnotations(recording.id, boundingBoxes, false);
       }
       
       // Then fetch new recording data
@@ -176,9 +250,7 @@ const AnnotationEditor: React.FC = () => {
     
     // Clean up on unmount or when recordingId changes
     return () => {
-      if (autosaveIntervalRef.current) {
-        clearInterval(autosaveIntervalRef.current);
-      }
+      // Cleanup handled by useAutosave hook
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordingId]);
@@ -196,22 +268,9 @@ const AnnotationEditor: React.FC = () => {
     };
   }, [spectrogramUrl]);
 
-  // Audio cleanup on navigation/unmount
+  // Audio cleanup on component unmount only (beforeunload handled above)
   useEffect(() => {
-    const handleBeforeUnload = () => {
-      // Pause audio before page unload
-      if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
-        wavesurferRef.current.pause();
-      }
-    };
-
-    // Add event listener for page unload
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    // Cleanup function called on component unmount or route change
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      
       // Pause audio when component unmounts (route change)
       if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
         wavesurferRef.current.pause();
@@ -219,21 +278,7 @@ const AnnotationEditor: React.FC = () => {
     };
   }, []); // Empty dependency array means this effect runs once on mount and cleanup on unmount
 
-  // Autosave functionality
-  useEffect(() => {
-    // Set up autosave interval
-    autosaveIntervalRef.current = setInterval(() => {
-      if (hasUnsavedChanges && !isSaving && recording?.id) {
-        saveAnnotations(recording.id, boundingBoxes);
-      }
-    }, 30000); // Save every 30 seconds
-
-    return () => {
-      if (autosaveIntervalRef.current) {
-        clearInterval(autosaveIntervalRef.current);
-      }
-    };
-  }, [hasUnsavedChanges, isSaving, saveAnnotations, recording, boundingBoxes]);
+  // Autosave functionality now handled by useAutosave hook
 
   // Update history when bounding boxes change
   useEffect(() => {
@@ -451,7 +496,7 @@ const AnnotationEditor: React.FC = () => {
       } else if (status.status === 'failed') {
         toast.error(`Spectrogram generation failed: ${status.error_message || 'Unknown error'}`);
       } else if (status.status === 'not_started') {
-        toast.info('Spectrogram generation will start shortly...');
+        toast.loading('Spectrogram generation will start shortly...');
         // Start polling for when generation begins
         pollSpectrogramStatus(recordingId);
       }
@@ -844,7 +889,7 @@ const AnnotationEditor: React.FC = () => {
       
       // Save current annotations before navigating
       if (hasUnsavedChanges && recording) {
-        await saveAnnotations(recording.id, boundingBoxes);
+        await saveAnnotations(recording.id, boundingBoxes, false);
       }
       
       const nextRecording = projectRecordings[index];
@@ -1464,21 +1509,11 @@ const AnnotationEditor: React.FC = () => {
   const handleSaveAnnotations = async () => {
     if (!recording) return;
     
-    try {
-      setIsSaving(true);
-      const success = await saveAnnotations(recording.id, boundingBoxes);
-      if (success) {
-        toast.success('Annotations saved successfully');
-        setHasUnsavedChanges(false);
-        setLastSavedState(boundingBoxes);
-      } else {
-        toast.error('Failed to save annotations');
-      }
-    } catch (error) {
-      console.error('Failed to save annotations:', error);
-      toast.error('Failed to save annotations');
-    } finally {
-      setIsSaving(false);
+    const success = await saveAnnotations(recording.id, boundingBoxes, false);
+    if (success) {
+      toast.success('Annotations saved successfully');
+    } else {
+      toast.error('Failed to save annotations. Please try again.');
     }
   };
 
@@ -1721,17 +1756,53 @@ const AnnotationEditor: React.FC = () => {
           </div>
           
           <div className="flex items-center space-x-3">
-            <button
-              onClick={handleSaveAnnotations}
-              disabled={isSaving || !hasUnsavedChanges}
-              className={`px-3 py-1.5 text-sm font-medium text-white rounded-md transition-colors ${
-                hasUnsavedChanges 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-gray-400 cursor-not-allowed'
-              }`}
-            >
-              {isSaving ? 'Saving...' : hasUnsavedChanges ? 'Save' : 'Saved'}
-            </button>
+            {/* Enhanced save status display */}
+            <div className="flex items-center space-x-2">
+              {/* Save button */}
+              <button
+                onClick={handleSaveAnnotations}
+                disabled={isSaving || isAutoSaving || !hasUnsavedChanges}
+                className={`px-3 py-1.5 text-sm font-medium text-white rounded-md transition-colors flex items-center space-x-1 ${
+                  hasUnsavedChanges && !isSaving && !isAutoSaving
+                    ? 'bg-blue-600 hover:bg-blue-700' 
+                    : 'bg-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {(isSaving || isAutoSaving) && (
+                  <svg className="animate-spin -ml-1 mr-1 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                )}
+                <span>
+                  {isSaving ? 'Saving...' : 
+                   isAutoSaving ? 'Auto-saving...' : 
+                   hasUnsavedChanges ? 'Save' : 'Save'}
+                </span>
+              </button>
+              
+              {/* Save status indicator */}
+              <div className="text-xs text-gray-600 min-w-0">
+                {isAutoSaving ? (
+                  <span className="text-blue-600">Auto-saving...</span>
+                ) : isSaving ? (
+                  <span className="text-blue-600">Saving...</span>
+                ) : hasUnsavedChanges ? (
+                  <span className="text-yellow-600">Unsaved changes</span>
+                ) : lastSaveTime ? (
+                  <span className="text-green-600">
+                    Saved {formatTimestamp(lastSaveTime)}
+                  </span>
+                ) : (
+                  <span className="text-gray-500">No changes</span>
+                )}
+                {saveError && (
+                  <div className="text-red-600 truncate max-w-48" title={saveError}>
+                    Save failed
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
