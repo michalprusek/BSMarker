@@ -20,6 +20,7 @@ class RecordingInDBBase(RecordingBase):
     sample_rate: Optional[int] = None
     project_id: int
     created_at: datetime
+    annotation_count: int = 0
 
     class Config:
         from_attributes = True
