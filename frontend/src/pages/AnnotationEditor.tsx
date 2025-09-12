@@ -608,7 +608,10 @@ const AnnotationEditor: React.FC = () => {
       } else if (status.status === 'failed') {
         toast.error(`Spectrogram generation failed: ${status.error_message || 'Unknown error'}`);
       } else if (status.status === 'not_started') {
-        toast.loading('Spectrogram generation will start shortly...');
+        toast('Spectrogram generation will start shortly...', {
+          duration: 4000,  // Show for 4 seconds
+          icon: '⏳',
+        });
         // Start polling for when generation begins
         pollSpectrogramStatus(recordingId);
       }
@@ -693,9 +696,10 @@ const AnnotationEditor: React.FC = () => {
           
           // Show progress message
           if (pollingAttempts % 6 === 0) { // Every 30 seconds
-            toast.loading(`Still generating spectrogram... (${Math.floor(pollingAttempts * 5 / 60)} minutes)`, {
+            toast(`Still generating spectrogram... (${Math.floor(pollingAttempts * 5 / 60)} minutes)`, {
               id: 'spectrogram-progress',
-              duration: 4000
+              duration: 4000,
+              icon: '⏳'
             });
           }
           
