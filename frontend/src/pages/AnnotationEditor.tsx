@@ -1191,14 +1191,28 @@ const AnnotationEditor: React.FC = () => {
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.60;
     
-    // CORRECTED COORDINATE TRANSFORMATION
-    // point.x is in Stage viewport coordinates - Layer offsetX only affects rendering
-    // stage.getPointerPosition() returns viewport coordinates, NOT transformed coordinates
+    // CORRECT COORDINATE TRANSFORMATION
+    // point.x is in Stage coordinates (0,0 is top-left of Stage, not document)
+    // Stage itself is positioned at left: FREQUENCY_SCALE_WIDTH
+    // Stage width is (spectrogramDimensions.width - FREQUENCY_SCALE_WIDTH) * zoomLevel
     const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
     
-    // Add scroll offset to get the true position in the content coordinate space
-    // When scrolled, we need to add the scroll offset to convert viewport coords to content coords
-    const absoluteX = point.x + scrollOffset; // Convert viewport position to absolute position in zoomed content
+    // point.x is already relative to Stage which starts after the frequency scale
+    // We need to add scrollOffset because Layer has offsetX={scrollOffset}
+    // This means the Layer content is shifted left by scrollOffset pixels
+    // To get the absolute position in the zoomed content:
+    const absoluteX = point.x + scrollOffset; // Convert Stage coords to absolute content coords
+    
+    // Debug logging
+    console.log('Mouse click debug:', {
+      'point.x': point.x,
+      'scrollOffset': scrollOffset,
+      'absoluteX': absoluteX,
+      'zoomLevel': zoomLevel,
+      'effectiveWidth': effectiveWidth,
+      'stageWidth': (effectiveWidth * zoomLevel),
+      'worldX': absoluteX / zoomLevel
+    });
     
     // For seeking: The key insight is that at any zoom level:
     // - The full content width when zoomed is: effectiveWidth * zoomLevel
@@ -1380,10 +1394,10 @@ const AnnotationEditor: React.FC = () => {
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.60;
     
-    // CORRECTED COORDINATE TRANSFORMATION (same as handleMouseDown)
+    // CORRECT COORDINATE TRANSFORMATION (same as handleMouseDown)
     const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
     
-    // Add scroll offset to convert viewport coordinates to content coordinates
+    // point.x is in Stage coordinates, add scrollOffset for absolute position
     const absoluteX = point.x + scrollOffset;
     
     // For seeking: normalize position (0 to 1) based on full zoomed width
@@ -1676,7 +1690,7 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     
-    // CORRECTED COORDINATE TRANSFORMATION (same as other handlers)
+    // CORRECT COORDINATE TRANSFORMATION (same as other handlers)
     const absoluteX = point.x + scrollOffset;
     const adjustedX = absoluteX / zoomLevel; // Convert to unzoomed world coordinates
     const adjustedY = point.y;
