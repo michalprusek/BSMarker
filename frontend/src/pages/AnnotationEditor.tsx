@@ -1201,7 +1201,7 @@ const AnnotationEditor: React.FC = () => {
     // We need to add scrollOffset because Layer has offsetX={scrollOffset}
     // This means the Layer content is shifted left by scrollOffset pixels
     // To get the absolute position in the zoomed content:
-    const absoluteX = point.x + scrollOffset; // Convert Stage coords to absolute content coords
+    const absoluteX = point.x; // Stage coords already account for scrollOffset via Layer offsetX
     
     // Debug logging
     console.log('Mouse click debug:', {
@@ -1398,7 +1398,7 @@ const AnnotationEditor: React.FC = () => {
     const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
     
     // point.x is in Stage coordinates, add scrollOffset for absolute position
-    const absoluteX = point.x + scrollOffset;
+    const absoluteX = point.x; // No need to add scrollOffset - Layer offsetX handles it
     
     // For seeking: normalize position (0 to 1) based on full zoomed width
     const seekPosition = absoluteX / (effectiveWidth * zoomLevel);
@@ -1691,7 +1691,7 @@ const AnnotationEditor: React.FC = () => {
     const point = stage.getPointerPosition();
     
     // CORRECT COORDINATE TRANSFORMATION (same as other handlers)
-    const absoluteX = point.x + scrollOffset;
+    const absoluteX = point.x; // No need to add scrollOffset - Layer offsetX handles it
     const adjustedX = absoluteX / zoomLevel; // Convert to unzoomed world coordinates
     const adjustedY = point.y;
     
@@ -1808,6 +1808,7 @@ const AnnotationEditor: React.FC = () => {
       
       // Only zoom if cursor is over the spectrogram
       const target = event.currentTarget;
+      if (!target) return;
       const rect = target.getBoundingClientRect();
       const isOverSpectrogram = event.clientX >= rect.left && 
                                event.clientX <= rect.right && 
