@@ -2368,7 +2368,7 @@ const AnnotationEditor: React.FC = () => {
                     className="absolute top-0 pointer-events-none"
                     style={{ 
                       left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Align with waveform
-                      width: `${(spectrogramDimensions.width - 40) * zoomLevel}px`,
+                      width: `${(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,  // Use consistent width calculation
                       height: '100%',
                       transform: `translateX(-${scrollOffset}px)`  // Apply same scroll offset as spectrogram
                     }}
@@ -2395,6 +2395,17 @@ const AnnotationEditor: React.FC = () => {
                       
                       return (
                         <g key={index}>
+                          {/* Selected box highlight background */}
+                          {isSelected && (
+                            <rect
+                              x={Math.min(startX, endX)}
+                              y="0"
+                              width={Math.abs(endX - startX)}
+                              height={waveformHeight}
+                              fill="rgba(255, 215, 0, 0.1)"
+                              stroke="none"
+                            />
+                          )}
                           {/* Start line */}
                           <line
                             x1={isNaN(startX) ? 0 : startX}
@@ -2402,9 +2413,9 @@ const AnnotationEditor: React.FC = () => {
                             x2={isNaN(startX) ? 0 : startX}
                             y2={waveformHeight}
                             stroke={isSelected ? '#FFD700' : labelColor.stroke}
-                            strokeWidth={isSelected ? 3 : 1}
+                            strokeWidth={isSelected ? 4 : 1}
                             opacity={isSelected ? 1 : 0.7}
-                            strokeDasharray={isSelected ? '5,3' : undefined}
+                            strokeDasharray={undefined}
                           />
                           {/* End line */}
                           <line
@@ -2413,9 +2424,9 @@ const AnnotationEditor: React.FC = () => {
                             x2={isNaN(endX) ? 0 : endX}
                             y2={waveformHeight}
                             stroke={isSelected ? '#FFD700' : labelColor.stroke}
-                            strokeWidth={isSelected ? 3 : 1}
+                            strokeWidth={isSelected ? 4 : 1}
                             opacity={isSelected ? 1 : 0.7}
-                            strokeDasharray={isSelected ? '5,3' : undefined}
+                            strokeDasharray={undefined}
                           />
                           {/* Horizontal connector at top */}
                           <line
@@ -2424,9 +2435,9 @@ const AnnotationEditor: React.FC = () => {
                             x2={isNaN(endX) ? 0 : endX}
                             y2="2"
                             stroke={isSelected ? '#FFD700' : labelColor.stroke}
-                            strokeWidth={isSelected ? 3 : 1}
+                            strokeWidth={isSelected ? 4 : 1}
                             opacity={isSelected ? 1 : 0.7}
-                            strokeDasharray={isSelected ? '5,3' : undefined}
+                            strokeDasharray={undefined}
                           />
                           {/* Fill area */}
                           <rect
@@ -2519,18 +2530,36 @@ const AnnotationEditor: React.FC = () => {
                       };
                       
                       return (
-                        <Rect
-                          key={`highlight-${globalIndex}`}
-                          x={scaledBox.x - 3}
-                          y={scaledBox.y - 3}
-                          width={scaledBox.width + 6}
-                          height={scaledBox.height + 6}
-                          fill="rgba(255, 215, 0, 0.2)"
-                          stroke="#FFD700"
-                          strokeWidth={2}
-                          dash={[8, 4]}
-                          listening={false}
-                        />
+                        <Group key={`highlight-${globalIndex}`}>
+                          {/* Outer glow effect */}
+                          <Rect
+                            x={scaledBox.x - 6}
+                            y={scaledBox.y - 6}
+                            width={scaledBox.width + 12}
+                            height={scaledBox.height + 12}
+                            fill="transparent"
+                            stroke="#FFD700"
+                            strokeWidth={3}
+                            opacity={0.6}
+                            shadowBlur={15}
+                            shadowColor="#FFD700"
+                            cornerRadius={4}
+                            listening={false}
+                          />
+                          {/* Inner highlight */}
+                          <Rect
+                            x={scaledBox.x - 3}
+                            y={scaledBox.y - 3}
+                            width={scaledBox.width + 6}
+                            height={scaledBox.height + 6}
+                            fill="rgba(255, 215, 0, 0.15)"
+                            stroke="#FFD700"
+                            strokeWidth={2}
+                            dash={[12, 6]}
+                            cornerRadius={2}
+                            listening={false}
+                          />
+                        </Group>
                       );
                     })}
                     
@@ -2559,16 +2588,14 @@ const AnnotationEditor: React.FC = () => {
                       let dashArray: number[] | undefined = undefined;
                       
                       if (isSelected || isSingleSelected) {
-                        strokeWidth = 5; // Increased to 5 for maximum visibility
-                        shadowBlur = 12; // Stronger shadow for selected boxes
-                        shadowColor = 'rgba(0, 0, 255, 0.4)'; // Blue shadow for selection
-                        dashArray = [10, 5]; // Dashed line for clear selection indication
+                        strokeWidth = 4; // Thicker stroke for visibility
+                        shadowBlur = 20; // Much stronger shadow for selected boxes
+                        shadowColor = 'rgba(255, 215, 0, 0.8)'; // Golden shadow for selection
+                        dashArray = undefined; // Solid line for cleaner look
                         // Use much brighter version of the same label color for selection
-                        fillColor = fillColor.replace('0.15', '0.45'); // More opaque fill
-                        // Make stroke bright yellow for maximum contrast
+                        fillColor = 'rgba(255, 215, 0, 0.25)'; // Golden fill for selected boxes
+                        // Make stroke bright golden for maximum contrast
                         strokeColor = '#FFD700'; // Gold color for selected boxes
-                        // Alternative: Use bright cyan for selection
-                        // strokeColor = '#00FFFF';
                       }
                       
                       return (
