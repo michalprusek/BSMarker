@@ -1191,15 +1191,14 @@ const AnnotationEditor: React.FC = () => {
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.60;
     
-    // INVARIANT COORDINATE TRANSFORMATION
-    // point.x is already in the correct coordinate system because:
-    // - The Layer has offsetX={scrollOffset} which transforms the coordinate space
-    // - stage.getPointerPosition() returns coordinates in the transformed space
+    // CORRECTED COORDINATE TRANSFORMATION
+    // point.x is in Stage viewport coordinates - Layer offsetX only affects rendering
+    // stage.getPointerPosition() returns viewport coordinates, NOT transformed coordinates
     const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
     
-    // Since the Layer already has offsetX applied, point.x is already in the content coordinate system
-    // The offsetX in the Layer means the content is shifted, and getPointerPosition accounts for this
-    const absoluteX = point.x; // point.x is already the absolute position in the full zoomed content
+    // Add scroll offset to get the true position in the content coordinate space
+    // When scrolled, we need to add the scroll offset to convert viewport coords to content coords
+    const absoluteX = point.x + scrollOffset; // Convert viewport position to absolute position in zoomed content
     
     // For seeking: The key insight is that at any zoom level:
     // - The full content width when zoomed is: effectiveWidth * zoomLevel
@@ -1381,11 +1380,11 @@ const AnnotationEditor: React.FC = () => {
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.60;
     
-    // INVARIANT COORDINATE TRANSFORMATION (same as handleMouseDown)
+    // CORRECTED COORDINATE TRANSFORMATION (same as handleMouseDown)
     const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
     
-    // point.x is already in the content coordinate system (Layer has offsetX={scrollOffset})
-    const absoluteX = point.x;
+    // Add scroll offset to convert viewport coordinates to content coordinates
+    const absoluteX = point.x + scrollOffset;
     
     // For seeking: normalize position (0 to 1) based on full zoomed width
     const seekPosition = absoluteX / (effectiveWidth * zoomLevel);
@@ -1677,8 +1676,8 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     
-    // INVARIANT COORDINATE TRANSFORMATION (same as other handlers)
-    const absoluteX = point.x;
+    // CORRECTED COORDINATE TRANSFORMATION (same as other handlers)
+    const absoluteX = point.x + scrollOffset;
     const adjustedX = absoluteX / zoomLevel; // Convert to unzoomed world coordinates
     const adjustedY = point.y;
     
