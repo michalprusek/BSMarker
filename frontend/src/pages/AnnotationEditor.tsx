@@ -1801,13 +1801,13 @@ const AnnotationEditor: React.FC = () => {
 
   // Throttled mouse wheel zoom handler with cursor-centered zooming
   const handleWheelZoom = useMemo(() =>
-    throttle((event: React.WheelEvent<HTMLDivElement>) => {
+    throttle((event: WheelEvent) => {
       // Always prevent default to stop page scrolling when over the editor
       event.preventDefault();
       event.stopPropagation();
       
       // Only zoom if cursor is over the spectrogram
-      const target = event.currentTarget;
+      const target = event.currentTarget as HTMLElement;
       if (!target) return;
       const rect = target.getBoundingClientRect();
       const isOverSpectrogram = event.clientX >= rect.left && 
@@ -1896,6 +1896,34 @@ const AnnotationEditor: React.FC = () => {
       handleScrollOptimized.cancel?.();
     };
   }, [handleScrollOptimized]);
+
+  // Attach wheel event listener with passive: false to prevent scrolling
+  useEffect(() => {
+    const scrollContainer = unifiedScrollRef.current;
+    if (!scrollContainer) return;
+
+    const wheelHandler = (event: WheelEvent) => {
+      // Check if the cursor is over the scrollable area
+      const rect = scrollContainer.getBoundingClientRect();
+      const isOverContainer = 
+        event.clientX >= rect.left && 
+        event.clientX <= rect.right && 
+        event.clientY >= rect.top && 
+        event.clientY <= rect.bottom;
+      
+      if (isOverContainer) {
+        handleWheelZoom(event);
+      }
+    };
+
+    // Add event listener with passive: false
+    scrollContainer.addEventListener('wheel', wheelHandler, { passive: false });
+
+    // Cleanup
+    return () => {
+      scrollContainer.removeEventListener('wheel', wheelHandler);
+    };
+  }, [handleWheelZoom]);
 
   // Quick label handler for A-Z keys
   const handleQuickLabel = (label: string) => {
@@ -2202,7 +2230,6 @@ const AnnotationEditor: React.FC = () => {
                 height: 'calc(100% - 30px)'
               }}
               onScroll={handleScrollOptimized}
-              onWheel={handleWheelZoom}
             >
               <div 
                 ref={canvasContainerRef}
