@@ -7,6 +7,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 BSMarker is a full-stack web application designed for annotating bird songs using spectrograms. It enables researchers and ornithologists to upload audio recordings, automatically generate spectrograms, and annotate them with bounding boxes to identify different bird species and sound types.
 
+## Recent Updates (2025-09-13)
+
+### AnnotationEditor Improvements
+- **Fixed Seeking**: Corrected seekPosition calculation for accurate timeline positioning at all zoom levels
+- **Bounding Box Selection**: Added golden glow visual feedback for selected boxes
+- **Waveform Alignment**: Fixed mirror box alignment using consistent LAYOUT_CONSTANTS
+- **Panning Support**: Added ability to pan spectrogram by dragging in waveform area
+- **Coordinate System**: Fixed click position calculations when zoomed/scrolled
+
+### Refactoring Architecture (Partially Implemented)
+Created modular components for future migration:
+- `hooks/useSpectrogramManager.ts` - Manages spectrogram state, zoom, scroll
+- `hooks/useMouseInteractions.ts` - Handles all mouse events and modes
+- `hooks/useKeyboardShortcuts.ts` - Keyboard shortcut management
+- `components/annotation/SpectrogramCanvas.tsx` - Spectrogram rendering
+- `components/annotation/WaveformDisplay.tsx` - Waveform visualization
+- `components/annotation/Timeline.tsx` - Interactive timeline
+- `components/annotation/AnnotationControls.tsx` - Control panel
+- `components/LoadingSpinner.tsx` - Reusable loading indicator
+- `components/ErrorMessage.tsx` - Consistent error display
+
+### SSOT Compliance Status
+✅ **Excellent**: Coordinate transformations (100% centralized in `utils/coordinates.ts`)
+✅ **Excellent**: Layout constants (single source, consistent usage)
+✅ **Good**: API client (single instance with interceptors)
+❌ **Needs Work**: Loading spinners (6 duplicate implementations found)
+❌ **Needs Work**: Error displays (inconsistent patterns across components)
+
 ## Recent Security Updates (2025-08-14)
 - **Configuration**: Domain is now configurable via `REDIRECT_HOST` environment variable
 - **Secrets Management**: All hardcoded credentials removed from documentation and code
@@ -267,6 +295,33 @@ curl -k -X POST https://localhost/api/v1/recordings/1/upload \
   -F "file=@test.mp3"
 ```
 
+## Important Implementation Notes
+
+### Coordinate System (CRITICAL)
+The coordinate system uses centralized utilities in `frontend/src/utils/coordinates.ts`:
+- **LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH = 40** - Must be consistent across all components
+- **Seeking calculation**: `seekPosition = absoluteX / (effectiveWidth * zoomLevel)` - NOT divided by stageWidth!
+- **Scroll offset**: Always add scrollOffset when converting stage coordinates to absolute positions
+- **Effective width**: Always subtract FREQUENCY_SCALE_WIDTH from total width for content area
+
+### API Import Pattern
+```typescript
+// CORRECT - api is exported as default
+import api from '../services/api';
+
+// WRONG - will cause "api is not exported" error
+import { api } from '../services/api';
+```
+
+### Docker Deployment Pattern
+```bash
+# ALWAYS follow this sequence for frontend updates:
+docker-compose -f docker-compose.prod.yml build frontend
+docker-compose -f docker-compose.prod.yml stop frontend nginx  
+docker-compose -f docker-compose.prod.yml rm -f frontend nginx
+docker-compose -f docker-compose.prod.yml up -d frontend nginx
+```
+
 ## Critical Workflow Patterns
 
 ### Adding a New API Endpoint
@@ -332,9 +387,28 @@ JWT_SECRET_KEY=<secure-key>
 ### Frontend  
 - `frontend/src/App.tsx` - Main app component with routing
 - `frontend/src/contexts/AuthContext.tsx` - Authentication state management
-- `frontend/src/services/api.ts` - Axios client configuration
-- `frontend/src/pages/AnnotationEditor.tsx` - Complex Konva canvas implementation
+- `frontend/src/services/api.ts` - Axios client configuration (export default api)
+- `frontend/src/pages/AnnotationEditor.tsx` - Complex Konva canvas implementation (3000+ lines, needs refactoring)
 - `frontend/src/components/AudioPlayer.tsx` - WaveSurfer.js integration
+- `frontend/src/utils/coordinates.ts` - Centralized coordinate transformation utilities
+- `frontend/src/utils/axisStyles.ts` - Axis rendering styles
+
+### Known Issues & TODOs
+
+#### High Priority
+- [ ] Complete AnnotationEditor refactoring (currently 3000+ lines)
+- [ ] Consolidate 6 duplicate loading spinner implementations
+- [ ] Standardize error handling across all components
+
+#### Medium Priority  
+- [ ] Fix TypeScript integration in useAnnotationManager hook
+- [ ] Extract constants to shared configuration file
+- [ ] Implement proper error boundaries
+
+#### Low Priority
+- [ ] Add comprehensive tests for new modular components
+- [ ] Document component APIs and usage patterns
+- [ ] Create storybook for UI components
 
 
 ## VERY IMPORTANT: Deployment after changes
