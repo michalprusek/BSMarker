@@ -7,417 +7,367 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 BSMarker is a full-stack web application designed for annotating bird songs using spectrograms. It enables researchers and ornithologists to upload audio recordings, automatically generate spectrograms, and annotate them with bounding boxes to identify different bird species and sound types.
 
-## Recent Updates (2025-09-13)
+## Technology Stack
 
-### AnnotationEditor Improvements
-- **Fixed Seeking**: Corrected seekPosition calculation for accurate timeline positioning at all zoom levels
-- **Bounding Box Selection**: Added golden glow visual feedback for selected boxes
-- **Waveform Alignment**: Fixed mirror box alignment using consistent LAYOUT_CONSTANTS
-- **Panning Support**: Added ability to pan spectrogram by dragging in waveform area
-- **Coordinate System**: Fixed click position calculations when zoomed/scrolled
+### Frontend
+- **React 18** with TypeScript
+- **Tailwind CSS** for styling
+- **Konva.js** for canvas-based annotation
+- **WaveSurfer.js** for audio waveform visualization
+- **React Router v6** for navigation
+- **Axios** for API communication
+- **React Hook Form** for form management
 
-### Refactoring Architecture (Partially Implemented)
-Created modular components for future migration:
-- `hooks/useSpectrogramManager.ts` - Manages spectrogram state, zoom, scroll
-- `hooks/useMouseInteractions.ts` - Handles all mouse events and modes
-- `hooks/useKeyboardShortcuts.ts` - Keyboard shortcut management
-- `components/annotation/SpectrogramCanvas.tsx` - Spectrogram rendering
-- `components/annotation/WaveformDisplay.tsx` - Waveform visualization
-- `components/annotation/Timeline.tsx` - Interactive timeline
-- `components/annotation/AnnotationControls.tsx` - Control panel
-- `components/LoadingSpinner.tsx` - Reusable loading indicator
-- `components/ErrorMessage.tsx` - Consistent error display
+### Backend
+- **FastAPI** (Python) for REST API
+- **SQLAlchemy** for ORM
+- **PostgreSQL** for database
+- **MinIO** for object storage
+- **Redis** for caching and task queue
+- **Celery** for background tasks
+- **JWT** for authentication
 
-### SSOT Compliance Status
-✅ **Excellent**: Coordinate transformations (100% centralized in `utils/coordinates.ts`)
-✅ **Excellent**: Layout constants (single source, consistent usage)
-✅ **Good**: API client (single instance with interceptors)
-❌ **Needs Work**: Loading spinners (6 duplicate implementations found)
-❌ **Needs Work**: Error displays (inconsistent patterns across components)
+### Deployment
+- **Docker** and **Docker Compose** for containerization
+- **Nginx** as reverse proxy and load balancer
+- **Let's Encrypt** for SSL certificates
+- **GitHub Actions** for CI/CD
 
-## Recent Security Updates (2025-08-14)
-- **Configuration**: Domain is now configurable via `REDIRECT_HOST` environment variable
-- **Secrets Management**: All hardcoded credentials removed from documentation and code
-- **Logging**: Replaced print statements with structured logging using Python's logging module
-- **Docker Security**: Fixed health checks, pinned dependencies, and improved build reproducibility
-- **Script Security**: Safe environment variable parsing, proper error handling, no command injection
-- **Access Control**: MinIO proxy secured with IP restrictions and authentication
-- **Rate Limiting**: Adjusted to reasonable levels (auth: 20r/m, general: 50r/s, api: 30r/s)
+## Architecture Principles
 
-## ⚠️ PRODUCTION ENVIRONMENT SETUP
-- **ALWAYS use Docker Compose** for running the application
-- **Use `docker-compose.prod.yml`** for production deployment
-- **Domain**: https://bsmarker.utia.cas.cz
-- **Ports**: Frontend/Backend via nginx (80/443), MinIO=9000/9001 (internal), PostgreSQL=5432 (internal), Redis=6379 (internal)
-
-## Let's Encrypt SSL Setup
-
-### Automated SSL Certificate with Let's Encrypt
-```bash
-# 1. Stop nginx to free port 80
-docker-compose -f docker-compose.prod.yml stop nginx
-
-# 2. Create certbot directories
-mkdir -p /home/prusek/BSMarker/certbot/{conf,www}
-
-# 3. Run Certbot in Docker to get certificate
-docker run --rm \
-  -v /home/prusek/BSMarker/certbot/conf:/etc/letsencrypt \
-  -v /home/prusek/BSMarker/certbot/www:/var/www/certbot \
-  -p 80:80 \
-  certbot/certbot certonly --standalone \
-  --email admin@bsmarker.com \
-  -d bsmarker.utia.cas.cz \
-  --rsa-key-size 4096 \
-  --agree-tos \
-  --force-renewal
-
-# 4. Generate DH parameters for SSL security
-openssl dhparam -out /tmp/ssl-dhparams.pem 2048
-cp /tmp/ssl-dhparams.pem /home/prusek/BSMarker/certbot/conf/ssl-dhparams.pem
-
-# 5. Update docker-compose.prod.yml nginx volumes:
-#    - ./certbot/conf:/etc/letsencrypt:ro
-#    - ./certbot/www:/var/www/certbot:rw
-
-# 6. Start nginx and apply Let's Encrypt configuration
-docker-compose -f docker-compose.prod.yml up -d nginx
-docker cp /home/prusek/BSMarker/nginx/nginx-letsencrypt.conf bsmarker_nginx_1:/etc/nginx/conf.d/nginx.conf
-docker exec bsmarker_nginx_1 nginx -s reload
+### Frontend Architecture
+```
+src/
+├── components/       # Reusable UI components
+│   ├── annotation/   # Domain-specific components
+│   └── shared/       # Generic components
+├── contexts/         # React Context providers
+├── pages/           # Route-level components
+├── services/        # API clients and external services
+├── hooks/           # Custom React hooks
+├── utils/           # Helper functions and utilities
+└── types/           # TypeScript type definitions
 ```
 
-### SSL Certificate Renewal
-```bash
-# Renew certificates (run monthly via cron)
-docker run --rm \
-  -v /home/prusek/BSMarker/certbot/conf:/etc/letsencrypt \
-  -v /home/prusek/BSMarker/certbot/www:/var/www/certbot \
-  certbot/certbot renew --quiet
-
-# Reload nginx after renewal
-docker exec bsmarker_nginx_1 nginx -s reload
+### Backend Architecture
+```
+app/
+├── api/             # API endpoints and routing
+│   └── v1/          # API version 1
+├── core/            # Core configuration and security
+├── db/              # Database configuration
+├── models/          # SQLAlchemy models
+├── schemas/         # Pydantic schemas
+├── services/        # Business logic layer
+└── utils/           # Helper utilities
 ```
 
-## Common Docker Commands
-
-### Backend (FastAPI in Docker)
-```bash
-# Run tests in Docker
-sudo docker exec bsmarker_backend_1 python -m pytest
-
-# Type checking
-sudo docker exec bsmarker_backend_1 python -m mypy app/
-
-# Linting
-sudo docker exec bsmarker_backend_1 python -m pylint app/
-sudo docker exec bsmarker_backend_1 python -m black app/ --check
-
-# Database operations
-sudo docker exec bsmarker_backend_1 python -c "from app.db.database import engine; from app.models import *; from app.db.base import Base; Base.metadata.create_all(bind=engine)"
+### Layered Architecture Pattern
+```
+API Endpoints → Services → Models → Database
+     ↓              ↓         ↓         ↓
+Controllers    Business   Domain    Data
+               Logic      Models    Access
 ```
 
-### Frontend (React in Docker)
-```bash
-# Rebuild frontend image
-sudo docker-compose -f docker-compose.prod.yml build frontend
+## Coding Standards & Best Practices
 
-# Check frontend logs
-sudo docker logs bsmarker_frontend_1
+### General Principles
+1. **Single Source of Truth (SSOT)**: Avoid code duplication, centralize shared logic
+2. **Separation of Concerns**: Keep business logic in services, UI logic in components
+3. **Type Safety**: Use TypeScript/Python type hints throughout
+4. **Error Handling**: Consistent error handling with proper logging
+5. **Security First**: Never hardcode secrets, validate all inputs
 
-# Restart frontend
-sudo docker restart bsmarker_frontend_1 bsmarker_frontend_2
+### Frontend Best Practices
+
+#### Naming Conventions
+- **Components**: PascalCase (`AnnotationEditor.tsx`)
+- **Hooks**: camelCase starting with 'use' (`useSpectrogramZoom.ts`)
+- **Utils**: camelCase (`coordinates.ts`)
+- **Constants**: UPPER_SNAKE_CASE (`LAYOUT_CONSTANTS`)
+- **Types/Interfaces**: PascalCase with 'I' prefix for interfaces
+
+#### Component Patterns
+```typescript
+// Functional component with typed props
+interface ComponentProps {
+  data: DataType;
+  onAction: (id: number) => void;
+}
+
+const Component: React.FC<ComponentProps> = ({ data, onAction }) => {
+  // Hook usage at top
+  const [state, setState] = useState<StateType>(initialState);
+
+  // Effects after hooks
+  useEffect(() => {
+    // Cleanup in return
+    return () => cleanup();
+  }, [dependencies]);
+
+  // Event handlers
+  const handleClick = useCallback(() => {
+    onAction(data.id);
+  }, [data.id, onAction]);
+
+  // Render
+  return <div onClick={handleClick}>{data.name}</div>;
+};
 ```
 
-### Docker Management
-```bash
-# View all containers
-sudo docker-compose -f docker-compose.prod.yml ps
+#### State Management
+- Use React Context for global state (auth, theme)
+- Use local state for component-specific data
+- Use custom hooks for reusable stateful logic
 
-# Restart all services
-sudo docker-compose -f docker-compose.prod.yml restart
+#### API Service Pattern
+```typescript
+// Centralized API client
+import api from '../services/api';  // Note: default export
 
-# View logs
-sudo docker-compose -f docker-compose.prod.yml logs -f backend
-
-# Execute commands in container
-sudo docker exec bsmarker_backend_1 <command>
+// Service functions
+export const recordingService = {
+  getAll: () => api.get<Recording[]>('/recordings'),
+  getById: (id: number) => api.get<Recording>(`/recordings/${id}`),
+  create: (data: CreateRecordingDto) => api.post<Recording>('/recordings', data),
+  update: (id: number, data: UpdateRecordingDto) => api.put<Recording>(`/recordings/${id}`, data),
+  delete: (id: number) => api.delete(`/recordings/${id}`)
+};
 ```
 
-## Architecture Patterns & Key Decisions
+### Backend Best Practices
 
-### Backend Architecture (FastAPI)
-- **Layered Architecture**: API endpoints → Services → Models → Database
-- **Dependency Injection**: Database sessions via FastAPI dependencies
-- **Authentication**: JWT tokens with passlib bcrypt hashing
-- **File Processing**: Async with librosa for spectrogram generation
-- **API Versioning**: `/api/v1/` prefix for all endpoints
-- **Error Handling**: HTTPException with proper status codes
-- **CORS**: Configured for https://bsmarker.utia.cas.cz
+#### Naming Conventions
+- **Variables/Functions**: snake_case
+- **Classes**: PascalCase
+- **Constants**: UPPER_SNAKE_CASE
+- **Files**: snake_case
+- **API Routes**: kebab-case
 
-### Frontend Architecture (React/TypeScript)  
-- **State Management**: React Context API for auth, local state for components
-- **Routing**: React Router v6 with protected routes
-- **Forms**: React Hook Form with validation
-- **Canvas Annotations**: Konva.js for bounding box drawing
-- **Audio**: WaveSurfer.js for waveform visualization
-- **API Client**: Axios with interceptors for auth tokens
-- **Styling**: Tailwind CSS with HeadlessUI components
-
-### Critical File Patterns
-
-#### Backend Service Pattern
+#### Service Pattern
 ```python
-# backend/app/services/example.py
 from sqlalchemy.orm import Session
-from app.models.example import Example
-from app.schemas.example import ExampleCreate
+from app.models.recording import Recording
+from app.schemas.recording import RecordingCreate
 
-def create_example(db: Session, example: ExampleCreate):
-    db_example = Example(**example.dict())
-    db.add(db_example)
-    db.commit()
-    db.refresh(db_example)
-    return db_example
+class RecordingService:
+    @staticmethod
+    def create_recording(db: Session, recording: RecordingCreate, user_id: int) -> Recording:
+        db_recording = Recording(
+            **recording.dict(),
+            user_id=user_id
+        )
+        db.add(db_recording)
+        db.commit()
+        db.refresh(db_recording)
+        return db_recording
+
+    @staticmethod
+    def get_recording(db: Session, recording_id: int) -> Recording:
+        return db.query(Recording).filter(Recording.id == recording_id).first()
 ```
 
-#### Frontend API Service Pattern
-```typescript
-// frontend/src/services/api.ts
-import axios from 'axios';
+#### API Endpoint Pattern
+```python
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.api import deps
 
-const API_URL = process.env.REACT_APP_API_URL || 'https://bsmarker.utia.cas.cz';
+router = APIRouter()
 
-export const apiClient = axios.create({
-  baseURL: `${API_URL}/api/v1`,
-  headers: { 'Content-Type': 'application/json' }
-});
-
-// Add auth token interceptor
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+@router.post("/", response_model=schemas.Recording)
+def create_recording(
+    recording: schemas.RecordingCreate,
+    db: Session = Depends(deps.get_db),
+    current_user: models.User = Depends(deps.get_current_user),
+):
+    if not current_user:
+        raise HTTPException(status_code=403, detail="Not authenticated")
+    return services.recording.create_recording(db, recording, current_user.id)
 ```
 
-## Key Implementation Details
+### Database Conventions
+- **Table Names**: Plural, snake_case (`users`, `bounding_boxes`)
+- **Column Names**: snake_case
+- **Primary Keys**: `id` (integer auto-increment)
+- **Foreign Keys**: `{table_singular}_id` (e.g., `user_id`)
+- **Timestamps**: `created_at`, `updated_at` with timezone
 
-### Authentication Flow
-1. User logs in via `/api/v1/auth/login` with email/password
-2. Backend validates credentials, returns JWT token
-3. Frontend stores token in localStorage
-4. All subsequent requests include `Authorization: Bearer <token>` header
-5. Backend validates JWT on protected endpoints via `get_current_user` dependency
+### Docker Best Practices
+1. **Multi-stage builds** for smaller images
+2. **Health checks** for all services
+3. **Resource limits** to prevent resource exhaustion
+4. **Network isolation** between services
+5. **Volume mounts** for persistent data
+6. **Environment variables** for configuration
 
-### Spectrogram Generation Pipeline
-1. User uploads audio file → stored in MinIO bucket
-2. Backend creates database record with metadata
-3. `services/spectrogram.py` processes audio with librosa:
-   - Loads audio file from MinIO
-   - Generates mel spectrogram (n_mels=128, hop_length=512)
-   - Saves as PNG to MinIO
-   - Updates database with spectrogram path
-4. Frontend fetches spectrogram URL for display
+## Development Workflow
 
-### Annotation Data Model
-- **annotations**: Session metadata (recording_id, user_id, created_at)
-- **bounding_boxes**: Individual box data
-  - Pixel coordinates: x, y, width, height
-  - Time range: start_time, end_time (seconds)
-  - Frequency range: min_freq, max_freq (Hz)
-  - Label: species/call type string
+### Setting Up Development Environment
+1. Clone repository
+2. Copy `.env.example` to `.env` and configure
+3. Run `docker-compose up` for local development
+4. Frontend: `npm install && npm run dev`
+5. Backend: `pip install -r requirements.txt && uvicorn app.main:app --reload`
 
-## Debugging & Troubleshooting
+### Adding New Features
+1. Create feature branch from `dev`
+2. Implement following established patterns
+3. Write tests for new functionality
+4. Update documentation if needed
+5. Create pull request to `dev`
 
-### Common Issues & Solutions
+### Code Quality Checks
 
-#### Backend Not Starting
+#### Frontend
 ```bash
-# Check Docker container status
-sudo docker ps -a | grep backend
-
-# Check backend logs
-sudo docker logs bsmarker_backend_1 --tail 50
-
-# Test database connection in Docker
-sudo docker exec bsmarker_backend_1 python -c "from app.db.database import engine; print('DB connected')"
-
-# Restart backend containers
-sudo docker restart bsmarker_backend_1 bsmarker_backend_2
+npm run typecheck   # TypeScript checking
+npm run lint        # ESLint
+npm run test        # Run tests
+npm run build       # Production build
 ```
 
-#### Frontend Issues
+#### Backend
 ```bash
-# Check frontend container status
-sudo docker ps -a | grep frontend
-
-# View frontend logs
-sudo docker logs bsmarker_frontend_1 --tail 50
-
-# Rebuild frontend
-sudo docker-compose -f docker-compose.prod.yml build frontend
-sudo docker-compose -f docker-compose.prod.yml up -d frontend
+python -m mypy app/        # Type checking
+python -m black app/       # Code formatting
+python -m pylint app/      # Linting
+python -m pytest           # Run tests
 ```
 
-#### Service Health Checks
+### Pre-commit Hooks
+The project uses pre-commit hooks to ensure code quality:
+- Black (Python formatting)
+- isort (Python import sorting)
+- Flake8 (Python linting)
+- MyPy (Python type checking)
+- ESLint (JavaScript/TypeScript linting)
+- Prettier (JavaScript/TypeScript formatting)
+
+**IMPORTANT**: Never skip pre-commit checks - always fix errors and warnings
+
+## Deployment
+
+### Production Deployment
 ```bash
-# Check nginx status
-curl -k https://localhost/health
+# Build and deploy
+docker-compose -f docker-compose.prod.yml build
+docker-compose -f docker-compose.prod.yml up -d
 
-# Check all container health
-sudo docker ps --format "table {{.Names}}\t{{.Status}}"
-
-# Check MinIO connectivity
-sudo docker exec bsmarker_backend_1 python -c "from app.services.minio_client import minio_client; print('MinIO connected')"
-```
-
-## API Testing with curl
-
-```bash
-# Set your credentials
-export USERNAME="your-email@example.com"
-export PASSWORD="your-password"
-
-# Login and get token (via HTTPS)
-TOKEN=$(curl -k -X POST https://localhost/api/v1/auth/login \
-  -H "Content-Type: multipart/form-data" \
-  -F "username=${USERNAME}" \
-  -F "password=${PASSWORD}" \
-  | jq -r '.access_token')
-
-# Test authenticated endpoint
-curl -k -H "Authorization: Bearer $TOKEN" \
-  https://localhost/api/v1/auth/me
-
-# Upload audio file
-curl -k -X POST https://localhost/api/v1/recordings/1/upload \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "file=@test.mp3"
-```
-
-## Important Implementation Notes
-
-### Coordinate System (CRITICAL)
-The coordinate system uses centralized utilities in `frontend/src/utils/coordinates.ts`:
-- **LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH = 40** - Must be consistent across all components
-- **Seeking calculation**: `seekPosition = absoluteX / (effectiveWidth * zoomLevel)` - NOT divided by stageWidth!
-- **Scroll offset**: Always add scrollOffset when converting stage coordinates to absolute positions
-- **Effective width**: Always subtract FREQUENCY_SCALE_WIDTH from total width for content area
-
-### API Import Pattern
-```typescript
-// CORRECT - api is exported as default
-import api from '../services/api';
-
-// WRONG - will cause "api is not exported" error
-import { api } from '../services/api';
-```
-
-### Docker Deployment Pattern
-```bash
-# ALWAYS follow this sequence for frontend updates:
+# Update frontend after changes
 docker-compose -f docker-compose.prod.yml build frontend
-docker-compose -f docker-compose.prod.yml stop frontend nginx  
+docker-compose -f docker-compose.prod.yml stop frontend nginx
 docker-compose -f docker-compose.prod.yml rm -f frontend nginx
 docker-compose -f docker-compose.prod.yml up -d frontend nginx
 ```
 
-## Critical Workflow Patterns
+### SSL Certificate Management
+- Certificates managed via Let's Encrypt
+- Auto-renewal configured via cron
+- Nginx handles SSL termination
 
-### Adding a New API Endpoint
-1. Create Pydantic schema in `backend/app/schemas/`
-2. Add SQLAlchemy model in `backend/app/models/` if needed
-3. Implement service logic in `backend/app/services/`
-4. Create endpoint in `backend/app/api/api_v1/endpoints/`
-5. Add route to `backend/app/api/api_v1/api.py`
-6. Update frontend API service in `frontend/src/services/`
-7. Create/update React component in `frontend/src/pages/` or `frontend/src/components/`
+## Security Considerations
+1. **Authentication**: JWT tokens with secure storage
+2. **Authorization**: Role-based access control (RBAC)
+3. **Input Validation**: All inputs validated with Pydantic/TypeScript
+4. **SQL Injection**: Prevented via ORM parameterized queries
+5. **XSS Protection**: React's built-in escaping
+6. **CORS**: Properly configured for production domain
+7. **Rate Limiting**: Applied to all endpoints
+8. **Secrets Management**: Environment variables, never hardcoded
 
-### Database Changes
-```bash
-# Update database schema in Docker
-sudo docker exec bsmarker_backend_1 python -c "from app.db.database import engine; from app.models import *; from app.db.base import Base; Base.metadata.create_all(bind=engine)"
+## Performance Optimization
+1. **Database Indexing**: Indexes on frequently queried columns
+2. **Query Optimization**: Avoid N+1 queries, use joins
+3. **Caching**: Redis for frequently accessed data
+4. **Pagination**: All list endpoints paginated
+5. **Lazy Loading**: Components and routes lazy loaded
+6. **Image Optimization**: Spectrograms compressed and cached
+7. **Connection Pooling**: Database connection pooling
 
-# Check database tables
-sudo docker exec bsmarker_postgres_1 psql -U bsmarker -d bsmarker_db -c "\dt"
+## Testing Strategy
+1. **Unit Tests**: For utilities and services
+2. **Integration Tests**: For API endpoints
+3. **Component Tests**: For React components
+4. **E2E Tests**: For critical user flows
+5. **Performance Tests**: For heavy operations
+
+## Monitoring & Logging
+1. **Structured Logging**: JSON format for easy parsing
+2. **Error Tracking**: Centralized error logging
+3. **Health Checks**: All services have health endpoints
+4. **Metrics Collection**: Performance and usage metrics
+5. **Audit Logging**: Track user actions
+
+## Common Patterns & Solutions
+
+### Coordinate Transformations
+All coordinate transformations are centralized in `frontend/src/utils/coordinates.ts` to maintain consistency across the application.
+
+### Loading States
+Use the shared `LoadingSpinner` component for consistent loading indicators.
+
+### Error Handling
+Use the shared `ErrorMessage` component for consistent error display.
+
+### Form Validation
+Use React Hook Form with Yup/Zod schemas for consistent validation.
+
+### API Error Handling
+```typescript
+try {
+  const response = await api.get('/endpoint');
+  // Handle success
+} catch (error) {
+  if (axios.isAxiosError(error)) {
+    // Handle API error
+    toast.error(error.response?.data?.detail || 'An error occurred');
+  } else {
+    // Handle unexpected error
+    console.error('Unexpected error:', error);
+  }
+}
 ```
 
-### Debugging Failed Requests
-1. Check browser DevTools Network tab for request/response
-2. Check backend logs: `sudo docker logs bsmarker_backend_1 --tail 50`
-3. Check nginx logs: `sudo docker logs bsmarker_nginx_1 --tail 50`
-4. Verify token is valid: `localStorage.getItem('token')` in browser console
-5. Test endpoint directly with curl (see API Testing section)
+## Troubleshooting
 
-## Environment Variables
+### Common Issues
+1. **Container not starting**: Check logs with `docker logs <container_name>`
+2. **Database connection failed**: Verify credentials and network
+3. **Frontend build fails**: Clear node_modules and reinstall
+4. **API errors**: Check backend logs and database state
+5. **MinIO issues**: Verify bucket permissions and connectivity
 
-### Production Environment (.env.production)
+### Debugging Commands
 ```bash
-DATABASE_URL=postgresql://bsmarker:${DB_PASSWORD}@postgres:5432/bsmarker_db
-REDIS_URL=redis://redis:6379/0
-MINIO_ENDPOINT=minio:9000
-MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-SECRET_KEY=${JWT_SECRET_KEY}
-CORS_ORIGINS=["https://bsmarker.utia.cas.cz"]
-FIRST_ADMIN_EMAIL=admin@bsmarker.com
-FIRST_ADMIN_PASSWORD=${ADMIN_PASSWORD}
+# View container logs
+docker logs -f <container_name>
+
+# Enter container shell
+docker exec -it <container_name> /bin/bash
+
+# Check database
+docker exec <postgres_container> psql -U <user> -d <database>
+
+# Test API endpoint
+curl -X GET http://localhost:8000/api/v1/health
+
+# Check Redis
+docker exec <redis_container> redis-cli ping
 ```
 
-### Docker Compose Variables
-```bash
-# Set in docker-compose.prod.yml or via environment
-DB_USER=bsmarker
-DB_PASSWORD=<secure-password>
-DB_NAME=bsmarker_db
-MINIO_ACCESS_KEY=<secure-key>
-MINIO_SECRET_KEY=<secure-key>
-JWT_SECRET_KEY=<secure-key>
-```
+## Contributing Guidelines
+1. Follow established patterns and conventions
+2. Write clean, self-documenting code
+3. Add tests for new functionality
+4. Update documentation as needed
+5. Use meaningful commit messages
+6. Request code review before merging
 
-## Key Files to Know
-
-### Backend
-- `backend/app/main.py` - FastAPI app initialization, middleware, routers
-- `backend/app/core/config.py` - Settings management with pydantic-settings
-- `backend/app/core/security.py` - JWT creation, password hashing
-- `backend/app/db/database.py` - SQLAlchemy engine and session setup
-- `backend/app/api/deps.py` - Common dependencies (get_db, get_current_user)
-
-### Frontend  
-- `frontend/src/App.tsx` - Main app component with routing
-- `frontend/src/contexts/AuthContext.tsx` - Authentication state management
-- `frontend/src/services/api.ts` - Axios client configuration (export default api)
-- `frontend/src/pages/AnnotationEditor.tsx` - Complex Konva canvas implementation (3000+ lines, needs refactoring)
-- `frontend/src/components/AudioPlayer.tsx` - WaveSurfer.js integration
-- `frontend/src/utils/coordinates.ts` - Centralized coordinate transformation utilities
-- `frontend/src/utils/axisStyles.ts` - Axis rendering styles
-
-### Known Issues & TODOs
-
-#### High Priority
-- [ ] Complete AnnotationEditor refactoring (currently 3000+ lines)
-- [ ] Consolidate 6 duplicate loading spinner implementations
-- [ ] Standardize error handling across all components
-
-#### Medium Priority  
-- [ ] Fix TypeScript integration in useAnnotationManager hook
-- [ ] Extract constants to shared configuration file
-- [ ] Implement proper error boundaries
-
-#### Low Priority
-- [ ] Add comprehensive tests for new modular components
-- [ ] Document component APIs and usage patterns
-- [ ] Create storybook for UI components
-
-
-## VERY IMPORTANT: Deployment after changes
-Po každé změně frontendové aplikace je potřeba:
-1. Build: `docker-compose -f docker-compose.prod.yml build frontend`
-2. Stop: `docker-compose -f docker-compose.prod.yml stop frontend nginx`
-3. Remove: `docker-compose -f docker-compose.prod.yml rm -f frontend nginx`
-4. Start: `docker-compose -f docker-compose.prod.yml up -d frontend nginx`
-
-POZOR: Pouhý restart nestačí! Docker musí vytvořit nové kontejnery s novým image.
-
-VERY IMPORTANT: Nikdy neskipuj pre-commit hooks (checks) - vždy chyby nalezené v pre-commit checks oprav!
+## Additional Resources
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [React Documentation](https://react.dev/)
+- [Docker Documentation](https://docs.docker.com/)
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+- [TypeScript Documentation](https://www.typescriptlang.org/docs/)
