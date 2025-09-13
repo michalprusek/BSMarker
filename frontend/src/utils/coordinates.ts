@@ -6,11 +6,11 @@
 // Layout constants - must match the actual layout in AnnotationEditor.tsx
 export const LAYOUT_CONSTANTS = {
   FREQUENCY_SCALE_WIDTH: 40,  // Width of the frequency scale on the left
-  SPECTROGRAM_HEIGHT_RATIO: 0.60,  // 60% of total height for spectrogram
-  TIMELINE_TOP_RATIO: 0.60,  // Timeline starts at 60% (right after spectrogram)
+  SPECTROGRAM_HEIGHT_RATIO: 0.65,  // 65% of total height for spectrogram (increased from 60%)
+  TIMELINE_TOP_RATIO: 0.65,  // Timeline starts at 65% (right after spectrogram)
   TIMELINE_HEIGHT_RATIO: 0.08,  // 8% for timeline
-  WAVEFORM_TOP_RATIO: 0.68,  // Waveform starts at 68% (after timeline)
-  WAVEFORM_HEIGHT_RATIO: 0.32,  // 32% for waveform
+  WAVEFORM_TOP_RATIO: 0.73,  // Waveform starts at 73% (after timeline)
+  WAVEFORM_HEIGHT_RATIO: 0.27,  // 27% for waveform (reduced from 32%)
 } as const;
 
 // Coordinate transformation utilities
@@ -19,7 +19,7 @@ export const CoordinateUtils = {
    * Convert time to pixel position (accounting for frequency scale offset)
    * @param time - Time in seconds
    * @param duration - Total duration of the recording in seconds
-   * @param totalWidth - Total width of the canvas in pixels
+   * @param totalWidth - Total width of the canvas in pixels (including frequency scale)
    * @param zoomLevel - Current zoom level (default: 1)
    * @param includeFrequencyScale - Whether to include frequency scale offset (default: false)
    * @returns Pixel position on the x-axis
