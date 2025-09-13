@@ -2231,11 +2231,11 @@ const AnnotationEditor: React.FC = () => {
               }}
               onScroll={handleScrollOptimized}
             >
-              <div 
+              <div
                 ref={canvasContainerRef}
                 className="relative"
                 style={{
-                  width: `${spectrogramDimensions.width * zoomLevel}px`,
+                  width: `${(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel + LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,
                   height: '100%'
                 }}
               >
