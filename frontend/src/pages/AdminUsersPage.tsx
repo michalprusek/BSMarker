@@ -5,6 +5,7 @@ import { userService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import CreateUserModal from '../components/CreateUserModal';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const AdminUsersPage: React.FC = () => {
   const { user: currentUser } = useAuth();
@@ -47,7 +48,7 @@ const AdminUsersPage: React.FC = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <LoadingSpinner size="md" />
       </div>
     );
   }
