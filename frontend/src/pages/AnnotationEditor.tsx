@@ -10,30 +10,15 @@ import BoundingBoxList from '../components/BoundingBoxList';
 import LabelModal from '../components/LabelModal';
 import ContextMenu from '../components/ContextMenu';
 import SpectrogramScales from '../components/SpectrogramScales';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { CoordinateUtils, LAYOUT_CONSTANTS } from '../utils/coordinates';
 import { AXIS_STYLES, formatTimeLabel, getTimeTickInterval } from '../utils/axisStyles';
 import { useAutosave } from '../hooks/useAutosave';
+import { ANNOTATION_CONSTANTS, LABEL_COLORS } from '../utils/constants';
 // import { useSpectrogramZoom } from '../hooks/useSpectrogramZoom'; // Unused - replaced with custom throttled zoom
 import { throttle } from 'lodash';
 
-const PLAYBACK_SPEEDS = [1, 2, 4];
-const MAX_HISTORY_SIZE = 20;
-
-// Enhanced color palette for better visibility in spectrogram
-const LABEL_COLORS = [
-  { stroke: '#6B7280', fill: 'rgba(107, 114, 128, 0.2)' },  // Gray for "None"
-  { stroke: '#DC2626', fill: 'rgba(220, 38, 38, 0.25)' },   // Red (enhanced)
-  { stroke: '#F59E0B', fill: 'rgba(245, 158, 11, 0.25)' },  // Amber
-  { stroke: '#10B981', fill: 'rgba(16, 185, 129, 0.25)' },  // Emerald
-  { stroke: '#2563EB', fill: 'rgba(37, 99, 235, 0.25)' },   // Blue (enhanced)
-  { stroke: '#9333EA', fill: 'rgba(147, 51, 234, 0.25)' },  // Violet (enhanced)
-  { stroke: '#EC4899', fill: 'rgba(236, 72, 153, 0.25)' },  // Pink
-  { stroke: '#14B8A6', fill: 'rgba(20, 184, 166, 0.25)' },  // Teal
-  { stroke: '#EA580C', fill: 'rgba(234, 88, 12, 0.25)' },   // Orange (enhanced)
-  { stroke: '#65A30D', fill: 'rgba(101, 163, 13, 0.25)' },  // Lime (enhanced)
-  { stroke: '#0891B2', fill: 'rgba(8, 145, 178, 0.25)' },   // Cyan (enhanced)
-  { stroke: '#9333EA', fill: 'rgba(147, 51, 234, 0.25)' },  // Purple (enhanced)
-];
+const { PLAYBACK_SPEEDS, MAX_HISTORY_SIZE } = ANNOTATION_CONSTANTS;
 
 // Utility function to format timestamps
 const formatTimestamp = (date: Date): string => {
@@ -1207,15 +1192,20 @@ const AnnotationEditor: React.FC = () => {
     const spectrogramHeight = containerHeight * 0.60;
     
     // INVARIANT COORDINATE TRANSFORMATION
-    // point.x is in Stage pixel coordinates (already correct relative to Stage content)
-    // Stage width = (spectrogramDimensions.width - FREQUENCY_SCALE_WIDTH) * zoomLevel
+    // point.x is already in the correct coordinate system because:
+    // - The Layer has offsetX={scrollOffset} which transforms the coordinate space
+    // - stage.getPointerPosition() returns coordinates in the transformed space
     const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-    const stageWidth = effectiveWidth * zoomLevel;
     
-    // For seeking: convert click position to timeline position (0 to 1)
-    // point.x is already the correct position on the Stage (no scroll offset needed)
-    const absoluteX = point.x; // Absolute position in the full zoomed Stage
-    const seekPosition = absoluteX / stageWidth; // Normalized position (0 to 1)
+    // Since the Layer already has offsetX applied, point.x is already in the content coordinate system
+    // The offsetX in the Layer means the content is shifted, and getPointerPosition accounts for this
+    const absoluteX = point.x; // point.x is already the absolute position in the full zoomed content
+    
+    // For seeking: The key insight is that at any zoom level:
+    // - The full content width when zoomed is: effectiveWidth * zoomLevel
+    // - absoluteX is the position within this zoomed content
+    // - To get normalized position (0 to 1), we divide by the full zoomed width
+    const seekPosition = absoluteX / (effectiveWidth * zoomLevel); // Normalized position (0 to 1)
     
     // For bounding boxes: convert to unzoomed world coordinates
     const worldX = absoluteX / zoomLevel;
@@ -1225,13 +1215,26 @@ const AnnotationEditor: React.FC = () => {
     const timelineHeight = containerHeight * 0.65; // Timeline starts at 65%
     if (point.y > timelineHeight) {
       // Handle waveform click for seeking
-      if (wavesurferRef.current && duration > 0) {
+      if (wavesurferRef.current && duration > 0 && !e.evt.shiftKey && !e.evt.ctrlKey) {
+        // Only seek if not holding shift or ctrl (which might be for panning)
         // Use the pre-calculated seekPosition which is invariant to zoom and scroll
         const clampedSeekPosition = Math.max(0, Math.min(1, seekPosition));
         wavesurferRef.current.seekTo(clampedSeekPosition);
         setCurrentTime(clampedSeekPosition * duration);
       }
-      // Don't return - allow dragging in waveform area
+      
+      // Enable panning when holding middle mouse button or shift+left mouse in waveform
+      if ((e.evt.button === 1) || (e.evt.button === 0 && e.evt.shiftKey)) {
+        setIsPanning(true);
+        setPanStartPos({
+          x: e.evt.clientX,
+          y: e.evt.clientY,
+          scrollX: unifiedScrollRef.current?.scrollLeft || 0,
+          scrollY: unifiedScrollRef.current?.scrollTop || 0,
+        });
+        return;
+      }
+      // Don't return - allow other interactions in waveform area
     }
     
     // Close context menu if open
@@ -1338,12 +1341,18 @@ const AnnotationEditor: React.FC = () => {
           wavesurferRef.current.seekTo(clampedSeekPosition);
           setCurrentTime(clampedSeekPosition * duration);
         }
-        
+
+        // Deselect all bounding boxes when clicking outside
+        if (selectedBoxes.size > 0 || selectedBox) {
+          setSelectedBoxes(new Set());
+          setSelectedBox(null);
+        }
+
         // Start panning for drag (both horizontal and vertical)
         if (unifiedScrollRef.current) {
           setIsPanning(true);
-          setPanStartPos({ 
-            x: e.evt.clientX, 
+          setPanStartPos({
+            x: e.evt.clientX,
             scrollX: unifiedScrollRef.current.scrollLeft,
             y: e.evt.clientY,
             scrollY: unifiedScrollRef.current.scrollTop
@@ -1374,11 +1383,12 @@ const AnnotationEditor: React.FC = () => {
     
     // INVARIANT COORDINATE TRANSFORMATION (same as handleMouseDown)
     const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-    const stageWidth = effectiveWidth * zoomLevel;
     
-    // For seeking: convert to timeline position (0 to 1)
+    // point.x is already in the content coordinate system (Layer has offsetX={scrollOffset})
     const absoluteX = point.x;
-    const seekPosition = absoluteX / stageWidth;
+    
+    // For seeking: normalize position (0 to 1) based on full zoomed width
+    const seekPosition = absoluteX / (effectiveWidth * zoomLevel);
     
     // For bounding boxes: convert to unzoomed world coordinates
     const worldX = absoluteX / zoomLevel;
@@ -2229,7 +2239,7 @@ const AnnotationEditor: React.FC = () => {
                     <div className="flex flex-col items-center justify-center w-full h-full bg-gray-50" style={{ left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`, width: `calc(100% - ${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px)` }}>
                       {isLoadingSpectrogram ? (
                         <>
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-4"></div>
+                          <LoadingSpinner size="sm" />
                           <p className="text-gray-600 mb-2">
                             {getSpectrogramStatusMessage() || 'Loading spectrogram...'}
                           </p>
@@ -2741,7 +2751,7 @@ const AnnotationEditor: React.FC = () => {
                 {(spectrogramStatus === 'processing' || spectrogramStatus === 'pending' || spectrogramStatus === 'timeout') && (
                   <div className="flex items-center space-x-2 ml-6">
                     {spectrogramStatus !== 'timeout' && (
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                      <LoadingSpinner size="sm" />
                     )}
                     <span className={`text-xs ${
                       spectrogramStatus === 'timeout' ? 'text-red-600' : 'text-blue-600'
