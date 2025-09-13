@@ -5,6 +5,7 @@ import { Project } from '../types';
 import { projectService } from '../services/api';
 import toast from 'react-hot-toast';
 import CreateProjectModal from '../components/CreateProjectModal';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const ProjectsPage: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -61,7 +62,7 @@ const ProjectsPage: React.FC = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <LoadingSpinner size="md" />
       </div>
     );
   }
