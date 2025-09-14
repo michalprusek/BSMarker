@@ -48,6 +48,7 @@ const AnnotationEditor: React.FC = () => {
   const [spectrogramUrl, setSpectrogramUrl] = useState<string>('');
   const [spectrogramStatus, setSpectrogramStatus] = useState<string>('not_started');
   const [spectrogramError, setSpectrogramError] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [spectrogramAvailable, setSpectrogramAvailable] = useState<boolean>(false);
   const [isLoadingSpectrogram, setIsLoadingSpectrogram] = useState<boolean>(false);
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
@@ -85,6 +86,7 @@ const AnnotationEditor: React.FC = () => {
   const [lastSavedState, setLastSavedState] = useState<BoundingBox[]>([]);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [visibleBoundingBoxes, setVisibleBoundingBoxes] = useState<BoundingBox[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [fps, setFps] = useState(0);
   const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null);
   const [isAutoSaving, setIsAutoSaving] = useState<boolean>(false);
@@ -94,6 +96,7 @@ const AnnotationEditor: React.FC = () => {
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [zoomOffset, setZoomOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [scrollOffset, setScrollOffset] = useState<number>(0);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [segmentDuration, setSegmentDuration] = useState<number | null>(null);
   const [customLabelInput, setCustomLabelInput] = useState<string>('');
   const [showCustomLabelInput, setShowCustomLabelInput] = useState<boolean>(false);
@@ -161,14 +164,14 @@ const AnnotationEditor: React.FC = () => {
 
   // Memoize coordinate transformations - horizontal zoom only
   const transformedBoxes = useMemo(() =>
-    visibleBoundingBoxes.map(box => ({
-      ...box,
-      screenX: box.x * zoomLevel,  // Position in zoomed canvas space
-      screenY: box.y,  // No vertical zoom - keep Y as-is
-      screenWidth: box.width * zoomLevel,
-      screenHeight: box.height,  // No vertical zoom - keep height as-is
-      color: getLabelColorMemoized(box.label || 'None')
-    })),
+    visibleBoundingBoxes.map(box => {
+      const screenCoords = CoordinateUtils.transformBoxToScreen(box, zoomLevel);
+      return {
+        ...box,
+        ...screenCoords,
+        color: getLabelColorMemoized(box.label || 'None')
+      };
+    }),
     [visibleBoundingBoxes, zoomLevel, getLabelColorMemoized]
   );
 
@@ -507,7 +510,7 @@ const AnnotationEditor: React.FC = () => {
           if (waveformRef.current) {
             waveformRef.current.style.height = `${waveformHeight}px`;
             // Set container width to match spectrogram exactly
-            const zoomedWidth = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel;
+            const zoomedWidth = CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel);
             waveformRef.current.style.width = `${zoomedWidth}px`;
           }
           
@@ -1197,11 +1200,12 @@ const AnnotationEditor: React.FC = () => {
     // point.x is in Stage coordinates (0,0 is top-left of Stage, not document)
     // Stage itself is positioned at left: FREQUENCY_SCALE_WIDTH
     // Stage width is (spectrogramDimensions.width - FREQUENCY_SCALE_WIDTH) * zoomLevel
-    const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+    const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
 
     // The Layer now has offsetX={scrollOffset} which shifts the coordinate system
     // point.x is already in the correct absolute position because Layer handles the offset
-    const absoluteX = point.x + scrollOffset;
+    const absolutePosition = CoordinateUtils.getAbsoluteScreenPosition(point, scrollOffset);
+    const absoluteX = absolutePosition.x;
 
     // Debug logging
     console.log('Mouse click debug:', {
@@ -1210,20 +1214,20 @@ const AnnotationEditor: React.FC = () => {
       'absoluteX': absoluteX,
       'zoomLevel': zoomLevel,
       'effectiveWidth': effectiveWidth,
-      'stageWidth': (effectiveWidth * zoomLevel),
-      'worldX': absoluteX / zoomLevel
+      'stageWidth': CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel),
+      'worldX': CoordinateUtils.screenToWorldCoordinates(absoluteX, zoomLevel)
     });
 
     // For seeking: The key insight is that at any zoom level:
     // - The full content width when zoomed is: effectiveWidth * zoomLevel
     // - absoluteX is the position within this zoomed content (including scroll)
     // - To get normalized position (0 to 1), we divide by the full zoomed width
-    const seekPosition = absoluteX / (effectiveWidth * zoomLevel); // Normalized position (0 to 1)
+    const seekPosition = CoordinateUtils.getSeekPosition(absoluteX, effectiveWidth, zoomLevel); // Normalized position (0 to 1)
 
     // For bounding boxes: convert to unzoomed world coordinates
     // IMPORTANT: Constrain worldX to valid range when zoomed
-    const maxWorldX = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) - 1;
-    const worldX = Math.min(maxWorldX, absoluteX / zoomLevel);
+    const maxWorldX = CoordinateUtils.getMaxWorldX(spectrogramDimensions);
+    const worldX = Math.min(maxWorldX, CoordinateUtils.screenToWorldCoordinates(absoluteX, zoomLevel));
     const pos = { x: worldX, y: point.y }; // Used for bounding box operations
     
     // Check if clicking in waveform area (starts after spectrogram at 65%)
@@ -1397,18 +1401,19 @@ const AnnotationEditor: React.FC = () => {
     const spectrogramHeight = containerHeight * 0.60;
     
     // CORRECT COORDINATE TRANSFORMATION (same as handleMouseDown)
-    const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+    const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
 
     // The Layer has offsetX={scrollOffset}, so point.x includes the scroll adjustment
-    const absoluteX = point.x + scrollOffset;
+    const absolutePosition = CoordinateUtils.getAbsoluteScreenPosition(point, scrollOffset);
+    const absoluteX = absolutePosition.x;
 
     // For seeking: normalize position (0 to 1) based on full zoomed width
-    const seekPosition = absoluteX / (effectiveWidth * zoomLevel);
+    const seekPosition = CoordinateUtils.getSeekPosition(absoluteX, effectiveWidth, zoomLevel);
 
     // For bounding boxes: convert to unzoomed world coordinates
     // IMPORTANT: Constrain worldX to valid range when zoomed
-    const maxWorldX = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) - 1;
-    const worldX = Math.min(maxWorldX, absoluteX / zoomLevel);
+    const maxWorldX = CoordinateUtils.getMaxWorldX(spectrogramDimensions);
+    const worldX = Math.min(maxWorldX, CoordinateUtils.screenToWorldCoordinates(absoluteX, zoomLevel));
     const pos = { x: worldX, y: point.y };
     setMousePosition(pos);
     
@@ -1490,7 +1495,7 @@ const AnnotationEditor: React.FC = () => {
       const constrainedY = Math.min(pos.y, maxY);
 
       // Additional constraint for x position to ensure it doesn't exceed max boundaries during resize
-      const maxWorldX = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) - 1;
+      const maxWorldX = CoordinateUtils.getMaxWorldX(spectrogramDimensions);
       const constrainedX = Math.min(pos.x, maxWorldX);
 
       switch (resizingBox.handle) {
@@ -1588,7 +1593,7 @@ const AnnotationEditor: React.FC = () => {
       const constrainedY = Math.min(pos.y, maxY);
 
       // Ensure drawing width is constrained to max boundary (pos.x is already constrained but ensure drawing box width doesn't exceed)
-      const maxWorldX = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) - 1;
+      const maxWorldX = CoordinateUtils.getMaxWorldX(spectrogramDimensions);
       const constrainedWidth = Math.min(pos.x - drawingBox.x, maxWorldX - drawingBox.x);
 
       setDrawingBox({
@@ -1704,8 +1709,9 @@ const AnnotationEditor: React.FC = () => {
     const point = stage.getPointerPosition();
     
     // The Layer has offsetX={scrollOffset}, so point.x includes the scroll adjustment
-    const absoluteX = point.x + scrollOffset;
-    const adjustedX = absoluteX / zoomLevel; // Convert to unzoomed world coordinates
+    const absolutePosition = CoordinateUtils.getAbsoluteScreenPosition(point, scrollOffset);
+    const absoluteX = absolutePosition.x;
+    const adjustedX = CoordinateUtils.screenToWorldCoordinates(absoluteX, zoomLevel); // Convert to unzoomed world coordinates
     const adjustedY = point.y;
     
     // Check if right-clicking on a box
@@ -1844,14 +1850,16 @@ const AnnotationEditor: React.FC = () => {
         
         // Get cursor position relative to spectrogram container
         const cursorX = event.clientX - rect.left - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-        const cursorY = event.clientY - rect.top;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const cursorY = event.clientY - rect.top;
         
         // Calculate world coordinates at cursor position (horizontal only)
         const worldX = (cursorX + zoomOffset.x) / zoomLevel;
         
         // Calculate new offset to keep cursor position fixed (horizontal only)
         const newOffsetX = Math.max(0, worldX * newZoom - cursorX);
-        const newOffsetY = 0;  // No vertical zoom/offset
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const newOffsetY = 0;  // No vertical zoom/offset
         
         // Apply zoom and offset
         setZoomLevel(newZoom);
@@ -2248,7 +2256,7 @@ const AnnotationEditor: React.FC = () => {
                 ref={canvasContainerRef}
                 className="relative"
                 style={{
-                  width: `${(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel + LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,
+                  width: `${CoordinateUtils.getZoomedContainerWidth(spectrogramDimensions.width, zoomLevel)}px`,
                   height: '100%'
                 }}
               >
@@ -2276,7 +2284,7 @@ const AnnotationEditor: React.FC = () => {
                       style={{ 
                         top: '0',
                         left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Offset for frequency scale
-                        width: `${(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,
+                        width: `${CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)}px`,
                         height: '100%',
                         objectFit: 'fill',  // Stretch to fill the exact space
                         pointerEvents: 'none',
@@ -2345,7 +2353,7 @@ const AnnotationEditor: React.FC = () => {
                     }}
                   >
                     <svg 
-                      width={(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel} 
+                      width={CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)} 
                       height="100%"
                       className="absolute"
                       style={{ 
@@ -2355,7 +2363,7 @@ const AnnotationEditor: React.FC = () => {
                     >
                       {duration > 0 && (() => {
                         const ticks = [];
-                        const totalWidth = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel;
+                        const totalWidth = CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel);
                         const containerHeight = Math.max(48, spectrogramDimensions.height * 0.08);
                         
                         // Use consistent interval calculation
@@ -2417,7 +2425,7 @@ const AnnotationEditor: React.FC = () => {
                     id="waveform-container"
                     className="absolute inset-0"
                     style={{ 
-                      width: `${(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,  // Sync width with zoom
+                      width: `${CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)}px`,  // Sync width with zoom
                       height: '100%',
                       position: 'absolute',
                       top: 0,
@@ -2432,7 +2440,7 @@ const AnnotationEditor: React.FC = () => {
                     className="absolute top-0 pointer-events-none"
                     style={{ 
                       left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Align with waveform
-                      width: `${(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,  // Use consistent width calculation
+                      width: `${CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)}px`,  // Use consistent width calculation
                       height: '100%',
                       transform: `translateX(-${scrollOffset}px)`  // Apply same scroll offset as spectrogram
                     }}
@@ -2521,7 +2529,7 @@ const AnnotationEditor: React.FC = () => {
 
               {/* Optimized Canvas for annotations and cursor - moved inside scroll container */}
               <Stage
-                width={(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}  // Full zoomed width for proper event handling
+                width={CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)}  // Full zoomed width for proper event handling
                 height={spectrogramDimensions.height}  // Full height to include waveform
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
@@ -2763,9 +2771,9 @@ const AnnotationEditor: React.FC = () => {
                     {duration > 0 && (
                       <Line
                         points={[
-                          (currentTime / duration) * (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel,
+                          CoordinateUtils.getTimelineCursorPosition(currentTime, duration, spectrogramDimensions, zoomLevel),
                           0,
-                          (currentTime / duration) * (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel,
+                          CoordinateUtils.getTimelineCursorPosition(currentTime, duration, spectrogramDimensions, zoomLevel),
                           spectrogramDimensions.height  // Fixed height - no vertical zoom
                         ]}
                         stroke="#EF4444"
