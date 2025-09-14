@@ -967,14 +967,15 @@ const AnnotationEditor: React.FC = () => {
   // Helper function to constrain box within boundaries
   const constrainBox = (box: BoundingBox): BoundingBox => {
     const nyquistFreq = getNyquistFrequency();
-    
+
     // Use centralized coordinate utilities for consistent constraint handling
+    // NOTE: coordinates here are in world space (unzoomed), so use zoom level 1
     const constrained = CoordinateUtils.constrainBoundingBox(
       box,
       spectrogramDimensions.width,
       spectrogramDimensions.height,
       true, // Account for frequency scale
-      zoomLevel // Pass current zoom level for proper boundary calculation
+      1 // World coordinates are unzoomed, so zoom level is 1
     );
     
     // Convert pixel coordinates to time/frequency using centralized utilities
@@ -1220,7 +1221,9 @@ const AnnotationEditor: React.FC = () => {
     const seekPosition = absoluteX / (effectiveWidth * zoomLevel); // Normalized position (0 to 1)
 
     // For bounding boxes: convert to unzoomed world coordinates
-    const worldX = absoluteX / zoomLevel;
+    // IMPORTANT: Constrain worldX to valid range when zoomed
+    const maxWorldX = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) - 1;
+    const worldX = Math.min(maxWorldX, absoluteX / zoomLevel);
     const pos = { x: worldX, y: point.y }; // Used for bounding box operations
     
     // Check if clicking in waveform area (starts after spectrogram at 65%)
@@ -1232,7 +1235,7 @@ const AnnotationEditor: React.FC = () => {
         // Use the pre-calculated seekPosition which is invariant to zoom and scroll
         const clampedSeekPosition = Math.max(0, Math.min(1, seekPosition));
         wavesurferRef.current.seekTo(clampedSeekPosition);
-        setCurrentTime(clampedSeekPosition * duration);
+        // Don't set currentTime manually - let WaveSurfer's 'interaction' event handle it
       }
       
       // Enable panning when holding middle mouse button or shift+left mouse in waveform
@@ -1403,7 +1406,9 @@ const AnnotationEditor: React.FC = () => {
     const seekPosition = absoluteX / (effectiveWidth * zoomLevel);
 
     // For bounding boxes: convert to unzoomed world coordinates
-    const worldX = absoluteX / zoomLevel;
+    // IMPORTANT: Constrain worldX to valid range when zoomed
+    const maxWorldX = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) - 1;
+    const worldX = Math.min(maxWorldX, absoluteX / zoomLevel);
     const pos = { x: worldX, y: point.y };
     setMousePosition(pos);
     
@@ -1425,7 +1430,7 @@ const AnnotationEditor: React.FC = () => {
         // Use the pre-calculated seekPosition which is invariant to zoom and scroll
         const clampedSeekPosition = Math.max(0, Math.min(1, seekPosition));
         wavesurferRef.current.seekTo(clampedSeekPosition);
-        setCurrentTime(clampedSeekPosition * duration);
+        // Don't set currentTime manually - let WaveSurfer's 'interaction' event handle it
       }
       return;
     }
@@ -1479,30 +1484,34 @@ const AnnotationEditor: React.FC = () => {
       const box = boundingBoxes[resizingBox.index];
       const newBox = { ...box };
       const minSize = 2;
-      
+
       // Constrain y position to spectrogram area (display coordinates)
       const maxY = spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO; // Use layout constant for spectrogram height
       const constrainedY = Math.min(pos.y, maxY);
-      
+
+      // Additional constraint for x position to ensure it doesn't exceed max boundaries during resize
+      const maxWorldX = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) - 1;
+      const constrainedX = Math.min(pos.x, maxWorldX);
+
       switch (resizingBox.handle) {
         case 'nw':
-          newBox.width = Math.max(minSize, box.x + box.width - pos.x);
+          newBox.width = Math.max(minSize, box.x + box.width - constrainedX);
           newBox.height = Math.max(minSize, box.y + box.height - constrainedY);
-          newBox.x = Math.min(pos.x, box.x + box.width - minSize);
+          newBox.x = Math.min(constrainedX, box.x + box.width - minSize);
           newBox.y = Math.min(constrainedY, box.y + box.height - minSize);
           break;
         case 'ne':
-          newBox.width = Math.max(minSize, pos.x - box.x);
+          newBox.width = Math.max(minSize, constrainedX - box.x);
           newBox.height = Math.max(minSize, box.y + box.height - constrainedY);
           newBox.y = Math.min(constrainedY, box.y + box.height - minSize);
           break;
         case 'sw':
-          newBox.width = Math.max(minSize, box.x + box.width - pos.x);
+          newBox.width = Math.max(minSize, box.x + box.width - constrainedX);
           newBox.height = Math.max(minSize, constrainedY - box.y);
-          newBox.x = Math.min(pos.x, box.x + box.width - minSize);
+          newBox.x = Math.min(constrainedX, box.x + box.width - minSize);
           break;
         case 'se':
-          newBox.width = Math.max(minSize, pos.x - box.x);
+          newBox.width = Math.max(minSize, constrainedX - box.x);
           newBox.height = Math.max(minSize, constrainedY - box.y);
           break;
       }
@@ -1577,9 +1586,14 @@ const AnnotationEditor: React.FC = () => {
     if (isDrawing && drawingBox) {
       const maxY = spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;  // Use layout constant for spectrogram height (display coordinates)
       const constrainedY = Math.min(pos.y, maxY);
+
+      // Ensure drawing width is constrained to max boundary (pos.x is already constrained but ensure drawing box width doesn't exceed)
+      const maxWorldX = (spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) - 1;
+      const constrainedWidth = Math.min(pos.x - drawingBox.x, maxWorldX - drawingBox.x);
+
       setDrawingBox({
         ...drawingBox,
-        width: pos.x - drawingBox.x,
+        width: constrainedWidth,
         height: constrainedY - drawingBox.y,
       });
       return;
