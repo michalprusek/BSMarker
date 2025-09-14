@@ -1199,25 +1199,26 @@ const AnnotationEditor: React.FC = () => {
     const spectrogramHeight = containerHeight * 0.60;
     
     // Use centralized coordinate transformation hook
-    const { absoluteX, seekPosition, pos } = transformMousePoint(point);
+    const { absoluteX, seekPosition, pos, worldX } = transformMousePoint(point);
 
-    // Update timeline cursor position when clicking in spectrogram
-    setTimelineCursorPosition(absoluteX);
+    // Update timeline cursor position using world coordinates (unzoomed)
+    // This ensures consistency with WaveSurfer events which also use unzoomed coordinates
+    setTimelineCursorPosition(worldX);
     
     // Check if clicking in waveform area (starts after spectrogram at 65%)
     const timelineHeight = containerHeight * 0.65; // Timeline starts at 65%
     if (point.y > timelineHeight) {
       // Handle waveform click for seeking
-      if (wavesurferRef.current && duration > 0 && !e.evt.shiftKey && !e.evt.ctrlKey) {
-        // Only seek if not holding shift or ctrl (which might be for panning)
+      if (wavesurferRef.current && duration > 0 && !e.evt.shiftKey && !e.evt.ctrlKey && e.evt.button === 0) {
+        // Only seek on left click if not holding shift or ctrl (which might be for panning)
         // Use the pre-calculated seekPosition which is invariant to zoom and scroll
         const clampedSeekPosition = clampSeekPosition(seekPosition);
         wavesurferRef.current.seekTo(clampedSeekPosition);
         // Don't set currentTime manually - let WaveSurfer's 'interaction' event handle it
       }
-      
-      // Enable panning when holding middle mouse button or shift+left mouse in waveform
-      if ((e.evt.button === 1) || (e.evt.button === 0 && e.evt.shiftKey)) {
+
+      // Enable panning in waveform area (same as spectrogram area for consistency)
+      if (e.evt.button === 1 || (e.evt.button === 0 && (e.evt.shiftKey || e.evt.ctrlKey))) {
         setIsPanning(true);
         setPanStartPos({
           x: e.evt.clientX,
@@ -1227,7 +1228,7 @@ const AnnotationEditor: React.FC = () => {
         });
         return;
       }
-      // Don't return - allow other interactions in waveform area
+      return; // Return after handling waveform interactions
     }
     
     // Close context menu if open
@@ -1325,10 +1326,10 @@ const AnnotationEditor: React.FC = () => {
         return;
       }
       
-      // If not shift/ctrl clicking, start panning or click-to-seek
+      // If not shift/ctrl clicking, handle click-to-seek or start panning
       if (!e.evt.shiftKey && !e.evt.ctrlKey && !e.evt.metaKey) {
-        // Single click to seek in spectrogram
-        if (wavesurferRef.current && duration > 0) {
+        // Single left click to seek in spectrogram
+        if (e.evt.button === 0 && wavesurferRef.current && duration > 0) {
           // Use the pre-calculated seekPosition from above (invariant to zoom and scroll)
           const clampedSeekPosition = clampSeekPosition(seekPosition);
           wavesurferRef.current.seekTo(clampedSeekPosition);
@@ -1341,16 +1342,18 @@ const AnnotationEditor: React.FC = () => {
           setSelectedBox(null);
         }
 
-        // Start panning for drag (both horizontal and vertical)
-        if (unifiedScrollRef.current) {
-          setIsPanning(true);
-          setPanStartPos({
-            x: e.evt.clientX,
-            scrollX: unifiedScrollRef.current.scrollLeft,
-            y: e.evt.clientY,
-            scrollY: unifiedScrollRef.current.scrollTop
-          });
-          e.evt.preventDefault();
+        // Start panning for middle mouse button or when dragging with left button
+        if (e.evt.button === 1 || e.evt.button === 0) {
+          if (unifiedScrollRef.current) {
+            setIsPanning(true);
+            setPanStartPos({
+              x: e.evt.clientX,
+              scrollX: unifiedScrollRef.current.scrollLeft,
+              y: e.evt.clientY,
+              scrollY: unifiedScrollRef.current.scrollTop
+            });
+            e.evt.preventDefault();
+          }
         }
       } else {
         // Start selection rectangle for shift/ctrl
@@ -1375,8 +1378,13 @@ const AnnotationEditor: React.FC = () => {
     const spectrogramHeight = containerHeight * 0.60;
     
     // Use centralized coordinate transformation hook (same as handleMouseDown)
-    const { seekPosition, pos } = transformMousePoint(point);
+    const { seekPosition, pos, worldX } = transformMousePoint(point);
     setMousePosition(pos);
+
+    // Update timeline cursor position during mouse move (using world coordinates for consistency)
+    if (!isPanning && !draggingBox && !resizingBox && !isDrawing && !isSelecting) {
+      setTimelineCursorPosition(worldX);
+    }
     
     // Handle panning for both horizontal and vertical
     if (isPanning && panStartPos && unifiedScrollRef.current) {
