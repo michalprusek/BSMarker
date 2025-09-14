@@ -24,6 +24,7 @@ const ProjectDetailPage: React.FC = () => {
   const [maxDuration, setMaxDuration] = useState('');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [annotationStatus, setAnnotationStatus] = useState<'all' | 'annotated' | 'unannotated'>('all');
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -37,6 +38,7 @@ const ProjectDetailPage: React.FC = () => {
       if (searchTerm) params.search = searchTerm;
       if (minDuration) params.min_duration = parseFloat(minDuration);
       if (maxDuration) params.max_duration = parseFloat(maxDuration);
+      if (annotationStatus !== 'all') params.annotation_status = annotationStatus;
       params.sort_by = sortBy;
       params.sort_order = sortOrder;
       
@@ -47,7 +49,7 @@ const ProjectDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [projectId, searchTerm, minDuration, maxDuration, sortBy, sortOrder]);
+  }, [projectId, searchTerm, minDuration, maxDuration, annotationStatus, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchProjectData();
@@ -467,7 +469,19 @@ const ProjectDetailPage: React.FC = () => {
         </div>
         
         {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-5 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Annotation Status</label>
+              <select
+                value={annotationStatus}
+                onChange={(e) => setAnnotationStatus(e.target.value as 'all' | 'annotated' | 'unannotated')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Recordings</option>
+                <option value="annotated">Annotated Only</option>
+                <option value="unannotated">Unannotated Only</option>
+              </select>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Min Duration (s)</label>
               <input

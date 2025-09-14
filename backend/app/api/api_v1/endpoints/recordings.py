@@ -18,8 +18,10 @@ from app.models.recording import Recording
 from app.models.spectrogram import Spectrogram, SpectrogramStatus
 from app.models.user import User
 from app.schemas.recording import Recording as RecordingSchema
+from app.schemas.pagination import PaginatedResponse, PaginationMetadata, PaginationParams
 from app.services.audio_service import audio_service
 from app.services.minio_client import minio_client
+from app.services.cache_service import cache_service
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_
@@ -202,22 +204,28 @@ async def upload_recording(
         )
         # Don't fail the upload if task queueing fails
 
+    # Invalidate cache for this project
+    cache_service.invalidate_project_recordings(project_id)
+
     total_time = time.time() - upload_start_time
     logger.info(f"Upload completed for {file.filename} - Total time: {total_time:.2f}s")
     return recording
 
 
-@router.get("/{project_id}/recordings", response_model=List[RecordingSchema])
+@router.get("/{project_id}/recordings", response_model=PaginatedResponse[RecordingSchema])
 @limiter.limit(RATE_LIMITS["crud_read"])
 def read_recordings(
     request: Request,
     project_id: int,
     db: Session = Depends(deps.get_db),
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 50,
     search: Optional[str] = Query(None, description="Search in filename"),
     min_duration: Optional[float] = Query(None, description="Minimum duration in seconds"),
     max_duration: Optional[float] = Query(None, description="Maximum duration in seconds"),
+    annotation_status: Optional[str] = Query(
+        None, description="Filter by annotation status: annotated, unannotated"
+    ),
     sort_by: Optional[str] = Query(
         "created_at", description="Sort field: created_at, filename, duration"
     ),
@@ -229,6 +237,23 @@ def read_recordings(
         raise HTTPException(status_code=404, detail="Project not found")
     if not current_user.is_admin and project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    # Try to get from cache first
+    cached_data = cache_service.get_project_recordings(
+        project_id=project_id,
+        skip=skip,
+        limit=limit,
+        search=search,
+        min_duration=min_duration,
+        max_duration=max_duration,
+        annotation_status=annotation_status,
+        sort_by=sort_by,
+        sort_order=sort_order
+    )
+
+    if cached_data:
+        logger.info(f"Cache hit for project {project_id} recordings")
+        return PaginatedResponse(**cached_data)
 
     # Build query with annotation count
     query = (
@@ -253,6 +278,12 @@ def read_recordings(
     if max_duration is not None:
         query = query.filter(Recording.duration <= max_duration)
 
+    # Apply annotation status filter
+    if annotation_status == "annotated":
+        query = query.having(func.count(Annotation.id) > 0)
+    elif annotation_status == "unannotated":
+        query = query.having(func.count(Annotation.id) == 0)
+
     # Apply sorting
     if sort_by == "filename":
         order_field = Recording.original_filename
@@ -265,6 +296,10 @@ def read_recordings(
         query = query.order_by(order_field.asc())
     else:
         query = query.order_by(order_field.desc())
+
+    # Get total count before pagination
+    count_query = query.with_entities(func.count(Recording.id))
+    total_count = count_query.scalar() or 0
 
     # Execute query and build response
     results = query.offset(skip).limit(limit).all()
@@ -285,7 +320,40 @@ def read_recordings(
         }
         recordings_with_counts.append(RecordingSchema.model_validate(recording_dict))
 
-    return recordings_with_counts
+    # Calculate pagination metadata
+    total_pages = (total_count + limit - 1) // limit if limit > 0 else 0
+    current_page = (skip // limit) + 1 if limit > 0 else 1
+
+    pagination_metadata = PaginationMetadata(
+        total=total_count,
+        page=current_page,
+        page_size=limit,
+        total_pages=total_pages,
+        has_next=current_page < total_pages,
+        has_prev=current_page > 1,
+    )
+
+    response = PaginatedResponse(
+        items=recordings_with_counts,
+        pagination=pagination_metadata
+    )
+
+    # Cache the response
+    cache_service.set_project_recordings(
+        project_id=project_id,
+        skip=skip,
+        limit=limit,
+        data=response.model_dump(),
+        search=search,
+        min_duration=min_duration,
+        max_duration=max_duration,
+        annotation_status=annotation_status,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        ttl=300  # Cache for 5 minutes
+    )
+
+    return response
 
 
 @router.get("/{recording_id}", response_model=RecordingSchema)
@@ -329,6 +397,11 @@ def delete_recording(
 
     db.delete(recording)
     db.commit()
+
+    # Invalidate cache
+    cache_service.invalidate_project_recordings(project.id)
+    cache_service.invalidate_recording(recording_id)
+
     return {"message": "Recording deleted successfully"}
 
 
