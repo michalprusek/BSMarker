@@ -926,7 +926,7 @@ const AnnotationEditor: React.FC = () => {
         const seekSpeed = direction === 'backward' ? -0.5 : 0.5; // Seek by 0.5 second increments
         const newTime = Math.max(0, Math.min(duration, currentTime + seekSpeed));
         wavesurferRef.current.seekTo(newTime / duration);
-        setCurrentTime(newTime);
+        // Don't set currentTime manually - let WaveSurfer's 'seek' event handle it
       }
     };
     
@@ -1354,7 +1354,7 @@ const AnnotationEditor: React.FC = () => {
           // Use the pre-calculated seekPosition from above (invariant to zoom and scroll)
           const clampedSeekPosition = Math.max(0, Math.min(1, seekPosition));
           wavesurferRef.current.seekTo(clampedSeekPosition);
-          setCurrentTime(clampedSeekPosition * duration);
+          // Don't set currentTime manually - let WaveSurfer's 'interaction' event handle it
         }
 
         // Deselect all bounding boxes when clicking outside
