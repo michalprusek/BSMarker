@@ -98,6 +98,7 @@ const AnnotationEditor: React.FC = () => {
   const [scrollOffset, setScrollOffset] = useState<number>(0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [segmentDuration, setSegmentDuration] = useState<number | null>(null);
+  const [timelineCursorPosition, setTimelineCursorPosition] = useState<number>(0);
   const [customLabelInput, setCustomLabelInput] = useState<string>('');
   const [showCustomLabelInput, setShowCustomLabelInput] = useState<boolean>(false);
   const [lastClickTime, setLastClickTime] = useState<number>(0);
@@ -873,11 +874,19 @@ const AnnotationEditor: React.FC = () => {
     wavesurfer.on('audioprocess', () => {
       const time = wavesurfer.getCurrentTime();
       setCurrentTime(time);
+      // Update timeline cursor position during playback
+      const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+      const position = (time / wavesurfer.getDuration()) * effectiveWidth;
+      setTimelineCursorPosition(position);
     });
 
     wavesurfer.on('interaction', () => {
       const time = wavesurfer.getCurrentTime();
       setCurrentTime(time);
+      // Update timeline cursor position on interaction
+      const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+      const position = (time / wavesurfer.getDuration()) * effectiveWidth;
+      setTimelineCursorPosition(position);
     });
 
     wavesurfer.on('play', () => {
@@ -1223,6 +1232,9 @@ const AnnotationEditor: React.FC = () => {
     // - absoluteX is the position within this zoomed content (including scroll)
     // - To get normalized position (0 to 1), we divide by the full zoomed width
     const seekPosition = CoordinateUtils.getSeekPosition(absoluteX, effectiveWidth, zoomLevel); // Normalized position (0 to 1)
+
+    // Update timeline cursor position when clicking in spectrogram
+    setTimelineCursorPosition(absoluteX);
 
     // For bounding boxes: convert to unzoomed world coordinates
     // IMPORTANT: Constrain worldX to valid range when zoomed
@@ -2771,9 +2783,9 @@ const AnnotationEditor: React.FC = () => {
                     {duration > 0 && (
                       <Line
                         points={[
-                          CoordinateUtils.getTimelineCursorPosition(currentTime, duration, spectrogramDimensions, zoomLevel),
+                          timelineCursorPosition * zoomLevel,
                           0,
-                          CoordinateUtils.getTimelineCursorPosition(currentTime, duration, spectrogramDimensions, zoomLevel),
+                          timelineCursorPosition * zoomLevel,
                           spectrogramDimensions.height  // Fixed height - no vertical zoom
                         ]}
                         stroke="#EF4444"
