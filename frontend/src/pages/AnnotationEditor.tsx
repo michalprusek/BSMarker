@@ -14,6 +14,8 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { CoordinateUtils, LAYOUT_CONSTANTS } from '../utils/coordinates';
 import { AXIS_STYLES, formatTimeLabel, getTimeTickInterval } from '../utils/axisStyles';
 import { useAutosave } from '../hooks/useAutosave';
+import { useMouseCoordinates } from '../hooks/useMouseCoordinates';
+import { useBoundingBoxTimeFrequency } from '../hooks/useBoundingBoxTimeFrequency';
 import { ANNOTATION_CONSTANTS, LABEL_COLORS } from '../utils/constants';
 // import { useSpectrogramZoom } from '../hooks/useSpectrogramZoom'; // Unused - replaced with custom throttled zoom
 import { throttle } from 'lodash';
@@ -150,6 +152,25 @@ const AnnotationEditor: React.FC = () => {
     });
     setVisibleBoundingBoxes(visible);
   }, [boundingBoxes, calculateVisibleBounds]);
+
+  // Get Nyquist frequency (sample_rate / 2) or fallback to 22050 Hz
+  const getNyquistFrequency = useCallback(() => {
+    return recording?.sample_rate ? recording.sample_rate / 2 : 22050;
+  }, [recording?.sample_rate]);
+
+  // Initialize custom hooks for coordinate transformations and time/frequency conversions
+  const { transformMousePoint, clampSeekPosition, getMaxWorldX } = useMouseCoordinates(
+    spectrogramDimensions,
+    scrollOffset,
+    zoomLevel
+  );
+
+  const { convertBoxToTimeFrequency, convertNormalizedBoxToTimeFrequency, getMaxSpectrogramY } =
+    useBoundingBoxTimeFrequency(
+      spectrogramDimensions,
+      duration,
+      getNyquistFrequency
+    );
 
   // Memoize color calculations for performance
   const getLabelColorMemoized = useMemo(() => {
@@ -971,15 +992,8 @@ const AnnotationEditor: React.FC = () => {
     setIsAnnotationMode(!isAnnotationMode);
   };
 
-  // Get Nyquist frequency (sample_rate / 2) or fallback to 22050 Hz
-  const getNyquistFrequency = () => {
-    return recording?.sample_rate ? recording.sample_rate / 2 : 22050;
-  };
-  
   // Helper function to constrain box within boundaries
   const constrainBox = (box: BoundingBox): BoundingBox => {
-    const nyquistFreq = getNyquistFrequency();
-
     // Use centralized coordinate utilities for consistent constraint handling
     // NOTE: coordinates here are in world space (unzoomed), so use zoom level 1
     const constrained = CoordinateUtils.constrainBoundingBox(
@@ -989,38 +1003,17 @@ const AnnotationEditor: React.FC = () => {
       true, // Account for frequency scale
       1 // World coordinates are unzoomed, so zoom level is 1
     );
-    
-    // Convert pixel coordinates to time/frequency using centralized utilities
+
+    // Use centralized conversion hook for time/frequency
+    const timeFrequency = convertBoxToTimeFrequency(constrained);
+
     return {
       ...box,
       x: constrained.x,
       y: constrained.y,
       width: constrained.width,
       height: constrained.height,
-      start_time: duration ? CoordinateUtils.pixelToTime(
-        constrained.x,
-        duration,
-        spectrogramDimensions.width,
-        1,
-        false // x is already relative to content area
-      ) : 0,
-      end_time: duration ? CoordinateUtils.pixelToTime(
-        constrained.x + constrained.width,
-        duration,
-        spectrogramDimensions.width,
-        1,
-        false // x is already relative to content area
-      ) : 0,
-      max_frequency: CoordinateUtils.pixelToFrequency(
-        constrained.y,
-        nyquistFreq,
-        spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO
-      ),
-      min_frequency: CoordinateUtils.pixelToFrequency(
-        constrained.y + constrained.height,
-        nyquistFreq,
-        spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO
-      ),
+      ...timeFrequency
     };
   };
 
@@ -1205,42 +1198,11 @@ const AnnotationEditor: React.FC = () => {
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.60;
     
-    // CORRECT COORDINATE TRANSFORMATION
-    // point.x is in Stage coordinates (0,0 is top-left of Stage, not document)
-    // Stage itself is positioned at left: FREQUENCY_SCALE_WIDTH
-    // Stage width is (spectrogramDimensions.width - FREQUENCY_SCALE_WIDTH) * zoomLevel
-    const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
-
-    // The Layer now has offsetX={scrollOffset} which shifts the coordinate system
-    // point.x is already in the correct absolute position because Layer handles the offset
-    const absolutePosition = CoordinateUtils.getAbsoluteScreenPosition(point, scrollOffset);
-    const absoluteX = absolutePosition.x;
-
-    // Debug logging
-    console.log('Mouse click debug:', {
-      'point.x': point.x,
-      'scrollOffset': scrollOffset,
-      'absoluteX': absoluteX,
-      'zoomLevel': zoomLevel,
-      'effectiveWidth': effectiveWidth,
-      'stageWidth': CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel),
-      'worldX': CoordinateUtils.screenToWorldCoordinates(absoluteX, zoomLevel)
-    });
-
-    // For seeking: The key insight is that at any zoom level:
-    // - The full content width when zoomed is: effectiveWidth * zoomLevel
-    // - absoluteX is the position within this zoomed content (including scroll)
-    // - To get normalized position (0 to 1), we divide by the full zoomed width
-    const seekPosition = CoordinateUtils.getSeekPosition(absoluteX, effectiveWidth, zoomLevel); // Normalized position (0 to 1)
+    // Use centralized coordinate transformation hook
+    const { absoluteX, seekPosition, pos } = transformMousePoint(point);
 
     // Update timeline cursor position when clicking in spectrogram
     setTimelineCursorPosition(absoluteX);
-
-    // For bounding boxes: convert to unzoomed world coordinates
-    // IMPORTANT: Constrain worldX to valid range when zoomed
-    const maxWorldX = CoordinateUtils.getMaxWorldX(spectrogramDimensions);
-    const worldX = Math.min(maxWorldX, CoordinateUtils.screenToWorldCoordinates(absoluteX, zoomLevel));
-    const pos = { x: worldX, y: point.y }; // Used for bounding box operations
     
     // Check if clicking in waveform area (starts after spectrogram at 65%)
     const timelineHeight = containerHeight * 0.65; // Timeline starts at 65%
@@ -1249,7 +1211,7 @@ const AnnotationEditor: React.FC = () => {
       if (wavesurferRef.current && duration > 0 && !e.evt.shiftKey && !e.evt.ctrlKey) {
         // Only seek if not holding shift or ctrl (which might be for panning)
         // Use the pre-calculated seekPosition which is invariant to zoom and scroll
-        const clampedSeekPosition = Math.max(0, Math.min(1, seekPosition));
+        const clampedSeekPosition = clampSeekPosition(seekPosition);
         wavesurferRef.current.seekTo(clampedSeekPosition);
         // Don't set currentTime manually - let WaveSurfer's 'interaction' event handle it
       }
@@ -1368,7 +1330,7 @@ const AnnotationEditor: React.FC = () => {
         // Single click to seek in spectrogram
         if (wavesurferRef.current && duration > 0) {
           // Use the pre-calculated seekPosition from above (invariant to zoom and scroll)
-          const clampedSeekPosition = Math.max(0, Math.min(1, seekPosition));
+          const clampedSeekPosition = clampSeekPosition(seekPosition);
           wavesurferRef.current.seekTo(clampedSeekPosition);
           // Don't set currentTime manually - let WaveSurfer's 'interaction' event handle it
         }
@@ -1412,21 +1374,8 @@ const AnnotationEditor: React.FC = () => {
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.60;
     
-    // CORRECT COORDINATE TRANSFORMATION (same as handleMouseDown)
-    const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
-
-    // The Layer has offsetX={scrollOffset}, so point.x includes the scroll adjustment
-    const absolutePosition = CoordinateUtils.getAbsoluteScreenPosition(point, scrollOffset);
-    const absoluteX = absolutePosition.x;
-
-    // For seeking: normalize position (0 to 1) based on full zoomed width
-    const seekPosition = CoordinateUtils.getSeekPosition(absoluteX, effectiveWidth, zoomLevel);
-
-    // For bounding boxes: convert to unzoomed world coordinates
-    // IMPORTANT: Constrain worldX to valid range when zoomed
-    const maxWorldX = CoordinateUtils.getMaxWorldX(spectrogramDimensions);
-    const worldX = Math.min(maxWorldX, CoordinateUtils.screenToWorldCoordinates(absoluteX, zoomLevel));
-    const pos = { x: worldX, y: point.y };
+    // Use centralized coordinate transformation hook (same as handleMouseDown)
+    const { seekPosition, pos } = transformMousePoint(point);
     setMousePosition(pos);
     
     // Handle panning for both horizontal and vertical
@@ -1445,7 +1394,7 @@ const AnnotationEditor: React.FC = () => {
     if (point.y > spectrogramHeight && e.evt.buttons === 1 && !isAnnotationMode && !isPanning && !draggingBox && !resizingBox) {
       if (wavesurferRef.current && duration > 0) {
         // Use the pre-calculated seekPosition which is invariant to zoom and scroll
-        const clampedSeekPosition = Math.max(0, Math.min(1, seekPosition));
+        const clampedSeekPosition = clampSeekPosition(seekPosition);
         wavesurferRef.current.seekTo(clampedSeekPosition);
         // Don't set currentTime manually - let WaveSurfer's 'interaction' event handle it
       }
@@ -1502,12 +1451,12 @@ const AnnotationEditor: React.FC = () => {
       const newBox = { ...box };
       const minSize = 2;
 
-      // Constrain y position to spectrogram area (display coordinates)
-      const maxY = spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO; // Use layout constant for spectrogram height
+      // Use centralized hooks for boundary constraints
+      const maxY = getMaxSpectrogramY();
       const constrainedY = Math.min(pos.y, maxY);
 
       // Additional constraint for x position to ensure it doesn't exceed max boundaries during resize
-      const maxWorldX = CoordinateUtils.getMaxWorldX(spectrogramDimensions);
+      const maxWorldX = getMaxWorldX();
       const constrainedX = Math.min(pos.x, maxWorldX);
 
       switch (resizingBox.handle) {
@@ -1533,32 +1482,9 @@ const AnnotationEditor: React.FC = () => {
           break;
       }
       
-      // Update time and frequency based on new position using centralized utilities
-      const nyquistFreq = getNyquistFrequency();
-      newBox.start_time = CoordinateUtils.pixelToTime(
-        newBox.x,
-        duration,
-        spectrogramDimensions.width,
-        1,
-        false
-      );
-      newBox.end_time = CoordinateUtils.pixelToTime(
-        newBox.x + newBox.width,
-        duration,
-        spectrogramDimensions.width,
-        1,
-        false
-      );
-      newBox.max_frequency = CoordinateUtils.pixelToFrequency(
-        newBox.y,
-        nyquistFreq,
-        spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO
-      );
-      newBox.min_frequency = CoordinateUtils.pixelToFrequency(
-        newBox.y + newBox.height,
-        nyquistFreq,
-        spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO
-      );
+      // Update time and frequency using centralized conversion hook
+      const timeFrequency = convertBoxToTimeFrequency(newBox);
+      Object.assign(newBox, timeFrequency);
       
       const updatedBoxes = [...boundingBoxes];
       updatedBoxes[resizingBox.index] = newBox;
@@ -1601,11 +1527,11 @@ const AnnotationEditor: React.FC = () => {
     
     // Handle drawing new box (constrain to spectrogram area)
     if (isDrawing && drawingBox) {
-      const maxY = spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;  // Use layout constant for spectrogram height (display coordinates)
+      const maxY = getMaxSpectrogramY();
       const constrainedY = Math.min(pos.y, maxY);
 
       // Ensure drawing width is constrained to max boundary (pos.x is already constrained but ensure drawing box width doesn't exceed)
-      const maxWorldX = CoordinateUtils.getMaxWorldX(spectrogramDimensions);
+      const maxWorldX = getMaxWorldX();
       const constrainedWidth = Math.min(pos.x - drawingBox.x, maxWorldX - drawingBox.x);
 
       setDrawingBox({
@@ -1676,33 +1602,13 @@ const AnnotationEditor: React.FC = () => {
           height: Math.abs(drawingBox.height),  // Store in display coordinates
         };
         
-        const startTime = duration ? CoordinateUtils.pixelToTime(
-          normalizedBox.x,
-          duration,
-          spectrogramDimensions.width,
-          1,
-          false
-        ) : 0;
-        const endTime = duration ? CoordinateUtils.pixelToTime(
-          normalizedBox.x + normalizedBox.width,
-          duration,
-          spectrogramDimensions.width,
-          1,
-          false
-        ) : 0;
-        // Convert display coordinates to full spectrogram height for frequency calculation
-        const spectrogramHeight = spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;  // Use layout constant for spectrogram height
-        const nyquistFreq = getNyquistFrequency();
-        const maxFreq = nyquistFreq * (1 - normalizedBox.y / spectrogramHeight);
-        const minFreq = nyquistFreq * (1 - (normalizedBox.y + normalizedBox.height) / spectrogramHeight);
-        
+        // Use centralized conversion hook for time/frequency
+        const timeFrequency = convertNormalizedBoxToTimeFrequency(normalizedBox);
+
         const newBox: BoundingBox = {
           ...normalizedBox,
           label: 'None',  // Auto-assign "None" label
-          start_time: startTime,
-          end_time: endTime,
-          min_frequency: minFreq,
-          max_frequency: maxFreq,
+          ...timeFrequency,
         };
         
         // Add the box directly without showing the label modal
@@ -1720,11 +1626,10 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     
-    // The Layer has offsetX={scrollOffset}, so point.x includes the scroll adjustment
-    const absolutePosition = CoordinateUtils.getAbsoluteScreenPosition(point, scrollOffset);
-    const absoluteX = absolutePosition.x;
-    const adjustedX = CoordinateUtils.screenToWorldCoordinates(absoluteX, zoomLevel); // Convert to unzoomed world coordinates
-    const adjustedY = point.y;
+    // Use centralized coordinate transformation hook
+    const { pos } = transformMousePoint(point);
+    const adjustedX = pos.x;
+    const adjustedY = pos.y;
     
     // Check if right-clicking on a box
     const clickedBoxIndex = boundingBoxes.findIndex(
