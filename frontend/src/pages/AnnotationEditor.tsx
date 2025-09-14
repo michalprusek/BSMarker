@@ -160,7 +160,7 @@ const AnnotationEditor: React.FC = () => {
   }, [labelColorMap]);
 
   // Memoize coordinate transformations - horizontal zoom only
-  const transformedBoxes = useMemo(() => 
+  const transformedBoxes = useMemo(() =>
     visibleBoundingBoxes.map(box => ({
       ...box,
       screenX: box.x * zoomLevel,  // Position in zoomed canvas space
@@ -973,7 +973,8 @@ const AnnotationEditor: React.FC = () => {
       box,
       spectrogramDimensions.width,
       spectrogramDimensions.height,
-      true // Account for frequency scale
+      true, // Account for frequency scale
+      zoomLevel // Pass current zoom level for proper boundary calculation
     );
     
     // Convert pixel coordinates to time/frequency using centralized utilities
@@ -1196,13 +1197,11 @@ const AnnotationEditor: React.FC = () => {
     // Stage itself is positioned at left: FREQUENCY_SCALE_WIDTH
     // Stage width is (spectrogramDimensions.width - FREQUENCY_SCALE_WIDTH) * zoomLevel
     const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-    
-    // point.x is already relative to Stage which starts after the frequency scale
-    // We need to add scrollOffset because Layer has offsetX={scrollOffset}
-    // This means the Layer content is shifted left by scrollOffset pixels
-    // To get the absolute position in the zoomed content:
-    const absoluteX = point.x; // Stage coords already account for scrollOffset via Layer offsetX
-    
+
+    // The Layer now has offsetX={scrollOffset} which shifts the coordinate system
+    // point.x is already in the correct absolute position because Layer handles the offset
+    const absoluteX = point.x + scrollOffset;
+
     // Debug logging
     console.log('Mouse click debug:', {
       'point.x': point.x,
@@ -1213,13 +1212,13 @@ const AnnotationEditor: React.FC = () => {
       'stageWidth': (effectiveWidth * zoomLevel),
       'worldX': absoluteX / zoomLevel
     });
-    
+
     // For seeking: The key insight is that at any zoom level:
     // - The full content width when zoomed is: effectiveWidth * zoomLevel
-    // - absoluteX is the position within this zoomed content
+    // - absoluteX is the position within this zoomed content (including scroll)
     // - To get normalized position (0 to 1), we divide by the full zoomed width
     const seekPosition = absoluteX / (effectiveWidth * zoomLevel); // Normalized position (0 to 1)
-    
+
     // For bounding boxes: convert to unzoomed world coordinates
     const worldX = absoluteX / zoomLevel;
     const pos = { x: worldX, y: point.y }; // Used for bounding box operations
@@ -1396,13 +1395,13 @@ const AnnotationEditor: React.FC = () => {
     
     // CORRECT COORDINATE TRANSFORMATION (same as handleMouseDown)
     const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-    
-    // point.x is in Stage coordinates, add scrollOffset for absolute position
-    const absoluteX = point.x; // No need to add scrollOffset - Layer offsetX handles it
-    
+
+    // The Layer has offsetX={scrollOffset}, so point.x includes the scroll adjustment
+    const absoluteX = point.x + scrollOffset;
+
     // For seeking: normalize position (0 to 1) based on full zoomed width
     const seekPosition = absoluteX / (effectiveWidth * zoomLevel);
-    
+
     // For bounding boxes: convert to unzoomed world coordinates
     const worldX = absoluteX / zoomLevel;
     const pos = { x: worldX, y: point.y };
@@ -1690,8 +1689,8 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     
-    // CORRECT COORDINATE TRANSFORMATION (same as other handlers)
-    const absoluteX = point.x; // No need to add scrollOffset - Layer offsetX handles it
+    // The Layer has offsetX={scrollOffset}, so point.x includes the scroll adjustment
+    const absoluteX = point.x + scrollOffset;
     const adjustedX = absoluteX / zoomLevel; // Convert to unzoomed world coordinates
     const adjustedY = point.y;
     
@@ -2504,25 +2503,26 @@ const AnnotationEditor: React.FC = () => {
                     })}
                   </svg>
                 </div>
-                
-                {/* Optimized Canvas for annotations and cursor */}
-                <Stage
-                  width={(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}  // Account for frequency scale
-                  height={spectrogramDimensions.height}  // Full height to include waveform
-                  onMouseDown={handleMouseDown}
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={handleMouseUp}
-                  onContextMenu={handleContextMenu}
-                  ref={stageRef}
-                  x={0}  // Remove zoomOffset.x to prevent double transformation
-                  y={-zoomOffset.y}
-                  scaleX={1}
-                  scaleY={1}
-                  listening={true}
-                  style={{ 
-                    position: 'absolute', 
-                    top: '0',
-                    left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Offset for frequency scale
+              </div>
+
+              {/* Optimized Canvas for annotations and cursor - moved inside scroll container */}
+              <Stage
+                width={(spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}  // Full zoomed width for proper event handling
+                height={spectrogramDimensions.height}  // Full height to include waveform
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onContextMenu={handleContextMenu}
+                ref={stageRef}
+                x={0}  // Remove zoomOffset.x to prevent double transformation
+                y={-zoomOffset.y}
+                scaleX={1}
+                scaleY={1}
+                listening={true}
+                style={{
+                  position: 'absolute',
+                  top: '0',
+                  left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Offset for frequency scale
                     cursor: isAnnotationMode ? 'crosshair' : 
                             isPanning ? 'grabbing' :
                             hoveredHandle ? ((hoveredHandle.handle.includes('n') && hoveredHandle.handle.includes('w')) || 
@@ -2734,7 +2734,7 @@ const AnnotationEditor: React.FC = () => {
                     {/* Drawing box - scale to spectrogram area */}
                     {drawingBox && (
                       <Rect
-                        x={isNaN(drawingBox.x) || isNaN(drawingBox.width) ? 0 : (drawingBox.width < 0 ? drawingBox.x + drawingBox.width : drawingBox.x) * zoomLevel}
+                        x={isNaN(drawingBox.x) || isNaN(drawingBox.width) ? 0 : ((drawingBox.width < 0 ? drawingBox.x + drawingBox.width : drawingBox.x) * zoomLevel)}
                         y={isNaN(drawingBox.y) || isNaN(drawingBox.height) ? 0 : (drawingBox.height < 0 ? drawingBox.y + drawingBox.height : drawingBox.y)}
                         width={isNaN(drawingBox.width) ? 0 : Math.abs(drawingBox.width || 0) * zoomLevel}
                         height={isNaN(drawingBox.height) ? 0 : Math.abs(drawingBox.height || 0)}
@@ -2760,8 +2760,7 @@ const AnnotationEditor: React.FC = () => {
                       />
                     )}
                   </Layer>
-                </Stage>
-              </div>
+              </Stage>
             </div>
             
             {/* Integrated Playback Controls - inside the unified frame */}
