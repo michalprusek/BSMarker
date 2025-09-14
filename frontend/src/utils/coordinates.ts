@@ -167,6 +167,165 @@ export const CoordinateUtils = {
       height: totalHeight * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO,
     };
   },
+
+  /**
+   * Get effective width (content area without frequency scale)
+   * This is one of the most frequently used calculations
+   */
+  getEffectiveWidth(totalWidth: number): number {
+    return totalWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+  },
+
+  /**
+   * Get absolute screen position accounting for scroll offset
+   * Used when converting Konva stage coordinates to absolute positions
+   */
+  getAbsoluteScreenPosition(
+    point: { x: number; y: number },
+    scrollOffset: number
+  ): { x: number; y: number } {
+    return {
+      x: point.x + scrollOffset,
+      y: point.y
+    };
+  },
+
+  /**
+   * Convert screen coordinates to world coordinates (unzoomed space)
+   * World coordinates are the base coordinate system before zoom is applied
+   */
+  screenToWorldCoordinates(
+    screenX: number,
+    zoomLevel: number = 1
+  ): number {
+    return screenX / zoomLevel;
+  },
+
+  /**
+   * Convert world coordinates to screen coordinates (zoomed space)
+   * Screen coordinates are the displayed coordinates after zoom is applied
+   */
+  worldToScreenCoordinates(
+    worldX: number,
+    zoomLevel: number = 1
+  ): number {
+    return worldX * zoomLevel;
+  },
+
+  /**
+   * Get normalized seek position (0-1) for audio/video seeking
+   * This is invariant to zoom and scroll for consistent seeking behavior
+   */
+  getSeekPosition(
+    absoluteX: number,
+    effectiveWidth: number,
+    zoomLevel: number = 1
+  ): number {
+    const zoomedWidth = effectiveWidth * zoomLevel;
+    if (zoomedWidth === 0) return 0;
+
+    // Clamp to valid range [0, 1]
+    return Math.max(0, Math.min(1, absoluteX / zoomedWidth));
+  },
+
+  /**
+   * Get maximum world X coordinate for boundary constraints
+   * This represents the rightmost valid position in world coordinates
+   */
+  getMaxWorldX(spectrogramDimensions: { width: number }): number {
+    return this.getEffectiveWidth(spectrogramDimensions.width) - 1;
+  },
+
+  /**
+   * Transform bounding box coordinates from world space to screen space
+   * Used for rendering bounding boxes with zoom applied
+   */
+  transformBoxToScreen(
+    box: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    },
+    zoomLevel: number = 1
+  ): {
+    screenX: number;
+    screenY: number;
+    screenWidth: number;
+    screenHeight: number;
+  } {
+    return {
+      screenX: this.worldToScreenCoordinates(box.x, zoomLevel),
+      screenY: box.y, // No vertical zoom
+      screenWidth: this.worldToScreenCoordinates(box.width, zoomLevel),
+      screenHeight: box.height // No vertical zoom
+    };
+  },
+
+  /**
+   * Calculate timeline cursor position with zoom
+   * Used for rendering the current playback position indicator
+   */
+  getTimelineCursorPosition(
+    currentTime: number,
+    duration: number,
+    spectrogramDimensions: { width: number },
+    zoomLevel: number = 1
+  ): number {
+    if (duration === 0) return 0;
+
+    const effectiveWidth = this.getEffectiveWidth(spectrogramDimensions.width);
+    return (currentTime / duration) * effectiveWidth * zoomLevel;
+  },
+
+  /**
+   * Convert stage coordinates to world coordinates with constraints
+   * Combines absolute position calculation, world conversion, and boundary constraints
+   */
+  stageToWorldCoordinates(
+    stagePoint: { x: number; y: number },
+    scrollOffset: number,
+    zoomLevel: number,
+    spectrogramDimensions: { width: number; height: number }
+  ): { x: number; y: number } {
+    // Get absolute position accounting for scroll
+    const absolute = this.getAbsoluteScreenPosition(stagePoint, scrollOffset);
+
+    // Convert to world coordinates
+    const worldX = this.screenToWorldCoordinates(absolute.x, zoomLevel);
+
+    // Constrain to valid boundaries
+    const maxWorldX = this.getMaxWorldX(spectrogramDimensions);
+    const constrainedX = this.constrainToRange(worldX, 0, maxWorldX);
+
+    return {
+      x: constrainedX,
+      y: stagePoint.y // No vertical transformation needed
+    };
+  },
+
+  /**
+   * Calculate the zoomed and scrolled position for a given time
+   * Useful for synchronizing timeline elements with audio playback
+   */
+  getZoomedTimePosition(
+    time: number,
+    duration: number,
+    spectrogramDimensions: { width: number },
+    zoomLevel: number = 1,
+    scrollOffset: number = 0
+  ): number {
+    const pixelPosition = this.timeToPixel(
+      time,
+      duration,
+      spectrogramDimensions.width,
+      zoomLevel,
+      false
+    );
+
+    // Adjust for scroll offset to get screen position
+    return pixelPosition - scrollOffset;
+  },
 };
 
 export default CoordinateUtils;
