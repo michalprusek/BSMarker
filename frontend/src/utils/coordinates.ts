@@ -99,8 +99,24 @@ export const CoordinateUtils = {
   },
 
   /**
+   * Calculate the zoomed content width (excluding frequency scale)
+   * This is used for Stage and container width calculations
+   */
+  getZoomedContentWidth(totalWidth: number, zoomLevel: number = 1): number {
+    return (totalWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel;
+  },
+
+  /**
+   * Calculate the total container width including frequency scale
+   * Frequency scale stays fixed width while content area zooms
+   */
+  getZoomedContainerWidth(totalWidth: number, zoomLevel: number = 1): number {
+    return this.getZoomedContentWidth(totalWidth, zoomLevel) + LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+  },
+
+  /**
    * Constrain a bounding box to stay within boundaries
-   * Accounts for the frequency scale offset
+   * Accounts for the frequency scale offset and zoom level
    */
   constrainBoundingBox(
     box: {
@@ -111,18 +127,22 @@ export const CoordinateUtils = {
     },
     totalWidth: number,
     totalHeight: number,
-    accountForFrequencyScale: boolean = true
+    accountForFrequencyScale: boolean = true,
+    zoomLevel: number = 1
   ): typeof box {
-    // The actual drawable area (excluding frequency scale)
-    const maxX = accountForFrequencyScale 
-      ? totalWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH 
-      : totalWidth;
-    const maxY = totalHeight * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO; // Only spectrogram area
-    
+    // The actual drawable area (excluding frequency scale) with zoom applied
+    // When zoomed, only the content area zooms, not the frequency scale
+    const effectiveWidth = accountForFrequencyScale
+      ? (totalWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel
+      : totalWidth * zoomLevel;
+
+    const maxX = effectiveWidth;
+    const maxY = totalHeight * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO * zoomLevel; // Only spectrogram area, zoomed
+
     // Constrain position to keep box fully within boundaries
     const constrainedX = this.constrainToRange(box.x, 0, Math.max(0, maxX - box.width));
     const constrainedY = this.constrainToRange(box.y, 0, Math.max(0, maxY - box.height));
-    
+
     // Constrain size if box is too large for remaining space
     const constrainedWidth = Math.min(box.width, maxX - constrainedX);
     const constrainedHeight = Math.min(box.height, maxY - constrainedY);
