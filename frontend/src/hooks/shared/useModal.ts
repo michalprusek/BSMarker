@@ -3,7 +3,7 @@
  * Provides consistent modal behavior across the application
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback } from "react";
 
 export interface UseModalReturn {
   isOpen: boolean;
@@ -24,7 +24,7 @@ export const useModal = (initialState: boolean = false): UseModalReturn => {
   }, []);
 
   const toggle = useCallback(() => {
-    setIsOpen(prev => !prev);
+    setIsOpen((prev) => !prev);
   }, []);
 
   return {
@@ -49,34 +49,36 @@ export const useMultiModal = (modalKeys: string[]) => {
   const [modals, setModals] = useState<MultiModalState>(initialState);
 
   const open = useCallback((key: string) => {
-    setModals(prev => ({
+    setModals((prev) => ({
       ...prev,
       [key]: true,
     }));
   }, []);
 
   const close = useCallback((key: string) => {
-    setModals(prev => ({
+    setModals((prev) => ({
       ...prev,
       [key]: false,
     }));
   }, []);
 
   const toggle = useCallback((key: string) => {
-    setModals(prev => ({
+    setModals((prev) => ({
       ...prev,
       [key]: !prev[key],
     }));
   }, []);
 
   const closeAll = useCallback(() => {
-    setModals(modalKeys.reduce((acc, key) => {
-      acc[key] = false;
-      return acc;
-    }, {} as MultiModalState));
+    setModals(
+      modalKeys.reduce((acc, key) => {
+        acc[key] = false;
+        return acc;
+      }, {} as MultiModalState),
+    );
   }, [modalKeys]);
 
-  const isAnyOpen = Object.values(modals).some(state => state);
+  const isAnyOpen = Object.values(modals).some((state) => state);
 
   return {
     modals,

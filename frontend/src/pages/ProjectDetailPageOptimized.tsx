@@ -1,19 +1,23 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Project, Recording } from '../types';
-import { PaginatedResponse, PaginationMetadata } from '../types/pagination';
-import { projectService, recordingService, annotationService } from '../services/api';
-import toast from 'react-hot-toast';
-import { VirtualizedRecordingList } from '../components/VirtualizedRecordingList';
-import UploadRecordingModal from '../components/UploadRecordingModal';
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { Project, Recording } from "../types";
+import { PaginatedResponse, PaginationMetadata } from "../types/pagination";
+import {
+  projectService,
+  recordingService,
+  annotationService,
+} from "../services/api";
+import toast from "react-hot-toast";
+import { VirtualizedRecordingList } from "../components/VirtualizedRecordingList";
+import UploadRecordingModal from "../components/UploadRecordingModal";
 import {
   FunnelIcon,
   PlusIcon,
   TrashIcon,
   CloudArrowDownIcon,
   MagnifyingGlassIcon,
-  ArrowPathIcon
-} from '@heroicons/react/24/outline';
+  ArrowPathIcon,
+} from "@heroicons/react/24/outline";
 
 const ProjectDetailPageOptimized: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -28,22 +32,26 @@ const ProjectDetailPageOptimized: React.FC = () => {
     page_size: 50,
     total_pages: 0,
     has_next: false,
-    has_prev: false
+    has_prev: false,
   });
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [selectedRecordings, setSelectedRecordings] = useState<Set<number>>(new Set());
+  const [selectedRecordings, setSelectedRecordings] = useState<Set<number>>(
+    new Set(),
+  );
 
   // Filters and search
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [minDuration, setMinDuration] = useState('');
-  const [maxDuration, setMaxDuration] = useState('');
-  const [sortBy, setSortBy] = useState('created_at');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [annotationStatus, setAnnotationStatus] = useState<'all' | 'annotated' | 'unannotated'>('all');
+  const [minDuration, setMinDuration] = useState("");
+  const [maxDuration, setMaxDuration] = useState("");
+  const [sortBy, setSortBy] = useState("created_at");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [annotationStatus, setAnnotationStatus] = useState<
+    "all" | "annotated" | "unannotated"
+  >("all");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -56,59 +64,71 @@ const ProjectDetailPageOptimized: React.FC = () => {
   }, [searchTerm]);
 
   // Fetch project data
-  const fetchProjectData = useCallback(async (page: number = 1, append: boolean = false) => {
-    if (!projectId) return;
+  const fetchProjectData = useCallback(
+    async (page: number = 1, append: boolean = false) => {
+      if (!projectId) return;
 
-    try {
-      if (!append) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
+      try {
+        if (!append) {
+          setLoading(true);
+        } else {
+          setLoadingMore(true);
+        }
+
+        // Fetch project info if not loaded
+        if (!project) {
+          const projectData = await projectService.getProject(
+            parseInt(projectId),
+          );
+          setProject(projectData);
+        }
+
+        // Build query parameters
+        const params: any = {
+          skip: (page - 1) * 50,
+          limit: 50,
+          sort_by: sortBy,
+          sort_order: sortOrder,
+        };
+
+        if (debouncedSearchTerm) params.search = debouncedSearchTerm;
+        if (minDuration) params.min_duration = parseFloat(minDuration);
+        if (maxDuration) params.max_duration = parseFloat(maxDuration);
+        if (annotationStatus !== "all")
+          params.annotation_status = annotationStatus;
+
+        // Fetch recordings with pagination
+        const response: PaginatedResponse<Recording> =
+          await recordingService.getRecordings(parseInt(projectId), params);
+
+        if (append) {
+          // Append to existing recordings for infinite scroll
+          setRecordings((prev) => [...prev, ...response.items]);
+        } else {
+          // Replace recordings for new search/filter
+          setRecordings(response.items);
+        }
+
+        setPagination(response.pagination);
+      } catch (error) {
+        console.error("Failed to fetch project data:", error);
+        toast.error("Failed to fetch project data");
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
       }
-
-      // Fetch project info if not loaded
-      if (!project) {
-        const projectData = await projectService.getProject(parseInt(projectId));
-        setProject(projectData);
-      }
-
-      // Build query parameters
-      const params: any = {
-        skip: (page - 1) * 50,
-        limit: 50,
-        sort_by: sortBy,
-        sort_order: sortOrder
-      };
-
-      if (debouncedSearchTerm) params.search = debouncedSearchTerm;
-      if (minDuration) params.min_duration = parseFloat(minDuration);
-      if (maxDuration) params.max_duration = parseFloat(maxDuration);
-      if (annotationStatus !== 'all') params.annotation_status = annotationStatus;
-
-      // Fetch recordings with pagination
-      const response: PaginatedResponse<Recording> = await recordingService.getRecordings(
-        parseInt(projectId),
-        params
-      );
-
-      if (append) {
-        // Append to existing recordings for infinite scroll
-        setRecordings(prev => [...prev, ...response.items]);
-      } else {
-        // Replace recordings for new search/filter
-        setRecordings(response.items);
-      }
-
-      setPagination(response.pagination);
-
-    } catch (error) {
-      console.error('Failed to fetch project data:', error);
-      toast.error('Failed to fetch project data');
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, [projectId, project, debouncedSearchTerm, minDuration, maxDuration, annotationStatus, sortBy, sortOrder]);
+    },
+    [
+      projectId,
+      project,
+      debouncedSearchTerm,
+      minDuration,
+      maxDuration,
+      annotationStatus,
+      sortBy,
+      sortOrder,
+    ],
+  );
 
   // Initial load and filter changes
   useEffect(() => {
@@ -116,15 +136,18 @@ const ProjectDetailPageOptimized: React.FC = () => {
   }, [fetchProjectData]);
 
   // Handle infinite scroll
-  const handleLoadMore = useCallback(async (page: number) => {
-    if (!loadingMore && pagination.has_next) {
-      await fetchProjectData(page, true);
-    }
-  }, [fetchProjectData, loadingMore, pagination.has_next]);
+  const handleLoadMore = useCallback(
+    async (page: number) => {
+      if (!loadingMore && pagination.has_next) {
+        await fetchProjectData(page, true);
+      }
+    },
+    [fetchProjectData, loadingMore, pagination.has_next],
+  );
 
   // Handle recording selection
   const handleSelectRecording = useCallback((id: number) => {
-    setSelectedRecordings(prev => {
+    setSelectedRecordings((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(id)) {
         newSet.delete(id);
@@ -137,10 +160,13 @@ const ProjectDetailPageOptimized: React.FC = () => {
 
   // Handle select all
   const handleToggleSelectAll = useCallback(() => {
-    if (selectedRecordings.size === recordings.length && recordings.length > 0) {
+    if (
+      selectedRecordings.size === recordings.length &&
+      recordings.length > 0
+    ) {
       setSelectedRecordings(new Set());
     } else {
-      setSelectedRecordings(new Set(recordings.map(r => r.id)));
+      setSelectedRecordings(new Set(recordings.map((r) => r.id)));
     }
   }, [recordings, selectedRecordings.size]);
 
@@ -148,14 +174,18 @@ const ProjectDetailPageOptimized: React.FC = () => {
   const handleRecordingUploaded = useCallback(() => {
     setShowUploadModal(false);
     fetchProjectData(1, false);
-    toast.success('Recording uploaded successfully');
+    toast.success("Recording uploaded successfully");
   }, [fetchProjectData]);
 
   // Handle bulk delete
   const handleBulkDelete = useCallback(async () => {
     if (selectedRecordings.size === 0) return;
 
-    if (!window.confirm(`Are you sure you want to delete ${selectedRecordings.size} recordings?`)) {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete ${selectedRecordings.size} recordings?`,
+      )
+    ) {
       return;
     }
 
@@ -163,14 +193,14 @@ const ProjectDetailPageOptimized: React.FC = () => {
     try {
       await recordingService.bulkDeleteRecordings(
         parseInt(projectId!),
-        Array.from(selectedRecordings)
+        Array.from(selectedRecordings),
       );
       toast.success(`Deleted ${selectedRecordings.size} recordings`);
       setSelectedRecordings(new Set());
       fetchProjectData(1, false);
     } catch (error) {
-      console.error('Failed to delete recordings:', error);
-      toast.error('Failed to delete recordings');
+      console.error("Failed to delete recordings:", error);
+      toast.error("Failed to delete recordings");
     } finally {
       setIsDeleting(false);
     }
@@ -182,43 +212,50 @@ const ProjectDetailPageOptimized: React.FC = () => {
 
     setIsDownloading(true);
     try {
-      const JSZip = (await import('jszip')).default;
+      const JSZip = (await import("jszip")).default;
       const zip = new JSZip();
 
       // Fetch all annotations for the project
-      const allRecordings = recordings.filter(r => r.annotation_count && r.annotation_count > 0);
+      const allRecordings = recordings.filter(
+        (r) => r.annotation_count && r.annotation_count > 0,
+      );
 
       for (const recording of allRecordings) {
         try {
-          const annotations = await annotationService.getAnnotations(recording.id);
+          const annotations = await annotationService.getAnnotations(
+            recording.id,
+          );
           if (annotations.length > 0) {
             const annotationData = {
               recording_id: recording.id,
               filename: recording.original_filename,
-              annotations: annotations
+              annotations: annotations,
             };
             zip.file(
               `${recording.original_filename}_annotations.json`,
-              JSON.stringify(annotationData, null, 2)
+              JSON.stringify(annotationData, null, 2),
             );
           }
         } catch (error) {
-          console.error(`Failed to fetch annotations for recording ${recording.id}:`, error);
+          console.error(
+            `Failed to fetch annotations for recording ${recording.id}:`,
+            error,
+          );
         }
       }
 
-      const content = await zip.generateAsync({ type: 'blob' });
+      const content = await zip.generateAsync({ type: "blob" });
       const url = URL.createObjectURL(content);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = `project_${projectId}_annotations.zip`;
       a.click();
       URL.revokeObjectURL(url);
 
-      toast.success('Annotations downloaded successfully');
+      toast.success("Annotations downloaded successfully");
     } catch (error) {
-      console.error('Failed to download annotations:', error);
-      toast.error('Failed to download annotations');
+      console.error("Failed to download annotations:", error);
+      toast.error("Failed to download annotations");
     } finally {
       setIsDownloading(false);
     }
@@ -226,16 +263,24 @@ const ProjectDetailPageOptimized: React.FC = () => {
 
   // Calculate stats
   const stats = useMemo(() => {
-    const annotatedCount = recordings.filter(r => r.annotation_count && r.annotation_count > 0).length;
-    const totalDuration = recordings.reduce((sum, r) => sum + (r.duration || 0), 0);
+    const annotatedCount = recordings.filter(
+      (r) => r.annotation_count && r.annotation_count > 0,
+    ).length;
+    // Use total_duration from pagination if available, otherwise calculate from current page
+    const totalDuration =
+      pagination.total_duration ||
+      recordings.reduce((sum, r) => sum + (r.duration || 0), 0);
 
     return {
       totalRecordings: pagination.total,
       annotatedRecordings: annotatedCount,
       totalDuration: Math.round(totalDuration / 60), // in minutes
-      annotationProgress: pagination.total > 0 ? Math.round((annotatedCount / pagination.total) * 100) : 0
+      annotationProgress:
+        pagination.total > 0
+          ? Math.round((annotatedCount / pagination.total) * 100)
+          : 0,
     };
-  }, [recordings, pagination.total]);
+  }, [recordings, pagination.total, pagination.total_duration]);
 
   if (loading && recordings.length === 0) {
     return (
@@ -250,7 +295,7 @@ const ProjectDetailPageOptimized: React.FC = () => {
       {/* Header */}
       <div className="mb-8">
         <button
-          onClick={() => navigate('/projects')}
+          onClick={() => navigate("/projects")}
           className="text-gray-600 hover:text-gray-900 mb-4 inline-flex items-center"
         >
           ← Back to Projects
@@ -258,7 +303,7 @@ const ProjectDetailPageOptimized: React.FC = () => {
 
         <div className="bg-white rounded-lg shadow p-6">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            {project?.name || 'Loading...'}
+            {project?.name || "Loading..."}
           </h1>
           {project?.description && (
             <p className="text-gray-600 mb-4">{project.description}</p>
@@ -268,15 +313,21 @@ const ProjectDetailPageOptimized: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
             <div className="bg-gray-50 rounded p-3">
               <p className="text-sm text-gray-600">Total Recordings</p>
-              <p className="text-2xl font-semibold text-gray-900">{stats.totalRecordings}</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {stats.totalRecordings}
+              </p>
             </div>
             <div className="bg-gray-50 rounded p-3">
               <p className="text-sm text-gray-600">Annotated</p>
-              <p className="text-2xl font-semibold text-green-600">{stats.annotatedRecordings}</p>
+              <p className="text-2xl font-semibold text-green-600">
+                {stats.annotatedRecordings}
+              </p>
             </div>
             <div className="bg-gray-50 rounded p-3">
               <p className="text-sm text-gray-600">Total Duration</p>
-              <p className="text-2xl font-semibold text-gray-900">{stats.totalDuration} min</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {stats.totalDuration} min
+              </p>
             </div>
             <div className="bg-gray-50 rounded p-3">
               <p className="text-sm text-gray-600">Progress</p>
@@ -321,13 +372,6 @@ const ProjectDetailPageOptimized: React.FC = () => {
           </button>
 
           <button
-            onClick={() => fetchProjectData(1, false)}
-            className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 flex items-center"
-          >
-            <ArrowPathIcon className="h-5 w-5" />
-          </button>
-
-          <button
             onClick={() => setShowUploadModal(true)}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
           >
@@ -362,7 +406,9 @@ const ProjectDetailPageOptimized: React.FC = () => {
         {showFilters && (
           <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-5 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Status
+              </label>
               <select
                 value={annotationStatus}
                 onChange={(e) => setAnnotationStatus(e.target.value as any)}
@@ -375,7 +421,9 @@ const ProjectDetailPageOptimized: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Min Duration (s)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Min Duration (s)
+              </label>
               <input
                 type="number"
                 value={minDuration}
@@ -386,7 +434,9 @@ const ProjectDetailPageOptimized: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Max Duration (s)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Max Duration (s)
+              </label>
               <input
                 type="number"
                 value={maxDuration}
@@ -397,7 +447,9 @@ const ProjectDetailPageOptimized: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Sort By
+              </label>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
@@ -410,10 +462,12 @@ const ProjectDetailPageOptimized: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Order</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Order
+              </label>
               <select
                 value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+                onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="desc">Newest First</option>

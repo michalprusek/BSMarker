@@ -3,9 +3,9 @@
  * Handles all drawing, selection, and manipulation logic for bounding boxes
  */
 
-import { BoundingBox } from '../types';
-import { CoordinateUtils, LAYOUT_CONSTANTS } from '../utils/coordinates';
-import { logger } from '../lib/logger';
+import { BoundingBox } from "../types";
+import { CoordinateUtils, LAYOUT_CONSTANTS } from "../utils/coordinates";
+import { logger } from "../lib/logger";
 
 export interface DrawingState {
   isDrawing: boolean;
@@ -29,7 +29,7 @@ export interface DragState {
 export interface ResizeState {
   isResizing: boolean;
   resizedBoxIndex: number | null;
-  resizeHandle: 'nw' | 'ne' | 'sw' | 'se' | null;
+  resizeHandle: "nw" | "ne" | "sw" | "se" | null;
   initialBox: BoundingBox | null;
 }
 
@@ -50,8 +50,8 @@ export class AnnotationDrawingService {
   // Get resize handle at point
   getResizeHandle(
     point: { x: number; y: number },
-    box: BoundingBox
-  ): 'nw' | 'ne' | 'sw' | 'se' | null {
+    box: BoundingBox,
+  ): "nw" | "ne" | "sw" | "se" | null {
     const handles = {
       nw: { x: box.x, y: box.y },
       ne: { x: box.x + box.width, y: box.y },
@@ -61,10 +61,10 @@ export class AnnotationDrawingService {
 
     for (const [handle, pos] of Object.entries(handles)) {
       const distance = Math.sqrt(
-        Math.pow(point.x - pos.x, 2) + Math.pow(point.y - pos.y, 2)
+        Math.pow(point.x - pos.x, 2) + Math.pow(point.y - pos.y, 2),
       );
       if (distance <= this.HANDLE_SIZE) {
-        return handle as 'nw' | 'ne' | 'sw' | 'se';
+        return handle as "nw" | "ne" | "sw" | "se";
       }
     }
 
@@ -74,7 +74,7 @@ export class AnnotationDrawingService {
   // Find box at point
   findBoxAtPoint(
     point: { x: number; y: number },
-    boxes: BoundingBox[]
+    boxes: BoundingBox[],
   ): number | null {
     // Search in reverse order (top to bottom)
     for (let i = boxes.length - 1; i >= 0; i--) {
@@ -91,7 +91,7 @@ export class AnnotationDrawingService {
     endPoint: { x: number; y: number },
     duration: number,
     spectrogramDimensions: { width: number; height: number },
-    nyquistFreq: number
+    nyquistFreq: number,
   ): BoundingBox {
     const x = Math.min(startPoint.x, endPoint.x);
     const y = Math.min(startPoint.y, endPoint.y);
@@ -104,24 +104,24 @@ export class AnnotationDrawingService {
       duration,
       spectrogramDimensions.width,
       1,
-      false
+      false,
     );
     const endTime = CoordinateUtils.pixelToTime(
       x + width,
       duration,
       spectrogramDimensions.width,
       1,
-      false
+      false,
     );
     const maxFrequency = CoordinateUtils.pixelToFrequency(
       y,
       nyquistFreq,
-      spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO
+      spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO,
     );
     const minFrequency = CoordinateUtils.pixelToFrequency(
       y + height,
       nyquistFreq,
-      spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO
+      spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO,
     );
 
     return {
@@ -140,32 +140,46 @@ export class AnnotationDrawingService {
   // Resize bounding box
   resizeBoundingBox(
     box: BoundingBox,
-    handle: 'nw' | 'ne' | 'sw' | 'se',
+    handle: "nw" | "ne" | "sw" | "se",
     newPoint: { x: number; y: number },
-    spectrogramDimensions: { width: number; height: number }
+    spectrogramDimensions: { width: number; height: number },
   ): BoundingBox {
     const newBox = { ...box };
-    const maxX = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-    const maxY = spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
+    const maxX =
+      spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+    const maxY =
+      spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
 
     switch (handle) {
-      case 'nw':
-        newBox.width = Math.max(this.MIN_BOX_SIZE, box.x + box.width - newPoint.x);
-        newBox.height = Math.max(this.MIN_BOX_SIZE, box.y + box.height - newPoint.y);
+      case "nw":
+        newBox.width = Math.max(
+          this.MIN_BOX_SIZE,
+          box.x + box.width - newPoint.x,
+        );
+        newBox.height = Math.max(
+          this.MIN_BOX_SIZE,
+          box.y + box.height - newPoint.y,
+        );
         newBox.x = Math.min(newPoint.x, box.x + box.width - this.MIN_BOX_SIZE);
         newBox.y = Math.min(newPoint.y, box.y + box.height - this.MIN_BOX_SIZE);
         break;
-      case 'ne':
+      case "ne":
         newBox.width = Math.max(this.MIN_BOX_SIZE, newPoint.x - box.x);
-        newBox.height = Math.max(this.MIN_BOX_SIZE, box.y + box.height - newPoint.y);
+        newBox.height = Math.max(
+          this.MIN_BOX_SIZE,
+          box.y + box.height - newPoint.y,
+        );
         newBox.y = Math.min(newPoint.y, box.y + box.height - this.MIN_BOX_SIZE);
         break;
-      case 'sw':
-        newBox.width = Math.max(this.MIN_BOX_SIZE, box.x + box.width - newPoint.x);
+      case "sw":
+        newBox.width = Math.max(
+          this.MIN_BOX_SIZE,
+          box.x + box.width - newPoint.x,
+        );
         newBox.height = Math.max(this.MIN_BOX_SIZE, newPoint.y - box.y);
         newBox.x = Math.min(newPoint.x, box.x + box.width - this.MIN_BOX_SIZE);
         break;
-      case 'se':
+      case "se":
         newBox.width = Math.max(this.MIN_BOX_SIZE, newPoint.x - box.x);
         newBox.height = Math.max(this.MIN_BOX_SIZE, newPoint.y - box.y);
         break;
@@ -185,10 +199,12 @@ export class AnnotationDrawingService {
     box: BoundingBox,
     deltaX: number,
     deltaY: number,
-    spectrogramDimensions: { width: number; height: number }
+    spectrogramDimensions: { width: number; height: number },
   ): BoundingBox {
-    const maxX = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-    const maxY = spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
+    const maxX =
+      spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+    const maxY =
+      spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
 
     const newX = Math.max(0, Math.min(box.x + deltaX, maxX - box.width));
     const newY = Math.max(0, Math.min(box.y + deltaY, maxY - box.height));
@@ -203,7 +219,7 @@ export class AnnotationDrawingService {
   // Select boxes within rectangle
   selectBoxesInRectangle(
     rect: { x: number; y: number; width: number; height: number },
-    boxes: BoundingBox[]
+    boxes: BoundingBox[],
   ): Set<number> {
     const selected = new Set<number>();
     const rectLeft = Math.min(rect.x, rect.x + rect.width);
@@ -223,7 +239,10 @@ export class AnnotationDrawingService {
       }
     });
 
-    logger.debug(`Selected ${selected.size} boxes in rectangle`, 'AnnotationDrawing');
+    logger.debug(
+      `Selected ${selected.size} boxes in rectangle`,
+      "AnnotationDrawing",
+    );
     return selected;
   }
 
@@ -232,11 +251,11 @@ export class AnnotationDrawingService {
     boxes: BoundingBox[],
     indices: Set<number>,
     offsetX: number = 20,
-    offsetY: number = 20
+    offsetY: number = 20,
   ): BoundingBox[] {
     const duplicated: BoundingBox[] = [];
-    
-    indices.forEach(index => {
+
+    indices.forEach((index) => {
       if (boxes[index]) {
         const original = boxes[index];
         duplicated.push({
@@ -247,7 +266,7 @@ export class AnnotationDrawingService {
       }
     });
 
-    logger.info(`Duplicated ${duplicated.length} boxes`, 'AnnotationDrawing');
+    logger.info(`Duplicated ${duplicated.length} boxes`, "AnnotationDrawing");
     return duplicated;
   }
 
@@ -255,56 +274,69 @@ export class AnnotationDrawingService {
   alignBoxes(
     boxes: BoundingBox[],
     indices: Set<number>,
-    alignment: 'left' | 'right' | 'top' | 'bottom' | 'center-h' | 'center-v'
+    alignment: "left" | "right" | "top" | "bottom" | "center-h" | "center-v",
   ): BoundingBox[] {
     if (indices.size === 0) return boxes;
 
-    const selectedBoxes = Array.from(indices).map(i => boxes[i]).filter(Boolean);
+    const selectedBoxes = Array.from(indices)
+      .map((i) => boxes[i])
+      .filter(Boolean);
     if (selectedBoxes.length === 0) return boxes;
 
     let alignValue: number;
     const updatedBoxes = [...boxes];
 
     switch (alignment) {
-      case 'left':
-        alignValue = Math.min(...selectedBoxes.map(b => b.x));
-        indices.forEach(i => {
+      case "left":
+        alignValue = Math.min(...selectedBoxes.map((b) => b.x));
+        indices.forEach((i) => {
           if (updatedBoxes[i]) updatedBoxes[i].x = alignValue;
         });
         break;
-      case 'right':
-        alignValue = Math.max(...selectedBoxes.map(b => b.x + b.width));
-        indices.forEach(i => {
-          if (updatedBoxes[i]) updatedBoxes[i].x = alignValue - updatedBoxes[i].width;
+      case "right":
+        alignValue = Math.max(...selectedBoxes.map((b) => b.x + b.width));
+        indices.forEach((i) => {
+          if (updatedBoxes[i])
+            updatedBoxes[i].x = alignValue - updatedBoxes[i].width;
         });
         break;
-      case 'top':
-        alignValue = Math.min(...selectedBoxes.map(b => b.y));
-        indices.forEach(i => {
+      case "top":
+        alignValue = Math.min(...selectedBoxes.map((b) => b.y));
+        indices.forEach((i) => {
           if (updatedBoxes[i]) updatedBoxes[i].y = alignValue;
         });
         break;
-      case 'bottom':
-        alignValue = Math.max(...selectedBoxes.map(b => b.y + b.height));
-        indices.forEach(i => {
-          if (updatedBoxes[i]) updatedBoxes[i].y = alignValue - updatedBoxes[i].height;
+      case "bottom":
+        alignValue = Math.max(...selectedBoxes.map((b) => b.y + b.height));
+        indices.forEach((i) => {
+          if (updatedBoxes[i])
+            updatedBoxes[i].y = alignValue - updatedBoxes[i].height;
         });
         break;
-      case 'center-h':
-        const avgX = selectedBoxes.reduce((sum, b) => sum + b.x + b.width / 2, 0) / selectedBoxes.length;
-        indices.forEach(i => {
-          if (updatedBoxes[i]) updatedBoxes[i].x = avgX - updatedBoxes[i].width / 2;
+      case "center-h":
+        const avgX =
+          selectedBoxes.reduce((sum, b) => sum + b.x + b.width / 2, 0) /
+          selectedBoxes.length;
+        indices.forEach((i) => {
+          if (updatedBoxes[i])
+            updatedBoxes[i].x = avgX - updatedBoxes[i].width / 2;
         });
         break;
-      case 'center-v':
-        const avgY = selectedBoxes.reduce((sum, b) => sum + b.y + b.height / 2, 0) / selectedBoxes.length;
-        indices.forEach(i => {
-          if (updatedBoxes[i]) updatedBoxes[i].y = avgY - updatedBoxes[i].height / 2;
+      case "center-v":
+        const avgY =
+          selectedBoxes.reduce((sum, b) => sum + b.y + b.height / 2, 0) /
+          selectedBoxes.length;
+        indices.forEach((i) => {
+          if (updatedBoxes[i])
+            updatedBoxes[i].y = avgY - updatedBoxes[i].height / 2;
         });
         break;
     }
 
-    logger.info(`Aligned ${indices.size} boxes: ${alignment}`, 'AnnotationDrawing');
+    logger.info(
+      `Aligned ${indices.size} boxes: ${alignment}`,
+      "AnnotationDrawing",
+    );
     return updatedBoxes;
   }
 
@@ -312,16 +344,16 @@ export class AnnotationDrawingService {
   distributeBoxes(
     boxes: BoundingBox[],
     indices: Set<number>,
-    direction: 'horizontal' | 'vertical'
+    direction: "horizontal" | "vertical",
   ): BoundingBox[] {
     if (indices.size < 3) return boxes; // Need at least 3 boxes to distribute
 
     const selectedBoxes = Array.from(indices)
-      .map(i => ({ index: i, box: boxes[i] }))
-      .filter(item => item.box)
+      .map((i) => ({ index: i, box: boxes[i] }))
+      .filter((item) => item.box)
       .sort((a, b) => {
-        return direction === 'horizontal' 
-          ? a.box.x - b.box.x 
+        return direction === "horizontal"
+          ? a.box.x - b.box.x
           : a.box.y - b.box.y;
       });
 
@@ -331,10 +363,10 @@ export class AnnotationDrawingService {
     const first = selectedBoxes[0].box;
     const last = selectedBoxes[selectedBoxes.length - 1].box;
 
-    if (direction === 'horizontal') {
+    if (direction === "horizontal") {
       const totalSpace = last.x - first.x;
       const spacing = totalSpace / (selectedBoxes.length - 1);
-      
+
       selectedBoxes.forEach((item, i) => {
         if (i > 0 && i < selectedBoxes.length - 1) {
           updatedBoxes[item.index].x = first.x + spacing * i;
@@ -343,7 +375,7 @@ export class AnnotationDrawingService {
     } else {
       const totalSpace = last.y - first.y;
       const spacing = totalSpace / (selectedBoxes.length - 1);
-      
+
       selectedBoxes.forEach((item, i) => {
         if (i > 0 && i < selectedBoxes.length - 1) {
           updatedBoxes[item.index].y = first.y + spacing * i;
@@ -351,7 +383,10 @@ export class AnnotationDrawingService {
       });
     }
 
-    logger.info(`Distributed ${indices.size} boxes ${direction}ly`, 'AnnotationDrawing');
+    logger.info(
+      `Distributed ${indices.size} boxes ${direction}ly`,
+      "AnnotationDrawing",
+    );
     return updatedBoxes;
   }
 }

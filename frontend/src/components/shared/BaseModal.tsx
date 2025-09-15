@@ -3,9 +3,9 @@
  * Provides consistent modal structure and behavior across the application
  */
 
-import React, { Fragment, ReactNode } from 'react';
-import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import React, { Fragment, ReactNode } from "react";
+import { Dialog, Transition } from "@headlessui/react";
+import { XMarkIcon } from "@heroicons/react/24/outline";
 
 export interface BaseModalProps {
   isOpen: boolean;
@@ -13,18 +13,18 @@ export interface BaseModalProps {
   title: string;
   description?: string;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  size?: "sm" | "md" | "lg" | "xl" | "full";
   showCloseButton?: boolean;
   closeOnOverlayClick?: boolean;
   className?: string;
 }
 
 const sizeClasses = {
-  sm: 'max-w-md',
-  md: 'max-w-lg',
-  lg: 'max-w-2xl',
-  xl: 'max-w-4xl',
-  full: 'max-w-7xl',
+  sm: "max-w-md",
+  md: "max-w-lg",
+  lg: "max-w-2xl",
+  xl: "max-w-4xl",
+  full: "max-w-7xl",
 };
 
 export const BaseModal: React.FC<BaseModalProps> = ({
@@ -33,10 +33,10 @@ export const BaseModal: React.FC<BaseModalProps> = ({
   title,
   description,
   children,
-  size = 'md',
+  size = "md",
   showCloseButton = true,
   closeOnOverlayClick = true,
-  className = '',
+  className = "",
 }) => {
   const handleOverlayClick = () => {
     if (closeOnOverlayClick) {
@@ -46,11 +46,7 @@ export const BaseModal: React.FC<BaseModalProps> = ({
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
-      <Dialog 
-        as="div" 
-        className="relative z-50" 
-        onClose={handleOverlayClick}
-      >
+      <Dialog as="div" className="relative z-50" onClose={handleOverlayClick}>
         {/* Backdrop */}
         <Transition.Child
           as={Fragment}
@@ -76,7 +72,7 @@ export const BaseModal: React.FC<BaseModalProps> = ({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <Dialog.Panel 
+              <Dialog.Panel
                 className={`
                   w-full ${sizeClasses[size]} transform overflow-hidden rounded-2xl 
                   bg-white p-6 text-left align-middle shadow-xl transition-all
@@ -111,9 +107,7 @@ export const BaseModal: React.FC<BaseModalProps> = ({
                 </div>
 
                 {/* Content */}
-                <div className="mt-4">
-                  {children}
-                </div>
+                <div className="mt-4">{children}</div>
               </Dialog.Panel>
             </Transition.Child>
           </div>
@@ -129,9 +123,9 @@ export interface ModalFooterProps {
   className?: string;
 }
 
-export const ModalFooter: React.FC<ModalFooterProps> = ({ 
-  children, 
-  className = '' 
+export const ModalFooter: React.FC<ModalFooterProps> = ({
+  children,
+  className = "",
 }) => {
   return (
     <div className={`mt-6 flex justify-end space-x-3 ${className}`}>
@@ -146,15 +140,11 @@ export interface ModalBodyProps {
   className?: string;
 }
 
-export const ModalBody: React.FC<ModalBodyProps> = ({ 
-  children, 
-  className = '' 
+export const ModalBody: React.FC<ModalBodyProps> = ({
+  children,
+  className = "",
 }) => {
-  return (
-    <div className={`space-y-4 ${className}`}>
-      {children}
-    </div>
-  );
+  return <div className={`space-y-4 ${className}`}>{children}</div>;
 };
 
 export default BaseModal;

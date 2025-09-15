@@ -18,7 +18,7 @@ export const createIdentityTransform = (): ViewportTransform => ({
 
 export const applyTransform = (
   ctx: CanvasRenderingContext2D,
-  transform: ViewportTransform
+  transform: ViewportTransform,
 ): void => {
   ctx.transform(
     transform.scaleX,
@@ -26,14 +26,14 @@ export const applyTransform = (
     0,
     transform.scaleY,
     transform.translateX,
-    transform.translateY
+    transform.translateY,
   );
 };
 
 export const screenToWorld = (
   screenX: number,
   screenY: number,
-  transform: ViewportTransform
+  transform: ViewportTransform,
 ): { x: number; y: number } => {
   return {
     x: (screenX - transform.translateX) / transform.scaleX,
@@ -44,7 +44,7 @@ export const screenToWorld = (
 export const worldToScreen = (
   worldX: number,
   worldY: number,
-  transform: ViewportTransform
+  transform: ViewportTransform,
 ): { x: number; y: number } => {
   return {
     x: worldX * transform.scaleX + transform.translateX,
@@ -60,7 +60,7 @@ export const clampTranslation = (
   translate: number,
   scale: number,
   viewportSize: number,
-  contentSize: number
+  contentSize: number,
 ): number => {
   const maxTranslate = 0;
   const minTranslate = viewportSize - contentSize * scale;

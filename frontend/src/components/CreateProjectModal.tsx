@@ -1,10 +1,10 @@
-import React from 'react';
-import { Fragment } from 'react';
-import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
-import { useForm } from 'react-hook-form';
-import { projectService } from '../services/api';
-import toast from 'react-hot-toast';
+import React from "react";
+import { Fragment } from "react";
+import { Dialog, Transition } from "@headlessui/react";
+import { XMarkIcon } from "@heroicons/react/24/outline";
+import { useForm } from "react-hook-form";
+import { projectService } from "../services/api";
+import toast from "react-hot-toast";
 
 interface CreateProjectModalProps {
   onClose: () => void;
@@ -16,7 +16,10 @@ interface ProjectFormData {
   description: string;
 }
 
-const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ onClose, onCreated }) => {
+const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
+  onClose,
+  onCreated,
+}) => {
   const {
     register,
     handleSubmit,
@@ -26,10 +29,10 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ onClose, onCrea
   const onSubmit = async (data: ProjectFormData) => {
     try {
       await projectService.createProject(data);
-      toast.success('Project created successfully');
+      toast.success("Project created successfully");
       onCreated();
     } catch (error) {
-      toast.error('Failed to create project');
+      toast.error("Failed to create project");
     }
   };
 
@@ -72,30 +75,43 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ onClose, onCrea
                 </div>
                 <div className="sm:flex sm:items-start">
                   <div className="mt-3 text-center sm:mt-0 sm:text-left w-full">
-                    <Dialog.Title as="h3" className="text-lg font-medium leading-6 text-gray-900">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-medium leading-6 text-gray-900"
+                    >
                       Create New Project
                     </Dialog.Title>
                     <form onSubmit={handleSubmit(onSubmit)} className="mt-5">
                       <div className="space-y-4">
                         <div>
-                          <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                          <label
+                            htmlFor="name"
+                            className="block text-sm font-medium text-gray-700"
+                          >
                             Project Name
                           </label>
                           <input
                             type="text"
-                            {...register('name', { required: 'Project name is required' })}
+                            {...register("name", {
+                              required: "Project name is required",
+                            })}
                             className="mt-1 block w-full rounded-md border border-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
                           />
                           {errors.name && (
-                            <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
+                            <p className="mt-1 text-sm text-red-600">
+                              {errors.name.message}
+                            </p>
                           )}
                         </div>
                         <div>
-                          <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                          <label
+                            htmlFor="description"
+                            className="block text-sm font-medium text-gray-700"
+                          >
                             Description
                           </label>
                           <textarea
-                            {...register('description')}
+                            {...register("description")}
                             rows={3}
                             className="mt-1 block w-full rounded-md border border-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
                           />
@@ -107,7 +123,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ onClose, onCrea
                           disabled={isSubmitting}
                           className="inline-flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                         >
-                          {isSubmitting ? 'Creating...' : 'Create'}
+                          {isSubmitting ? "Creating..." : "Create"}
                         </button>
                         <button
                           type="button"

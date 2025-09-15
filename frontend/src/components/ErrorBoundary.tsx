@@ -3,9 +3,9 @@
  * Provides graceful error handling and recovery options
  */
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import { logger } from '../lib/logger';
+import React, { Component, ErrorInfo, ReactNode } from "react";
+import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { logger } from "../lib/logger";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -53,8 +53,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
    */
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     // Log error to console and logging service
-    logger.error('Error caught by boundary', 'ErrorBoundary', error);
-    logger.debug('Error component stack', 'ErrorBoundary', errorInfo.componentStack);
+    logger.error("Error caught by boundary", "ErrorBoundary", error);
+    logger.debug(
+      "Error component stack",
+      "ErrorBoundary",
+      errorInfo.componentStack,
+    );
 
     // Call optional error handler
     if (this.props.onError) {
@@ -104,7 +108,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               </p>
 
               {/* Show error details in development */}
-              {process.env.NODE_ENV === 'development' && this.state.error && (
+              {process.env.NODE_ENV === "development" && this.state.error && (
                 <div className="mt-4 text-left bg-red-50 p-4 rounded-md">
                   <p className="text-sm font-mono text-red-800">
                     {this.state.error.toString()}
@@ -154,13 +158,13 @@ export default ErrorBoundary;
  */
 export const useAsyncError = () => {
   const [, setError] = React.useState();
-  
+
   return React.useCallback(
     (error: Error) => {
       setError(() => {
         throw error;
       });
     },
-    [setError]
+    [setError],
   );
 };

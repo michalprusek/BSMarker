@@ -5,12 +5,12 @@
 
 // Layout constants - must match the actual layout in AnnotationEditor.tsx
 export const LAYOUT_CONSTANTS = {
-  FREQUENCY_SCALE_WIDTH: 40,  // Width of the frequency scale on the left
-  SPECTROGRAM_HEIGHT_RATIO: 0.65,  // 65% of total height for spectrogram (increased from 60%)
-  TIMELINE_TOP_RATIO: 0.65,  // Timeline starts at 65% (right after spectrogram)
-  TIMELINE_HEIGHT_RATIO: 0.08,  // 8% for timeline
-  WAVEFORM_TOP_RATIO: 0.73,  // Waveform starts at 73% (after timeline)
-  WAVEFORM_HEIGHT_RATIO: 0.27,  // 27% for waveform (reduced from 32%)
+  FREQUENCY_SCALE_WIDTH: 40, // Width of the frequency scale on the left
+  SPECTROGRAM_HEIGHT_RATIO: 0.65, // 65% of total height for spectrogram (increased from 60%)
+  TIMELINE_TOP_RATIO: 0.65, // Timeline starts at 65% (right after spectrogram)
+  TIMELINE_HEIGHT_RATIO: 0.08, // 8% for timeline
+  WAVEFORM_TOP_RATIO: 0.73, // Waveform starts at 73% (after timeline)
+  WAVEFORM_HEIGHT_RATIO: 0.27, // 27% for waveform (reduced from 32%)
 } as const;
 
 // Coordinate transformation utilities
@@ -29,18 +29,21 @@ export const CoordinateUtils = {
     duration: number,
     totalWidth: number,
     zoomLevel: number = 1,
-    includeFrequencyScale: boolean = false
+    includeFrequencyScale: boolean = false,
   ): number {
     if (duration === 0) return 0;
-    
+
     // The actual spectrogram width (excluding frequency scale)
-    const spectrogramWidth = totalWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-    
+    const spectrogramWidth =
+      totalWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+
     // Calculate position relative to spectrogram content area
     const position = (time / duration) * spectrogramWidth * zoomLevel;
-    
+
     // Add frequency scale offset if needed for absolute positioning
-    return includeFrequencyScale ? position + LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH : position;
+    return includeFrequencyScale
+      ? position + LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH
+      : position;
   },
 
   /**
@@ -51,16 +54,19 @@ export const CoordinateUtils = {
     duration: number,
     totalWidth: number,
     zoomLevel: number = 1,
-    includeFrequencyScale: boolean = false
+    includeFrequencyScale: boolean = false,
   ): number {
     if (duration === 0) return 0;
-    
+
     // Adjust for frequency scale if x includes it
-    const adjustedX = includeFrequencyScale ? x - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH : x;
-    
+    const adjustedX = includeFrequencyScale
+      ? x - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH
+      : x;
+
     // The actual spectrogram width (excluding frequency scale)
-    const spectrogramWidth = totalWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-    
+    const spectrogramWidth =
+      totalWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+
     // Calculate time from position
     return (adjustedX / (spectrogramWidth * zoomLevel)) * duration;
   },
@@ -71,7 +77,7 @@ export const CoordinateUtils = {
   frequencyToPixel(
     frequency: number,
     maxFrequency: number,
-    height: number
+    height: number,
   ): number {
     if (maxFrequency === 0) return 0;
     // Frequency scale is inverted (high frequencies at top)
@@ -81,11 +87,7 @@ export const CoordinateUtils = {
   /**
    * Convert pixel position to frequency (y-axis)
    */
-  pixelToFrequency(
-    y: number,
-    maxFrequency: number,
-    height: number
-  ): number {
+  pixelToFrequency(y: number, maxFrequency: number, height: number): number {
     if (height === 0) return 0;
     // Frequency scale is inverted (high frequencies at top)
     return maxFrequency * (1 - y / height);
@@ -111,7 +113,10 @@ export const CoordinateUtils = {
    * Frequency scale stays fixed width while content area zooms
    */
   getZoomedContainerWidth(totalWidth: number, zoomLevel: number = 1): number {
-    return this.getZoomedContentWidth(totalWidth, zoomLevel) + LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+    return (
+      this.getZoomedContentWidth(totalWidth, zoomLevel) +
+      LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH
+    );
   },
 
   /**
@@ -128,7 +133,7 @@ export const CoordinateUtils = {
     totalWidth: number,
     totalHeight: number,
     accountForFrequencyScale: boolean = true,
-    zoomLevel: number = 1
+    zoomLevel: number = 1,
   ): typeof box {
     // The actual drawable area (excluding frequency scale) with zoom applied
     // When zoomed, only the content area zooms, not the frequency scale
@@ -137,16 +142,25 @@ export const CoordinateUtils = {
       : totalWidth * zoomLevel;
 
     const maxX = effectiveWidth;
-    const maxY = totalHeight * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO * zoomLevel; // Only spectrogram area, zoomed
+    const maxY =
+      totalHeight * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO * zoomLevel; // Only spectrogram area, zoomed
 
     // Constrain position to keep box fully within boundaries
-    const constrainedX = this.constrainToRange(box.x, 0, Math.max(0, maxX - box.width));
-    const constrainedY = this.constrainToRange(box.y, 0, Math.max(0, maxY - box.height));
+    const constrainedX = this.constrainToRange(
+      box.x,
+      0,
+      Math.max(0, maxX - box.width),
+    );
+    const constrainedY = this.constrainToRange(
+      box.y,
+      0,
+      Math.max(0, maxY - box.height),
+    );
 
     // Constrain size if box is too large for remaining space
     const constrainedWidth = Math.min(box.width, maxX - constrainedX);
     const constrainedHeight = Math.min(box.height, maxY - constrainedY);
-    
+
     return {
       x: constrainedX,
       y: constrainedY,
@@ -160,7 +174,7 @@ export const CoordinateUtils = {
    */
   getSpectrogramContentDimensions(
     totalWidth: number,
-    totalHeight: number
+    totalHeight: number,
   ): { width: number; height: number } {
     return {
       width: totalWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH,
@@ -182,11 +196,11 @@ export const CoordinateUtils = {
    */
   getAbsoluteScreenPosition(
     point: { x: number; y: number },
-    scrollOffset: number
+    scrollOffset: number,
   ): { x: number; y: number } {
     return {
       x: point.x + scrollOffset,
-      y: point.y
+      y: point.y,
     };
   },
 
@@ -194,10 +208,7 @@ export const CoordinateUtils = {
    * Convert screen coordinates to world coordinates (unzoomed space)
    * World coordinates are the base coordinate system before zoom is applied
    */
-  screenToWorldCoordinates(
-    screenX: number,
-    zoomLevel: number = 1
-  ): number {
+  screenToWorldCoordinates(screenX: number, zoomLevel: number = 1): number {
     return screenX / zoomLevel;
   },
 
@@ -205,10 +216,7 @@ export const CoordinateUtils = {
    * Convert world coordinates to screen coordinates (zoomed space)
    * Screen coordinates are the displayed coordinates after zoom is applied
    */
-  worldToScreenCoordinates(
-    worldX: number,
-    zoomLevel: number = 1
-  ): number {
+  worldToScreenCoordinates(worldX: number, zoomLevel: number = 1): number {
     return worldX * zoomLevel;
   },
 
@@ -219,7 +227,7 @@ export const CoordinateUtils = {
   getSeekPosition(
     absoluteX: number,
     effectiveWidth: number,
-    zoomLevel: number = 1
+    zoomLevel: number = 1,
   ): number {
     const zoomedWidth = effectiveWidth * zoomLevel;
     if (zoomedWidth === 0) return 0;
@@ -247,7 +255,7 @@ export const CoordinateUtils = {
       width: number;
       height: number;
     },
-    zoomLevel: number = 1
+    zoomLevel: number = 1,
   ): {
     screenX: number;
     screenY: number;
@@ -258,7 +266,7 @@ export const CoordinateUtils = {
       screenX: this.worldToScreenCoordinates(box.x, zoomLevel),
       screenY: box.y, // No vertical zoom
       screenWidth: this.worldToScreenCoordinates(box.width, zoomLevel),
-      screenHeight: box.height // No vertical zoom
+      screenHeight: box.height, // No vertical zoom
     };
   },
 
@@ -270,7 +278,7 @@ export const CoordinateUtils = {
     currentTime: number,
     duration: number,
     spectrogramDimensions: { width: number },
-    zoomLevel: number = 1
+    zoomLevel: number = 1,
   ): number {
     if (duration === 0) return 0;
 
@@ -286,7 +294,7 @@ export const CoordinateUtils = {
     stagePoint: { x: number; y: number },
     scrollOffset: number,
     zoomLevel: number,
-    spectrogramDimensions: { width: number; height: number }
+    spectrogramDimensions: { width: number; height: number },
   ): { x: number; y: number } {
     // Get absolute position accounting for scroll
     const absolute = this.getAbsoluteScreenPosition(stagePoint, scrollOffset);
@@ -300,7 +308,7 @@ export const CoordinateUtils = {
 
     return {
       x: constrainedX,
-      y: stagePoint.y // No vertical transformation needed
+      y: stagePoint.y, // No vertical transformation needed
     };
   },
 
@@ -313,14 +321,14 @@ export const CoordinateUtils = {
     duration: number,
     spectrogramDimensions: { width: number },
     zoomLevel: number = 1,
-    scrollOffset: number = 0
+    scrollOffset: number = 0,
   ): number {
     const pixelPosition = this.timeToPixel(
       time,
       duration,
       spectrogramDimensions.width,
       zoomLevel,
-      false
+      false,
     );
 
     // Adjust for scroll offset to get screen position

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { Fragment } from 'react';
-import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon, CloudArrowUpIcon } from '@heroicons/react/24/outline';
-import { recordingService } from '../services/api';
-import toast from 'react-hot-toast';
+import React, { useState } from "react";
+import { Fragment } from "react";
+import { Dialog, Transition } from "@headlessui/react";
+import { XMarkIcon, CloudArrowUpIcon } from "@heroicons/react/24/outline";
+import { recordingService } from "../services/api";
+import toast from "react-hot-toast";
 
 interface UploadRecordingModalProps {
   projectId: number;
@@ -18,7 +18,9 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
 }) => {
   const [files, setFiles] = useState<FileList | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+  const [uploadProgress, setUploadProgress] = useState<{
+    [key: string]: number;
+  }>({});
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -28,30 +30,32 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
       const emptyFiles: string[] = [];
       const largeFiles: string[] = [];
       const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
-      
+
       for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i];
         if (file.size === 0) {
           emptyFiles.push(file.name);
         } else if (file.size > MAX_FILE_SIZE) {
-          largeFiles.push(`${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+          largeFiles.push(
+            `${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`,
+          );
         } else {
           validFiles.push(file);
         }
       }
-      
+
       if (emptyFiles.length > 0) {
-        toast.error(`Empty files cannot be uploaded: ${emptyFiles.join(', ')}`);
+        toast.error(`Empty files cannot be uploaded: ${emptyFiles.join(", ")}`);
       }
-      
+
       if (largeFiles.length > 0) {
-        toast.error(`Files exceed 100MB limit: ${largeFiles.join(', ')}`);
+        toast.error(`Files exceed 100MB limit: ${largeFiles.join(", ")}`);
       }
-      
+
       if (validFiles.length > 0) {
         // Convert back to FileList-like object
         const dt = new DataTransfer();
-        validFiles.forEach(file => dt.items.add(file));
+        validFiles.forEach((file) => dt.items.add(file));
         setFiles(dt.files);
         toast.success(`${validFiles.length} file(s) ready for upload`);
       } else {
@@ -61,16 +65,18 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
   };
 
   const handleUpload = async () => {
-    console.log('Upload: Starting upload process');
+    console.log("Upload: Starting upload process");
     if (!files || files.length === 0) {
-      toast.error('Please select at least one file');
+      toast.error("Please select at least one file");
       return;
     }
 
     // Additional validation before upload
-    const emptyFiles = Array.from(files).filter(f => f.size === 0);
+    const emptyFiles = Array.from(files).filter((f) => f.size === 0);
     if (emptyFiles.length > 0) {
-      toast.error(`Cannot upload empty files: ${emptyFiles.map(f => f.name).join(', ')}`);
+      toast.error(
+        `Cannot upload empty files: ${emptyFiles.map((f) => f.name).join(", ")}`,
+      );
       return;
     }
 
@@ -83,43 +89,46 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
       // Upload files sequentially to avoid overwhelming the server
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        console.log(`Upload: Starting upload for file ${i+1}/${files.length}: ${file.name} (${(file.size/1024/1024).toFixed(2)} MB)`);
-        
+        console.log(
+          `Upload: Starting upload for file ${i + 1}/${files.length}: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`,
+        );
+
         try {
-          setUploadProgress(prev => ({ ...prev, [file.name]: 0 }));
+          setUploadProgress((prev) => ({ ...prev, [file.name]: 0 }));
           console.log(`Upload: Calling uploadRecording for ${file.name}...`);
-          
+
           const startTime = Date.now();
-          await recordingService.uploadRecording(
-            projectId, 
-            file,
-            (percent) => {
-              setUploadProgress(prev => ({ ...prev, [file.name]: percent }));
-            }
-          );
+          await recordingService.uploadRecording(projectId, file, (percent) => {
+            setUploadProgress((prev) => ({ ...prev, [file.name]: percent }));
+          });
           const uploadTime = Date.now() - startTime;
-          
-          console.log(`Upload: Successfully uploaded ${file.name} in ${uploadTime}ms`);
-          setUploadProgress(prev => ({ ...prev, [file.name]: 100 }));
+
+          console.log(
+            `Upload: Successfully uploaded ${file.name} in ${uploadTime}ms`,
+          );
+          setUploadProgress((prev) => ({ ...prev, [file.name]: 100 }));
           successCount++;
         } catch (error: any) {
           console.error(`Upload: Failed to upload ${file.name}:`, error);
-          console.error('Upload: Error response:', error.response);
-          console.error('Upload: Error data:', error.response?.data);
+          console.error("Upload: Error response:", error.response);
+          console.error("Upload: Error data:", error.response?.data);
           failCount++;
-          
+
           // Use the error message from the service or fallback
-          const errorMessage = error.message || error.response?.data?.detail || 'Unknown error';
+          const errorMessage =
+            error.message || error.response?.data?.detail || "Unknown error";
           toast.error(`Failed to upload ${file.name}: ${errorMessage}`);
         }
       }
 
-      console.log(`Upload: Finished. Success: ${successCount}, Failed: ${failCount}`);
-      
+      console.log(
+        `Upload: Finished. Success: ${successCount}, Failed: ${failCount}`,
+      );
+
       if (successCount > 0) {
         toast.success(`Successfully uploaded ${successCount} file(s)`);
         onUploaded();
-        
+
         // Close modal after successful uploads if no failures
         if (failCount === 0) {
           setTimeout(() => {
@@ -131,12 +140,12 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
         toast.error(`Failed to upload ${failCount} file(s)`);
       }
     } catch (error) {
-      console.error('Upload: Unexpected error in upload process:', error);
-      toast.error('Unexpected error during upload');
+      console.error("Upload: Unexpected error in upload process:", error);
+      toast.error("Unexpected error during upload");
     } finally {
-      console.log('Upload: Cleaning up...');
+      console.log("Upload: Cleaning up...");
       setUploading(false);
-      
+
       // Don't clear progress immediately to show completion status
       setTimeout(() => {
         setUploadProgress({});
@@ -193,15 +202,22 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
                 </div>
                 <div className="sm:flex sm:items-start">
                   <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 sm:mx-0 sm:h-10 sm:w-10">
-                    <CloudArrowUpIcon className="h-6 w-6 text-blue-600" aria-hidden="true" />
+                    <CloudArrowUpIcon
+                      className="h-6 w-6 text-blue-600"
+                      aria-hidden="true"
+                    />
                   </div>
                   <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                    <Dialog.Title as="h3" className="text-lg font-medium leading-6 text-gray-900">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-medium leading-6 text-gray-900"
+                    >
                       Upload Recordings
                     </Dialog.Title>
                     <div className="mt-4">
                       <p className="text-sm text-gray-500">
-                        Select one or more audio files to upload. Supported formats: MP3, WAV, M4A, FLAC
+                        Select one or more audio files to upload. Supported
+                        formats: MP3, WAV, M4A, FLAC
                       </p>
                       <div className="mt-4">
                         <input
@@ -215,29 +231,43 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
                         {files && files.length > 0 && (
                           <div className="mt-3 space-y-1">
                             <p className="text-sm font-medium text-gray-700">
-                              Selected {files.length} file(s) - Total: {getTotalSize()} MB
+                              Selected {files.length} file(s) - Total:{" "}
+                              {getTotalSize()} MB
                             </p>
                             <div className="max-h-32 overflow-y-auto space-y-2">
                               {Array.from(files).map((file, index) => (
                                 <div key={index} className="text-xs">
                                   <div className="flex items-center justify-between">
                                     <span className="text-gray-600">
-                                      • {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                                      • {file.name} (
+                                      {(file.size / 1024 / 1024).toFixed(2)} MB)
                                     </span>
-                                    {uploadProgress[file.name] !== undefined && (
-                                      <span className={uploadProgress[file.name] === 100 ? "text-green-600" : "text-blue-600"}>
-                                        {uploadProgress[file.name] === 100 ? '✓' : `${uploadProgress[file.name]}%`}
+                                    {uploadProgress[file.name] !==
+                                      undefined && (
+                                      <span
+                                        className={
+                                          uploadProgress[file.name] === 100
+                                            ? "text-green-600"
+                                            : "text-blue-600"
+                                        }
+                                      >
+                                        {uploadProgress[file.name] === 100
+                                          ? "✓"
+                                          : `${uploadProgress[file.name]}%`}
                                       </span>
                                     )}
                                   </div>
-                                  {uploadProgress[file.name] !== undefined && uploadProgress[file.name] < 100 && (
-                                    <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                                      <div 
-                                        className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
-                                        style={{ width: `${uploadProgress[file.name]}%` }}
-                                      />
-                                    </div>
-                                  )}
+                                  {uploadProgress[file.name] !== undefined &&
+                                    uploadProgress[file.name] < 100 && (
+                                      <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                                        <div
+                                          className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                                          style={{
+                                            width: `${uploadProgress[file.name]}%`,
+                                          }}
+                                        />
+                                      </div>
+                                    )}
                                 </div>
                               ))}
                             </div>
@@ -254,7 +284,7 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
                     disabled={!files || files.length === 0 || uploading}
                     className="inline-flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {uploading ? 'Uploading...' : 'Upload All'}
+                    {uploading ? "Uploading..." : "Upload All"}
                   </button>
                   <button
                     type="button"

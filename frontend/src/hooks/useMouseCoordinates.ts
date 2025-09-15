@@ -1,5 +1,5 @@
-import { useCallback } from 'react';
-import CoordinateUtils from '../utils/coordinates';
+import { useCallback } from "react";
+import CoordinateUtils from "../utils/coordinates";
 
 interface MouseCoordinateResult {
   absoluteX: number;
@@ -22,7 +22,7 @@ interface SpectrogramDimensions {
 export const useMouseCoordinates = (
   spectrogramDimensions: SpectrogramDimensions,
   scrollOffset: number,
-  zoomLevel: number
+  zoomLevel: number,
 ) => {
   /**
    * Transform mouse point to various coordinate systems needed for annotation operations.
@@ -32,7 +32,9 @@ export const useMouseCoordinates = (
   const transformMousePoint = useCallback(
     (point: { x: number; y: number }): MouseCoordinateResult => {
       // Calculate effective width for the spectrogram
-      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
+      const effectiveWidth = CoordinateUtils.getEffectiveWidth(
+        spectrogramDimensions.width,
+      );
 
       // Since the Stage is inside the scroll container, we don't need to add scrollOffset
       // The point is already in the correct coordinate space relative to the scrolled content
@@ -40,11 +42,18 @@ export const useMouseCoordinates = (
       const absoluteX = absolutePosition.x;
 
       // Calculate seek position (normalized 0 to 1) for audio playback
-      const seekPosition = CoordinateUtils.getSeekPosition(absoluteX, effectiveWidth, zoomLevel);
+      const seekPosition = CoordinateUtils.getSeekPosition(
+        absoluteX,
+        effectiveWidth,
+        zoomLevel,
+      );
 
       // Convert to world coordinates for bounding box operations
       // Don't constrain worldX here - let individual operations handle their own constraints
-      const worldX = CoordinateUtils.screenToWorldCoordinates(absoluteX, zoomLevel);
+      const worldX = CoordinateUtils.screenToWorldCoordinates(
+        absoluteX,
+        zoomLevel,
+      );
 
       // Create position object for bounding box operations
       const pos = { x: worldX, y: point.y };
@@ -55,10 +64,10 @@ export const useMouseCoordinates = (
         seekPosition,
         worldX,
         pos,
-        effectiveWidth
+        effectiveWidth,
       };
     },
-    [spectrogramDimensions, scrollOffset, zoomLevel]
+    [spectrogramDimensions, scrollOffset, zoomLevel],
   );
 
   /**
@@ -79,13 +88,16 @@ export const useMouseCoordinates = (
    * Calculate zoomed content width
    */
   const getZoomedContentWidth = useCallback((): number => {
-    return CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel);
+    return CoordinateUtils.getZoomedContentWidth(
+      spectrogramDimensions.width,
+      zoomLevel,
+    );
   }, [spectrogramDimensions.width, zoomLevel]);
 
   return {
     transformMousePoint,
     clampSeekPosition,
     getMaxWorldX,
-    getZoomedContentWidth
+    getZoomedContentWidth,
   };
 };

@@ -391,7 +391,18 @@ curl -X GET http://localhost:8000/api/v1/health
 docker exec <redis_container> redis-cli ping
 ```
 
-## Contributing Guidelines
+## IMPORTANT: Production Deployment Rules
+
+**AFTER EVERY CODE CHANGE, YOU MUST REBUILD PRODUCTION DIRECTLY ON THE SERVER:**
+```bash
+# Always rebuild production after any changes
+docker-compose -f docker-compose.prod.yml build --no-cache
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+This ensures all changes are immediately deployed to production.
+
+# Contributing Guidelines
 1. Follow established patterns and conventions
 2. Write clean, self-documenting code
 3. Add tests for new functionality

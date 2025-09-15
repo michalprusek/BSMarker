@@ -18,6 +18,7 @@ class PaginationMetadata(BaseModel):
     total_pages: int
     has_next: bool
     has_prev: bool
+    total_duration: Optional[float] = None  # Total duration in seconds for recordings
 
 
 class PaginatedResponse(BaseModel, Generic[T]):

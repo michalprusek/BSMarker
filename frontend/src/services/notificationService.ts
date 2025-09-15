@@ -3,19 +3,25 @@
  * Provides SSOT for all user notifications in the application
  */
 
-import toast from 'react-hot-toast';
+import toast from "react-hot-toast";
 
-export type NotificationType = 'success' | 'error' | 'info' | 'warning';
+export type NotificationType = "success" | "error" | "info" | "warning";
 
 export interface NotificationOptions {
   duration?: number;
   icon?: string;
-  position?: 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
+  position?:
+    | "top-left"
+    | "top-center"
+    | "top-right"
+    | "bottom-left"
+    | "bottom-center"
+    | "bottom-right";
 }
 
 const DEFAULT_OPTIONS: NotificationOptions = {
   duration: 4000,
-  position: 'top-center'
+  position: "top-center",
 };
 
 const ERROR_DURATION = 5000;
@@ -30,7 +36,7 @@ class NotificationService {
     toast.success(message, {
       duration: options?.duration ?? SUCCESS_DURATION,
       position: options?.position ?? DEFAULT_OPTIONS.position,
-      icon: options?.icon
+      icon: options?.icon,
     });
   }
 
@@ -41,7 +47,7 @@ class NotificationService {
     toast.error(message, {
       duration: options?.duration ?? ERROR_DURATION,
       position: options?.position ?? DEFAULT_OPTIONS.position,
-      icon: options?.icon
+      icon: options?.icon,
     });
   }
 
@@ -52,7 +58,7 @@ class NotificationService {
     toast(message, {
       duration: options?.duration ?? INFO_DURATION,
       position: options?.position ?? DEFAULT_OPTIONS.position,
-      icon: options?.icon ?? 'ℹ️'
+      icon: options?.icon ?? "ℹ️",
     });
   }
 
@@ -63,11 +69,11 @@ class NotificationService {
     toast(message, {
       duration: options?.duration ?? INFO_DURATION,
       position: options?.position ?? DEFAULT_OPTIONS.position,
-      icon: options?.icon ?? '⚠️',
+      icon: options?.icon ?? "⚠️",
       style: {
-        background: '#FFA500',
-        color: '#fff'
-      }
+        background: "#FFA500",
+        color: "#fff",
+      },
     });
   }
 
@@ -81,19 +87,19 @@ class NotificationService {
       success: string | ((data: T) => string);
       error: string | ((error: any) => string);
     },
-    options?: NotificationOptions
+    options?: NotificationOptions,
   ): Promise<T> {
     return toast.promise(
       promise,
       {
         loading: messages.loading,
         success: messages.success,
-        error: messages.error
+        error: messages.error,
       },
       {
         position: options?.position ?? DEFAULT_OPTIONS.position,
-        duration: options?.duration
-      }
+        duration: options?.duration,
+      },
     );
   }
 
@@ -111,10 +117,13 @@ class NotificationService {
   /**
    * Show custom toast with full control
    */
-  custom(renderer: (toast: any) => JSX.Element, options?: NotificationOptions): string {
+  custom(
+    renderer: (toast: any) => JSX.Element,
+    options?: NotificationOptions,
+  ): string {
     return toast.custom(renderer, {
       duration: options?.duration ?? DEFAULT_OPTIONS.duration,
-      position: options?.position ?? DEFAULT_OPTIONS.position
+      position: options?.position ?? DEFAULT_OPTIONS.position,
     });
   }
 }
@@ -125,56 +134,56 @@ export const notificationService = new NotificationService();
 // Common notification messages
 export const NotificationMessages = {
   // Annotation messages
-  ANNOTATION_SAVED: 'Annotations saved successfully',
-  ANNOTATION_SAVE_ERROR: 'Failed to save annotations',
-  ANNOTATION_DELETED: 'Annotation deleted',
-  ANNOTATION_COPIED: 'Annotation copied to clipboard',
-  ANNOTATION_PASTED: 'Annotation pasted',
-  ANNOTATION_NO_CLIPBOARD: 'No annotation in clipboard',
+  ANNOTATION_SAVED: "Annotations saved successfully",
+  ANNOTATION_SAVE_ERROR: "Failed to save annotations",
+  ANNOTATION_DELETED: "Annotation deleted",
+  ANNOTATION_COPIED: "Annotation copied to clipboard",
+  ANNOTATION_PASTED: "Annotation pasted",
+  ANNOTATION_NO_CLIPBOARD: "No annotation in clipboard",
 
   // Spectrogram messages
-  SPECTROGRAM_LOADING: 'Loading spectrogram...',
-  SPECTROGRAM_LOADED: 'Spectrogram loaded successfully',
-  SPECTROGRAM_ERROR: 'Failed to load spectrogram',
-  SPECTROGRAM_GENERATING: 'Generating spectrogram...',
-  SPECTROGRAM_PROCESSING: 'Processing spectrogram...',
+  SPECTROGRAM_LOADING: "Loading spectrogram...",
+  SPECTROGRAM_LOADED: "Spectrogram loaded successfully",
+  SPECTROGRAM_ERROR: "Failed to load spectrogram",
+  SPECTROGRAM_GENERATING: "Generating spectrogram...",
+  SPECTROGRAM_PROCESSING: "Processing spectrogram...",
 
   // Recording messages
-  RECORDING_LOADED: 'Recording loaded successfully',
-  RECORDING_ERROR: 'Failed to load recording',
-  RECORDING_NOT_FOUND: 'Recording not found',
+  RECORDING_LOADED: "Recording loaded successfully",
+  RECORDING_ERROR: "Failed to load recording",
+  RECORDING_NOT_FOUND: "Recording not found",
 
   // Label messages
-  LABEL_REQUIRED: 'Please enter a label',
-  LABEL_UPDATED: 'Label updated successfully',
-  LABEL_EXISTS: 'Label already exists',
+  LABEL_REQUIRED: "Please enter a label",
+  LABEL_UPDATED: "Label updated successfully",
+  LABEL_EXISTS: "Label already exists",
 
   // General messages
-  NETWORK_ERROR: 'Network error. Please check your connection.',
-  PERMISSION_DENIED: 'Permission denied',
-  SESSION_EXPIRED: 'Session expired. Please login again.',
-  UNEXPECTED_ERROR: 'An unexpected error occurred',
+  NETWORK_ERROR: "Network error. Please check your connection.",
+  PERMISSION_DENIED: "Permission denied",
+  SESSION_EXPIRED: "Session expired. Please login again.",
+  UNEXPECTED_ERROR: "An unexpected error occurred",
 
   // Action messages
-  UNDO_SUCCESS: 'Action undone',
-  REDO_SUCCESS: 'Action redone',
-  NO_UNDO_AVAILABLE: 'Nothing to undo',
-  NO_REDO_AVAILABLE: 'Nothing to redo',
+  UNDO_SUCCESS: "Action undone",
+  REDO_SUCCESS: "Action redone",
+  NO_UNDO_AVAILABLE: "Nothing to undo",
+  NO_REDO_AVAILABLE: "Nothing to redo",
 
   // Autosave messages
-  AUTOSAVE_SUCCESS: 'Changes auto-saved',
-  AUTOSAVE_ERROR: 'Auto-save failed',
-  AUTOSAVE_DISABLED: 'Auto-save disabled',
+  AUTOSAVE_SUCCESS: "Changes auto-saved",
+  AUTOSAVE_ERROR: "Auto-save failed",
+  AUTOSAVE_DISABLED: "Auto-save disabled",
 
   // Mode messages
-  ANNOTATION_MODE_ENABLED: 'Annotation mode enabled',
-  ANNOTATION_MODE_DISABLED: 'Annotation mode disabled',
-  SELECTION_MODE_ENABLED: 'Selection mode enabled',
+  ANNOTATION_MODE_ENABLED: "Annotation mode enabled",
+  ANNOTATION_MODE_DISABLED: "Annotation mode disabled",
+  SELECTION_MODE_ENABLED: "Selection mode enabled",
 
   // Navigation messages
-  FIRST_RECORDING: 'This is the first recording',
-  LAST_RECORDING: 'This is the last recording',
-  NAVIGATING_TO: (name: string) => `Loading ${name}...`
+  FIRST_RECORDING: "This is the first recording",
+  LAST_RECORDING: "This is the last recording",
+  NAVIGATING_TO: (name: string) => `Loading ${name}...`,
 } as const;
 
 export default notificationService;

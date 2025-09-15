@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { Fragment } from 'react';
-import { Dialog, Transition } from '@headlessui/react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import React, { useState } from "react";
+import { Fragment } from "react";
+import { Dialog, Transition } from "@headlessui/react";
+import { XMarkIcon } from "@heroicons/react/24/outline";
 
 interface LabelModalProps {
   onClose: () => void;
@@ -9,7 +9,11 @@ interface LabelModalProps {
   initialLabel?: string;
 }
 
-const LabelModal: React.FC<LabelModalProps> = ({ onClose, onSave, initialLabel = '' }) => {
+const LabelModal: React.FC<LabelModalProps> = ({
+  onClose,
+  onSave,
+  initialLabel = "",
+}) => {
   const [label, setLabel] = useState(initialLabel);
 
   // Prevent event propagation for keyboard events in the modal
@@ -17,9 +21,9 @@ const LabelModal: React.FC<LabelModalProps> = ({ onClose, onSave, initialLabel =
     const handleKeyDown = (e: KeyboardEvent) => {
       // Stop propagation to prevent parent keyboard shortcuts
       e.stopPropagation();
-      
+
       // Handle Escape key to close modal
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
@@ -30,12 +34,12 @@ const LabelModal: React.FC<LabelModalProps> = ({ onClose, onSave, initialLabel =
     };
 
     // Add event listeners with capture phase to intercept events early
-    document.addEventListener('keydown', handleKeyDown, true);
-    document.addEventListener('keyup', handleKeyUp, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("keyup", handleKeyUp, true);
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown, true);
-      document.removeEventListener('keyup', handleKeyUp, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("keyup", handleKeyUp, true);
     };
   }, [onClose]);
 
@@ -86,12 +90,18 @@ const LabelModal: React.FC<LabelModalProps> = ({ onClose, onSave, initialLabel =
                 </div>
                 <div className="sm:flex sm:items-start">
                   <div className="mt-3 text-center sm:mt-0 sm:text-left w-full">
-                    <Dialog.Title as="h3" className="text-lg font-medium leading-6 text-gray-900">
-                      {initialLabel ? 'Edit Label' : 'Add Label'}
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-medium leading-6 text-gray-900"
+                    >
+                      {initialLabel ? "Edit Label" : "Add Label"}
                     </Dialog.Title>
                     <form onSubmit={handleSubmit} className="mt-4">
                       <div>
-                        <label htmlFor="label" className="block text-sm font-medium text-gray-700">
+                        <label
+                          htmlFor="label"
+                          className="block text-sm font-medium text-gray-700"
+                        >
                           Bird Species or Sound Type
                         </label>
                         <input
