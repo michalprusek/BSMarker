@@ -487,9 +487,12 @@ export const recordingService = {
     try {
       // Add cache-busting timestamp to prevent stale spectrograms
       const timestamp = Date.now();
-      const response = await api.get(`/recordings/${recordingId}/spectrogram?v=${timestamp}`, {
-        responseType: "blob",
-      });
+      const response = await api.get(
+        `/recordings/${recordingId}/spectrogram?v=${timestamp}`,
+        {
+          responseType: "blob",
+        },
+      );
       return response.data;
     } catch (error: any) {
       if (error.response?.status === 202) {
