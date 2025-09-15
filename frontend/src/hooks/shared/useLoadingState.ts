@@ -3,8 +3,8 @@
  * Provides consistent loading state management across components
  */
 
-import { useState, useCallback } from 'react';
-import { logger } from '../../lib/logger';
+import { useState, useCallback } from "react";
+import { logger } from "../../lib/logger";
 
 export interface LoadingState {
   isLoading: boolean;
@@ -22,7 +22,7 @@ export interface UseLoadingStateReturn extends LoadingState {
 
 export const useLoadingState = (
   initialLoading: boolean = false,
-  context?: string
+  context?: string,
 ): UseLoadingStateReturn => {
   const [isLoading, setIsLoading] = useState(initialLoading);
   const [error, setErrorState] = useState<Error | null>(null);
@@ -32,43 +32,49 @@ export const useLoadingState = (
     setIsLoading(true);
     setErrorState(null);
     setIsSuccess(false);
-    logger.debug('Loading state started', context);
+    logger.debug("Loading state started", context);
   }, [context]);
 
   const setSuccess = useCallback(() => {
     setIsLoading(false);
     setErrorState(null);
     setIsSuccess(true);
-    logger.debug('Loading state succeeded', context);
+    logger.debug("Loading state succeeded", context);
   }, [context]);
 
-  const setError = useCallback((error: Error | string) => {
-    const errorObj = typeof error === 'string' ? new Error(error) : error;
-    setIsLoading(false);
-    setErrorState(errorObj);
-    setIsSuccess(false);
-    logger.error('Loading state failed', context, errorObj);
-  }, [context]);
+  const setError = useCallback(
+    (error: Error | string) => {
+      const errorObj = typeof error === "string" ? new Error(error) : error;
+      setIsLoading(false);
+      setErrorState(errorObj);
+      setIsSuccess(false);
+      logger.error("Loading state failed", context, errorObj);
+    },
+    [context],
+  );
 
   const reset = useCallback(() => {
     setIsLoading(false);
     setErrorState(null);
     setIsSuccess(false);
-    logger.debug('Loading state reset', context);
+    logger.debug("Loading state reset", context);
   }, [context]);
 
-  const execute = useCallback(async <T,>(promise: Promise<T>): Promise<T> => {
-    setLoading();
-    try {
-      const result = await promise;
-      setSuccess();
-      return result;
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      setError(error);
-      throw error;
-    }
-  }, [setLoading, setSuccess, setError]);
+  const execute = useCallback(
+    async <T>(promise: Promise<T>): Promise<T> => {
+      setLoading();
+      try {
+        const result = await promise;
+        setSuccess();
+        return result;
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        setError(error);
+        throw error;
+      }
+    },
+    [setLoading, setSuccess, setError],
+  );
 
   return {
     isLoading,
@@ -93,17 +99,18 @@ export const useMultiLoadingState = (keys: string[]) => {
     return acc;
   }, {} as MultiLoadingState);
 
-  const [loadingStates, setLoadingStates] = useState<MultiLoadingState>(initialState);
+  const [loadingStates, setLoadingStates] =
+    useState<MultiLoadingState>(initialState);
 
   const setLoading = useCallback((key: string, isLoading: boolean) => {
-    setLoadingStates(prev => ({
+    setLoadingStates((prev) => ({
       ...prev,
       [key]: isLoading,
     }));
   }, []);
 
-  const isAnyLoading = Object.values(loadingStates).some(state => state);
-  const isAllLoading = Object.values(loadingStates).every(state => state);
+  const isAnyLoading = Object.values(loadingStates).some((state) => state);
+  const isAllLoading = Object.values(loadingStates).every((state) => state);
 
   return {
     loadingStates,

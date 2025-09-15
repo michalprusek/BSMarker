@@ -3,10 +3,10 @@
  * Provides centralized mouse event handling with consistent coordinate transformations
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { CoordinateUtils } from '../utils/coordinates';
-import { getNearestBoxEdge, isPointInBox } from '../utils/annotationUtils';
-import { BoundingBox } from '../types';
+import { useState, useCallback, useRef, useEffect } from "react";
+import { CoordinateUtils } from "../utils/coordinates";
+import { getNearestBoxEdge, isPointInBox } from "../utils/annotationUtils";
+import { BoundingBox } from "../types";
 
 export interface MouseState {
   position: { x: number; y: number };
@@ -38,11 +38,20 @@ export interface MouseEventHandlers {
   onBoxDragMove: (index: number, delta: { x: number; y: number }) => void;
   onBoxDragEnd: () => void;
   onBoxResizeStart: (index: number, handle: string) => void;
-  onBoxResizeMove: (index: number, handle: string, delta: { x: number; y: number }) => void;
+  onBoxResizeMove: (
+    index: number,
+    handle: string,
+    delta: { x: number; y: number },
+  ) => void;
   onBoxResizeEnd: () => void;
   onSelectionStart: (pos: { x: number; y: number }) => void;
   onSelectionMove: (pos: { x: number; y: number }) => void;
-  onSelectionEnd: (rect: { x: number; y: number; width: number; height: number }) => void;
+  onSelectionEnd: (rect: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => void;
   onPanStart: (pos: { x: number; y: number }) => void;
   onPanMove: (delta: { x: number; y: number }) => void;
   onPanEnd: () => void;
@@ -52,7 +61,7 @@ export interface MouseEventHandlers {
 
 export function useMouseInteractions(
   config: MouseInteractionConfig,
-  handlers: Partial<MouseEventHandlers>
+  handlers: Partial<MouseEventHandlers>,
 ) {
   const [mouseState, setMouseState] = useState<MouseState>({
     position: { x: 0, y: 0 },
@@ -63,11 +72,13 @@ export function useMouseInteractions(
     isPanning: false,
     dragStartPos: null,
     hoveredBoxIndex: null,
-    hoveredHandle: null
+    hoveredHandle: null,
   });
 
   const lastMousePosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const dragModeRef = useRef<'draw' | 'select' | 'drag' | 'resize' | 'pan' | null>(null);
+  const dragModeRef = useRef<
+    "draw" | "select" | "drag" | "resize" | "pan" | null
+  >(null);
   const activeBoxIndexRef = useRef<number | null>(null);
   const activeHandleRef = useRef<string | null>(null);
 
@@ -80,10 +91,10 @@ export function useMouseInteractions(
         stagePoint,
         config.scrollOffset,
         config.zoomLevel,
-        config.spectrogramDimensions
+        config.spectrogramDimensions,
       );
     },
-    [config.scrollOffset, config.zoomLevel, config.spectrogramDimensions]
+    [config.scrollOffset, config.zoomLevel, config.spectrogramDimensions],
   );
 
   /**
@@ -91,11 +102,20 @@ export function useMouseInteractions(
    */
   const getSeekPosition = useCallback(
     (stagePoint: { x: number; y: number }) => {
-      const absolutePos = CoordinateUtils.getAbsoluteScreenPosition(stagePoint, config.scrollOffset);
-      const effectiveWidth = CoordinateUtils.getEffectiveWidth(config.spectrogramDimensions.width);
-      return CoordinateUtils.getSeekPosition(absolutePos.x, effectiveWidth, config.zoomLevel);
+      const absolutePos = CoordinateUtils.getAbsoluteScreenPosition(
+        stagePoint,
+        config.scrollOffset,
+      );
+      const effectiveWidth = CoordinateUtils.getEffectiveWidth(
+        config.spectrogramDimensions.width,
+      );
+      return CoordinateUtils.getSeekPosition(
+        absolutePos.x,
+        effectiveWidth,
+        config.zoomLevel,
+      );
     },
-    [config.scrollOffset, config.zoomLevel, config.spectrogramDimensions]
+    [config.scrollOffset, config.zoomLevel, config.spectrogramDimensions],
   );
 
   /**
@@ -115,7 +135,7 @@ export function useMouseInteractions(
           return {
             boxIndex: i,
             handle: nearEdge,
-            isHandle: true
+            isHandle: true,
           };
         }
 
@@ -124,14 +144,14 @@ export function useMouseInteractions(
           return {
             boxIndex: i,
             handle: null,
-            isHandle: false
+            isHandle: false,
           };
         }
       }
 
       return null;
     },
-    [config.boundingBoxes, config.handleThreshold]
+    [config.boundingBoxes, config.handleThreshold],
   );
 
   /**
@@ -145,10 +165,10 @@ export function useMouseInteractions(
       const worldPos = stageToWorld(point);
       const hoverInfo = checkHover(worldPos);
 
-      setMouseState(prev => ({
+      setMouseState((prev) => ({
         ...prev,
         isDown: true,
-        dragStartPos: worldPos
+        dragStartPos: worldPos,
       }));
 
       lastMousePosRef.current = worldPos;
@@ -156,18 +176,18 @@ export function useMouseInteractions(
       // Handle different interaction modes
       if (event.shiftKey || event.metaKey) {
         // Pan mode
-        dragModeRef.current = 'pan';
+        dragModeRef.current = "pan";
         handlers.onPanStart?.(worldPos);
       } else if (hoverInfo) {
         if (hoverInfo.isHandle && hoverInfo.handle) {
           // Resize mode
-          dragModeRef.current = 'resize';
+          dragModeRef.current = "resize";
           activeBoxIndexRef.current = hoverInfo.boxIndex;
           activeHandleRef.current = hoverInfo.handle;
           handlers.onBoxResizeStart?.(hoverInfo.boxIndex, hoverInfo.handle);
         } else {
           // Drag or select mode
-          dragModeRef.current = 'drag';
+          dragModeRef.current = "drag";
           activeBoxIndexRef.current = hoverInfo.boxIndex;
           const multiSelect = event.ctrlKey || event.metaKey;
           handlers.onBoxSelect?.(hoverInfo.boxIndex, multiSelect);
@@ -175,14 +195,14 @@ export function useMouseInteractions(
         }
       } else if (config.isAnnotationMode) {
         // Drawing mode
-        dragModeRef.current = 'draw';
+        dragModeRef.current = "draw";
         handlers.onDrawStart?.(worldPos);
-        setMouseState(prev => ({ ...prev, isDrawing: true }));
+        setMouseState((prev) => ({ ...prev, isDrawing: true }));
       } else {
         // Selection mode
-        dragModeRef.current = 'select';
+        dragModeRef.current = "select";
         handlers.onSelectionStart?.(worldPos);
-        setMouseState(prev => ({ ...prev, isSelecting: true }));
+        setMouseState((prev) => ({ ...prev, isSelecting: true }));
       }
 
       // Handle seeking (if not in annotation mode and not over a box)
@@ -196,8 +216,8 @@ export function useMouseInteractions(
       checkHover,
       config.isAnnotationMode,
       getSeekPosition,
-      handlers
-    ]
+      handlers,
+    ],
   );
 
   /**
@@ -211,49 +231,50 @@ export function useMouseInteractions(
       const worldPos = stageToWorld(point);
       const delta = {
         x: worldPos.x - lastMousePosRef.current.x,
-        y: worldPos.y - lastMousePosRef.current.y
+        y: worldPos.y - lastMousePosRef.current.y,
       };
 
-      setMouseState(prev => ({ ...prev, position: worldPos }));
+      setMouseState((prev) => ({ ...prev, position: worldPos }));
 
       // Update hover state when not dragging
       if (!mouseState.isDown) {
         const hoverInfo = checkHover(worldPos);
-        setMouseState(prev => ({
+        setMouseState((prev) => ({
           ...prev,
           hoveredBoxIndex: hoverInfo?.boxIndex ?? null,
-          hoveredHandle: hoverInfo?.isHandle && hoverInfo.handle
-            ? { boxIndex: hoverInfo.boxIndex, handle: hoverInfo.handle }
-            : null
+          hoveredHandle:
+            hoverInfo?.isHandle && hoverInfo.handle
+              ? { boxIndex: hoverInfo.boxIndex, handle: hoverInfo.handle }
+              : null,
         }));
       }
 
       // Handle drag operations
       if (mouseState.isDown && dragModeRef.current) {
-        setMouseState(prev => ({ ...prev, isDragging: true }));
+        setMouseState((prev) => ({ ...prev, isDragging: true }));
 
         switch (dragModeRef.current) {
-          case 'draw':
+          case "draw":
             handlers.onDrawMove?.(worldPos);
             break;
-          case 'select':
+          case "select":
             handlers.onSelectionMove?.(worldPos);
             break;
-          case 'drag':
+          case "drag":
             if (activeBoxIndexRef.current !== null) {
               handlers.onBoxDragMove?.(activeBoxIndexRef.current, delta);
             }
             break;
-          case 'resize':
+          case "resize":
             if (activeBoxIndexRef.current !== null && activeHandleRef.current) {
               handlers.onBoxResizeMove?.(
                 activeBoxIndexRef.current,
                 activeHandleRef.current,
-                delta
+                delta,
               );
             }
             break;
-          case 'pan':
+          case "pan":
             handlers.onPanMove?.(delta);
             break;
         }
@@ -261,12 +282,7 @@ export function useMouseInteractions(
 
       lastMousePosRef.current = worldPos;
     },
-    [
-      stageToWorld,
-      checkHover,
-      mouseState.isDown,
-      handlers
-    ]
+    [stageToWorld, checkHover, mouseState.isDown, handlers],
   );
 
   /**
@@ -282,48 +298,48 @@ export function useMouseInteractions(
       // Complete drag operations
       if (dragModeRef.current && mouseState.dragStartPos) {
         switch (dragModeRef.current) {
-          case 'draw':
+          case "draw":
             handlers.onDrawEnd?.(worldPos);
             break;
-          case 'select':
+          case "select":
             if (mouseState.dragStartPos) {
               const rect = {
                 x: Math.min(mouseState.dragStartPos.x, worldPos.x),
                 y: Math.min(mouseState.dragStartPos.y, worldPos.y),
                 width: Math.abs(worldPos.x - mouseState.dragStartPos.x),
-                height: Math.abs(worldPos.y - mouseState.dragStartPos.y)
+                height: Math.abs(worldPos.y - mouseState.dragStartPos.y),
               };
               handlers.onSelectionEnd?.(rect);
             }
             break;
-          case 'drag':
+          case "drag":
             handlers.onBoxDragEnd?.();
             break;
-          case 'resize':
+          case "resize":
             handlers.onBoxResizeEnd?.();
             break;
-          case 'pan':
+          case "pan":
             handlers.onPanEnd?.();
             break;
         }
       }
 
       // Reset state
-      setMouseState(prev => ({
+      setMouseState((prev) => ({
         ...prev,
         isDown: false,
         isDragging: false,
         isSelecting: false,
         isDrawing: false,
         isPanning: false,
-        dragStartPos: null
+        dragStartPos: null,
       }));
 
       dragModeRef.current = null;
       activeBoxIndexRef.current = null;
       activeHandleRef.current = null;
     },
-    [stageToWorld, mouseState.dragStartPos, handlers]
+    [stageToWorld, mouseState.dragStartPos, handlers],
   );
 
   /**
@@ -341,10 +357,10 @@ export function useMouseInteractions(
 
       handlers.onContextMenu?.(
         { x: event.evt.clientX, y: event.evt.clientY },
-        hoverInfo?.boxIndex
+        hoverInfo?.boxIndex,
       );
     },
-    [stageToWorld, checkHover, handlers]
+    [stageToWorld, checkHover, handlers],
   );
 
   /**
@@ -358,31 +374,34 @@ export function useMouseInteractions(
       const seekPos = getSeekPosition(point);
       handlers.onSeek?.(seekPos);
     },
-    [getSeekPosition, handlers]
+    [getSeekPosition, handlers],
   );
 
   /**
    * Get cursor style based on current hover state
    */
   const getCursorStyle = useCallback(() => {
-    if (mouseState.isPanning) return 'grabbing';
-    if (mouseState.isDrawing) return 'crosshair';
-    if (mouseState.isSelecting) return 'crosshair';
+    if (mouseState.isPanning) return "grabbing";
+    if (mouseState.isDrawing) return "crosshair";
+    if (mouseState.isSelecting) return "crosshair";
 
     if (mouseState.hoveredHandle) {
       const handle = mouseState.hoveredHandle.handle;
-      if (handle.includes('left') && handle.includes('top')) return 'nw-resize';
-      if (handle.includes('right') && handle.includes('top')) return 'ne-resize';
-      if (handle.includes('left') && handle.includes('bottom')) return 'sw-resize';
-      if (handle.includes('right') && handle.includes('bottom')) return 'se-resize';
-      if (handle === 'left' || handle === 'right') return 'ew-resize';
-      if (handle === 'top' || handle === 'bottom') return 'ns-resize';
+      if (handle.includes("left") && handle.includes("top")) return "nw-resize";
+      if (handle.includes("right") && handle.includes("top"))
+        return "ne-resize";
+      if (handle.includes("left") && handle.includes("bottom"))
+        return "sw-resize";
+      if (handle.includes("right") && handle.includes("bottom"))
+        return "se-resize";
+      if (handle === "left" || handle === "right") return "ew-resize";
+      if (handle === "top" || handle === "bottom") return "ns-resize";
     }
 
-    if (mouseState.hoveredBoxIndex !== null) return 'move';
-    if (config.isAnnotationMode) return 'crosshair';
+    if (mouseState.hoveredBoxIndex !== null) return "move";
+    if (config.isAnnotationMode) return "crosshair";
 
-    return 'default';
+    return "default";
   }, [mouseState, config.isAnnotationMode]);
 
   return {
@@ -392,9 +411,9 @@ export function useMouseInteractions(
       onMouseMove: handleMouseMove,
       onMouseUp: handleMouseUp,
       onContextMenu: handleContextMenu,
-      onDoubleClick: handleDoubleClick
+      onDoubleClick: handleDoubleClick,
     },
-    getCursorStyle
+    getCursorStyle,
   };
 }
 

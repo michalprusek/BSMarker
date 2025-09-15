@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from "react";
 
 interface UseAutosaveOptions {
   data: any;
@@ -24,7 +24,7 @@ export const useAutosave = ({
   debounceDelay = 3000,
   enabled = true,
   hasUnsavedChanges,
-  isSaving
+  isSaving,
 }: UseAutosaveOptions): UseAutosaveReturn => {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -35,7 +35,13 @@ export const useAutosave = ({
 
   // Queue-based save function to prevent concurrent saves
   const triggerSave = useCallback(async (): Promise<boolean> => {
-    if (!enabled || isSaving || isAutoSavingRef.current || saveQueueRef.current || !hasUnsavedChanges) {
+    if (
+      !enabled ||
+      isSaving ||
+      isAutoSavingRef.current ||
+      saveQueueRef.current ||
+      !hasUnsavedChanges
+    ) {
       return false;
     }
 
@@ -55,16 +61,18 @@ export const useAutosave = ({
           saveQueueRef.current = false;
           return true;
         }
-        throw new Error('Save operation returned false');
+        throw new Error("Save operation returned false");
       } catch (error) {
-        saveErrorRef.current = `Save failed (attempt ${retryCount + 1}/${maxRetries}): ${error instanceof Error ? error.message : 'Unknown error'}`;
-        
+        saveErrorRef.current = `Save failed (attempt ${retryCount + 1}/${maxRetries}): ${error instanceof Error ? error.message : "Unknown error"}`;
+
         if (retryCount >= maxRetries - 1) {
           break;
         }
-        
+
         // Wait before retry with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000),
+        );
       }
     }
 
@@ -76,7 +84,7 @@ export const useAutosave = ({
   // Synchronous save for beforeunload (best effort)
   const synchronousSave = useCallback(() => {
     if (!hasUnsavedChanges || isSaving) return;
-    
+
     // Use navigator.sendBeacon for best chance of completing
     // This is a fallback - we'll try the async save first
     try {
@@ -131,15 +139,19 @@ export const useAutosave = ({
     if (!enabled) return;
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden' && hasUnsavedChanges && !isSaving) {
+      if (
+        document.visibilityState === "hidden" &&
+        hasUnsavedChanges &&
+        !isSaving
+      ) {
         triggerSave();
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [enabled, hasUnsavedChanges, isSaving, triggerSave]);
 
@@ -151,18 +163,19 @@ export const useAutosave = ({
       if (hasUnsavedChanges) {
         // Attempt to save synchronously
         synchronousSave();
-        
+
         // Show browser confirmation dialog
         event.preventDefault();
-        event.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        event.returnValue =
+          "You have unsaved changes. Are you sure you want to leave?";
         return event.returnValue;
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [enabled, hasUnsavedChanges, synchronousSave]);
 
@@ -185,6 +198,6 @@ export const useAutosave = ({
     triggerSave,
     isAutoSaving: isAutoSavingRef.current,
     lastSaveTime: lastSaveTimeRef.current,
-    saveError: saveErrorRef.current
+    saveError: saveErrorRef.current,
   };
 };

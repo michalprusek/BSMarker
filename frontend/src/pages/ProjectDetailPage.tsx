@@ -1,14 +1,26 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeftIcon, CloudArrowUpIcon, MusicalNoteIcon, TrashIcon, MagnifyingGlassIcon, FunnelIcon, ArrowDownTrayIcon, CheckIcon } from '@heroicons/react/24/outline';
-import { Project, Recording } from '../types';
-import { projectService, recordingService, annotationService } from '../services/api';
-import toast from 'react-hot-toast';
-import UploadRecordingModal from '../components/UploadRecordingModal';
-import { formatRecordingDuration } from '../utils/duration';
-import LoadingSpinner from '../components/LoadingSpinner';
-// @ts-ignore
-import JSZip from 'jszip';
+import React, { useState, useEffect, useCallback } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import {
+  ArrowLeftIcon,
+  CloudArrowUpIcon,
+  MusicalNoteIcon,
+  TrashIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon,
+  ArrowDownTrayIcon,
+  CheckIcon,
+} from "@heroicons/react/24/outline";
+import { Project, Recording } from "../types";
+import {
+  projectService,
+  recordingService,
+  annotationService,
+} from "../services/api";
+import toast from "react-hot-toast";
+import UploadRecordingModal from "../components/UploadRecordingModal";
+import { formatRecordingDuration } from "../utils/duration";
+import LoadingSpinner from "../components/LoadingSpinner";
+import JSZip from "jszip";
 
 const ProjectDetailPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -17,14 +29,18 @@ const ProjectDetailPage: React.FC = () => {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [selectedRecordings, setSelectedRecordings] = useState<Set<number>>(new Set());
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedRecordings, setSelectedRecordings] = useState<Set<number>>(
+    new Set(),
+  );
+  const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [minDuration, setMinDuration] = useState('');
-  const [maxDuration, setMaxDuration] = useState('');
-  const [sortBy, setSortBy] = useState('created_at');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [annotationStatus, setAnnotationStatus] = useState<'all' | 'annotated' | 'unannotated'>('all');
+  const [minDuration, setMinDuration] = useState("");
+  const [maxDuration, setMaxDuration] = useState("");
+  const [sortBy, setSortBy] = useState("created_at");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [annotationStatus, setAnnotationStatus] = useState<
+    "all" | "annotated" | "unannotated"
+  >("all");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -33,23 +49,35 @@ const ProjectDetailPage: React.FC = () => {
     try {
       const projectData = await projectService.getProject(parseInt(projectId));
       setProject(projectData);
-      
+
       const params: any = {};
       if (searchTerm) params.search = searchTerm;
       if (minDuration) params.min_duration = parseFloat(minDuration);
       if (maxDuration) params.max_duration = parseFloat(maxDuration);
-      if (annotationStatus !== 'all') params.annotation_status = annotationStatus;
+      if (annotationStatus !== "all")
+        params.annotation_status = annotationStatus;
       params.sort_by = sortBy;
       params.sort_order = sortOrder;
-      
-      const recordingsData = await recordingService.getRecordings(parseInt(projectId), params);
+
+      const recordingsData = await recordingService.getRecordings(
+        parseInt(projectId),
+        params,
+      );
       setRecordings(recordingsData.items || recordingsData);
     } catch (error) {
-      toast.error('Failed to fetch project data');
+      toast.error("Failed to fetch project data");
     } finally {
       setLoading(false);
     }
-  }, [projectId, searchTerm, minDuration, maxDuration, annotationStatus, sortBy, sortOrder]);
+  }, [
+    projectId,
+    searchTerm,
+    minDuration,
+    maxDuration,
+    annotationStatus,
+    sortBy,
+    sortOrder,
+  ]);
 
   useEffect(() => {
     fetchProjectData();
@@ -63,51 +91,62 @@ const ProjectDetailPage: React.FC = () => {
   const handleDeleteRecording = async (recordingId: number) => {
     try {
       await recordingService.deleteRecording(recordingId);
-      toast.success('Recording deleted');
+      toast.success("Recording deleted");
       fetchProjectData();
     } catch (error) {
-      toast.error('Failed to delete recording');
+      toast.error("Failed to delete recording");
     }
   };
 
   const handleDownloadProject = async () => {
     if (!projectId || recordings.length === 0) return;
-    
+
     setIsDownloading(true);
-    
+
     try {
       // Create a zip file using JSZip
       const zip = new JSZip();
-      
+
       // Create folders
-      const recordingsFolder = zip.folder('recordings');
-      const spectrogramsFolder = zip.folder('spectrograms');
-      const annotationsFolder = zip.folder('annotations');
-      const visualizationsFolder = zip.folder('visualizations');
-      
+      const recordingsFolder = zip.folder("recordings");
+      const spectrogramsFolder = zip.folder("spectrograms");
+      const annotationsFolder = zip.folder("annotations");
+      const visualizationsFolder = zip.folder("visualizations");
+
       // Process each recording
       for (const recording of recordings) {
         try {
           // Download recording audio file
-          const audioBlob = await recordingService.downloadRecording(recording.id);
+          const audioBlob = await recordingService.downloadRecording(
+            recording.id,
+          );
           if (recordingsFolder) {
             recordingsFolder.file(`${recording.original_filename}`, audioBlob);
           }
-          
+
           // Download spectrogram using authenticated API
           try {
-            const spectrogramBlob = await recordingService.getSpectrogramBlob(recording.id);
+            const spectrogramBlob = await recordingService.getSpectrogramBlob(
+              recording.id,
+            );
             if (spectrogramBlob && spectrogramsFolder) {
-              spectrogramsFolder.file(`${recording.original_filename.replace(/\.[^/.]+$/, '')}_spectrogram.png`, spectrogramBlob);
+              spectrogramsFolder.file(
+                `${recording.original_filename.replace(/\.[^/.]+$/, "")}_spectrogram.png`,
+                spectrogramBlob,
+              );
             }
           } catch (spectrogramError) {
-            console.warn(`Spectrogram not available for ${recording.original_filename}`);
+            console.warn(
+              `Spectrogram not available for ${recording.original_filename}`,
+            );
             // Continue processing even if spectrogram is not available
           }
-          
+
           // Get annotations
-          const annotations = await annotationService.getAnnotations(recording.id);
-          
+          const annotations = await annotationService.getAnnotations(
+            recording.id,
+          );
+
           // Save annotations as JSON
           if (annotationsFolder && annotations && annotations.length > 0) {
             // Use the LATEST annotation (last in array), not the first one
@@ -120,7 +159,7 @@ const ProjectDetailPage: React.FC = () => {
                 sample_rate: recording.sample_rate,
               },
               annotations: latestAnnotation.bounding_boxes.map((box: any) => ({
-                label: box.label || 'None',
+                label: box.label || "None",
                 start_time: box.start_time,
                 end_time: box.end_time,
                 min_frequency: box.min_frequency,
@@ -128,42 +167,58 @@ const ProjectDetailPage: React.FC = () => {
                 x: box.x,
                 y: box.y,
                 width: box.width,
-                height: box.height
-              }))
+                height: box.height,
+              })),
             };
-            
+
             const jsonStr = JSON.stringify(annotationData, null, 2);
-            annotationsFolder.file(`${recording.original_filename.replace(/\.[^/.]+$/, '')}_annotations.json`, jsonStr);
-            
+            annotationsFolder.file(
+              `${recording.original_filename.replace(/\.[^/.]+$/, "")}_annotations.json`,
+              jsonStr,
+            );
+
             // Generate visualization with bounding boxes
             // Skip visualization if spectrogram is not available
             try {
-              const spectrogramUrl = await recordingService.getSpectrogramUrl(recording.id);
-              if (spectrogramUrl && visualizationsFolder && latestAnnotation.bounding_boxes.length > 0) {
+              const spectrogramUrl = await recordingService.getSpectrogramUrl(
+                recording.id,
+              );
+              if (
+                spectrogramUrl &&
+                visualizationsFolder &&
+                latestAnnotation.bounding_boxes.length > 0
+              ) {
                 try {
                   const visualizationBlob = await generateVisualization(
-                    spectrogramUrl, 
+                    spectrogramUrl,
                     latestAnnotation.bounding_boxes,
-                    recording
+                    recording,
                   );
                   visualizationsFolder.file(
-                    `${recording.original_filename.replace(/\.[^/.]+$/, '')}_annotated.png`, 
-                    visualizationBlob
+                    `${recording.original_filename.replace(/\.[^/.]+$/, "")}_annotated.png`,
+                    visualizationBlob,
                   );
                 } catch (err) {
-                  console.error('Failed to generate visualization for', recording.original_filename, err);
+                  console.error(
+                    "Failed to generate visualization for",
+                    recording.original_filename,
+                    err,
+                  );
                 }
               }
             } catch (err) {
-              console.warn('Could not get spectrogram URL for visualization');
+              console.warn("Could not get spectrogram URL for visualization");
             }
           }
         } catch (err) {
-          console.error(`Failed to process recording ${recording.original_filename}:`, err);
+          console.error(
+            `Failed to process recording ${recording.original_filename}:`,
+            err,
+          );
           toast.error(`Failed to process ${recording.original_filename}`);
         }
       }
-      
+
       // Generate project summary
       const summary = {
         project: {
@@ -173,86 +228,97 @@ const ProjectDetailPage: React.FC = () => {
           created_at: project?.created_at,
         },
         recordings_count: recordings.length,
-        total_duration: recordings.reduce((sum, r) => sum + (r.duration || 0), 0),
+        total_duration: recordings.reduce(
+          (sum, r) => sum + (r.duration || 0),
+          0,
+        ),
         export_date: new Date().toISOString(),
       };
-      
-      zip.file('project_summary.json', JSON.stringify(summary, null, 2));
-      
+
+      zip.file("project_summary.json", JSON.stringify(summary, null, 2));
+
       // Generate and download zip
-      const content = await zip.generateAsync({ type: 'blob' });
+      const content = await zip.generateAsync({ type: "blob" });
       const url = URL.createObjectURL(content);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = `${project?.name.replace(/[^a-z0-9]/gi, '_')}_export_${new Date().toISOString().split('T')[0]}.zip`;
+      a.download = `${project?.name.replace(/[^a-z0-9]/gi, "_")}_export_${new Date().toISOString().split("T")[0]}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
-      toast.success('Project exported successfully!');
+
+      toast.success("Project exported successfully!");
     } catch (error) {
-      console.error('Failed to export project:', error);
-      toast.error('Failed to export project');
+      console.error("Failed to export project:", error);
+      toast.error("Failed to export project");
     } finally {
       setIsDownloading(false);
     }
   };
-  
+
   // Generate visualization with bounding boxes drawn on spectrogram
   const generateVisualization = async (
-    spectrogramUrl: string, 
-    boundingBoxes: any[], 
-    recording: Recording
+    spectrogramUrl: string,
+    boundingBoxes: any[],
+    recording: Recording,
   ): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
-      
+      img.crossOrigin = "anonymous";
+
       img.onload = () => {
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         canvas.width = img.width;
         canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        
+        const ctx = canvas.getContext("2d");
+
         if (!ctx) {
-          reject(new Error('Failed to get canvas context'));
+          reject(new Error("Failed to get canvas context"));
           return;
         }
-        
+
         // Draw spectrogram
         ctx.drawImage(img, 0, 0);
-        
+
         // Define colors for different labels
         const labelColors: Record<string, string> = {
-          'None': 'rgba(107, 114, 128, 0.5)',
-          'A': 'rgba(239, 68, 68, 0.5)',
-          'B': 'rgba(245, 158, 11, 0.5)',
-          'C': 'rgba(16, 185, 129, 0.5)',
-          'D': 'rgba(59, 130, 246, 0.5)',
-          'E': 'rgba(139, 92, 246, 0.5)',
+          None: "rgba(107, 114, 128, 0.5)",
+          A: "rgba(239, 68, 68, 0.5)",
+          B: "rgba(245, 158, 11, 0.5)",
+          C: "rgba(16, 185, 129, 0.5)",
+          D: "rgba(59, 130, 246, 0.5)",
+          E: "rgba(139, 92, 246, 0.5)",
         };
-        
+
         // Draw bounding boxes using time/frequency coordinates
         boundingBoxes.forEach((box) => {
-          console.log('Processing box:', box); // Debug log
-          
+          console.log("Processing box:", box); // Debug log
+
           let xStart, boxWidth, yTop, boxHeight;
-          
+
           // Determine coordinate system and calculate positions
-          if (recording.duration && box.start_time !== undefined && box.end_time !== undefined) {
+          if (
+            recording.duration &&
+            box.start_time !== undefined &&
+            box.end_time !== undefined
+          ) {
             // Time-based coordinates (preferred)
             xStart = (box.start_time / recording.duration) * img.width;
             const xEnd = (box.end_time / recording.duration) * img.width;
             boxWidth = Math.max(1, xEnd - xStart);
-            
+
             // Calculate y position based on frequency
             const maxFreq = (recording.sample_rate || 44100) / 2; // Nyquist frequency
-            
-            if (box.max_frequency !== undefined && box.min_frequency !== undefined) {
+
+            if (
+              box.max_frequency !== undefined &&
+              box.min_frequency !== undefined
+            ) {
               // Frequency-based coordinates (Y-axis is inverted in spectrograms)
-              yTop = img.height - ((box.max_frequency / maxFreq) * img.height);
-              const yBottom = img.height - ((box.min_frequency / maxFreq) * img.height);
+              yTop = img.height - (box.max_frequency / maxFreq) * img.height;
+              const yBottom =
+                img.height - (box.min_frequency / maxFreq) * img.height;
               boxHeight = Math.max(1, yBottom - yTop);
             } else if (box.y !== undefined && box.height !== undefined) {
               // Fallback to pixel coordinates with scaling
@@ -264,10 +330,14 @@ const ProjectDetailPage: React.FC = () => {
               yTop = 0;
               boxHeight = img.height;
             }
-          } else if (box.x !== undefined && box.width !== undefined && 
-                     box.y !== undefined && box.height !== undefined) {
+          } else if (
+            box.x !== undefined &&
+            box.width !== undefined &&
+            box.y !== undefined &&
+            box.height !== undefined
+          ) {
             // Pure pixel coordinates with scaling
-            const scaleX = img.width / 800;  // Original canvas width
+            const scaleX = img.width / 800; // Original canvas width
             const scaleY = img.height / 400; // Original canvas height
             xStart = box.x * scaleX;
             boxWidth = Math.max(1, box.width * scaleX);
@@ -275,79 +345,81 @@ const ProjectDetailPage: React.FC = () => {
             boxHeight = Math.max(1, box.height * scaleY);
           } else {
             // Skip boxes with insufficient data
-            console.warn('Box has insufficient coordinate data:', box);
+            console.warn("Box has insufficient coordinate data:", box);
             return;
           }
-          
+
           // Get color for label
-          const color = labelColors[box.label] || 'rgba(59, 130, 246, 0.5)';
-          
-          console.log(`Drawing box: x=${xStart}, y=${yTop}, w=${boxWidth}, h=${boxHeight}`); // Debug log
-          
+          const color = labelColors[box.label] || "rgba(59, 130, 246, 0.5)";
+
+          console.log(
+            `Drawing box: x=${xStart}, y=${yTop}, w=${boxWidth}, h=${boxHeight}`,
+          ); // Debug log
+
           // Draw box with error handling
           try {
-            ctx.strokeStyle = color.replace('0.5', '1');
+            ctx.strokeStyle = color.replace("0.5", "1");
             ctx.lineWidth = 2;
             ctx.strokeRect(xStart, yTop, boxWidth, boxHeight);
-            
+
             // Fill with semi-transparent color
             ctx.fillStyle = color;
             ctx.fillRect(xStart, yTop, boxWidth, boxHeight);
-            
+
             // Draw label
-            if (box.label && box.label !== 'None') {
+            if (box.label && box.label !== "None") {
               // Set font before measuring text
-              ctx.font = 'bold 14px Arial';
-              
+              ctx.font = "bold 14px Arial";
+
               // Add background for label text
-              ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+              ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
               const labelWidth = ctx.measureText(box.label).width + 8;
               ctx.fillRect(xStart, yTop, labelWidth, 20);
-              
+
               // Draw label text
-              ctx.fillStyle = 'white';
+              ctx.fillStyle = "white";
               ctx.fillText(box.label, xStart + 4, yTop + 16);
             }
           } catch (drawError) {
-            console.error('Error drawing box:', drawError);
+            console.error("Error drawing box:", drawError);
           }
         });
-        
+
         // Convert to blob
         canvas.toBlob((blob) => {
           if (blob) {
             resolve(blob);
           } else {
-            reject(new Error('Failed to create blob'));
+            reject(new Error("Failed to create blob"));
           }
-        }, 'image/png');
+        }, "image/png");
       };
-      
+
       img.onerror = () => {
-        reject(new Error('Failed to load spectrogram image'));
+        reject(new Error("Failed to load spectrogram image"));
       };
-      
+
       img.src = spectrogramUrl;
     });
   };
 
   const handleBulkDelete = async () => {
     if (selectedRecordings.size === 0) {
-      toast.error('No recordings selected');
+      toast.error("No recordings selected");
       return;
     }
-    
+
     setIsDeleting(true);
     try {
       await recordingService.bulkDeleteRecordings(
         parseInt(projectId!),
-        Array.from(selectedRecordings)
+        Array.from(selectedRecordings),
       );
       toast.success(`Deleted ${selectedRecordings.size} recordings`);
       setSelectedRecordings(new Set());
       fetchProjectData();
     } catch (error) {
-      toast.error('Failed to delete recordings');
+      toast.error("Failed to delete recordings");
     } finally {
       setIsDeleting(false);
     }
@@ -367,7 +439,7 @@ const ProjectDetailPage: React.FC = () => {
     if (selectedRecordings.size === recordings.length) {
       setSelectedRecordings(new Set());
     } else {
-      setSelectedRecordings(new Set(recordings.map(r => r.id)));
+      setSelectedRecordings(new Set(recordings.map((r) => r.id)));
     }
   };
 
@@ -376,12 +448,12 @@ const ProjectDetailPage: React.FC = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -408,10 +480,12 @@ const ProjectDetailPage: React.FC = () => {
           Back to Projects
         </Link>
       </div>
-      
+
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
-          <h1 className="text-2xl font-semibold text-gray-900">{project.name}</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">
+            {project.name}
+          </h1>
           <p className="mt-2 text-sm text-gray-700">{project.description}</p>
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none flex gap-2">
@@ -429,7 +503,7 @@ const ProjectDetailPage: React.FC = () => {
             title="Download all recordings, spectrograms and annotations"
           >
             <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
-            {isDownloading ? 'Downloading...' : 'Download All'}
+            {isDownloading ? "Downloading..." : "Download All"}
           </button>
         </div>
       </div>
@@ -467,14 +541,20 @@ const ProjectDetailPage: React.FC = () => {
             </button>
           )}
         </div>
-        
+
         {showFilters && (
           <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-5 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Annotation Status</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Annotation Status
+              </label>
               <select
                 value={annotationStatus}
-                onChange={(e) => setAnnotationStatus(e.target.value as 'all' | 'annotated' | 'unannotated')}
+                onChange={(e) =>
+                  setAnnotationStatus(
+                    e.target.value as "all" | "annotated" | "unannotated",
+                  )
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All Recordings</option>
@@ -483,7 +563,9 @@ const ProjectDetailPage: React.FC = () => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Min Duration (s)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Min Duration (s)
+              </label>
               <input
                 type="number"
                 value={minDuration}
@@ -493,7 +575,9 @@ const ProjectDetailPage: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Max Duration (s)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Max Duration (s)
+              </label>
               <input
                 type="number"
                 value={maxDuration}
@@ -503,7 +587,9 @@ const ProjectDetailPage: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Sort By
+              </label>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
@@ -515,10 +601,12 @@ const ProjectDetailPage: React.FC = () => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Order</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Order
+              </label>
               <select
                 value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+                onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="desc">Newest First</option>
@@ -531,14 +619,24 @@ const ProjectDetailPage: React.FC = () => {
 
       <div className="mt-6">
         <h2 className="text-lg font-medium text-gray-900 mb-4">
-          Recordings ({recordings.length}) • Annotated ({recordings.filter(r => r.annotation_count && r.annotation_count > 0).length})
+          Recordings ({recordings.length}) • Annotated (
+          {
+            recordings.filter(
+              (r) => r.annotation_count && r.annotation_count > 0,
+            ).length
+          }
+          )
         </h2>
         {recordings.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
             <MusicalNoteIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No recordings found</h3>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              No recordings found
+            </h3>
             <p className="mt-1 text-sm text-gray-500">
-              {searchTerm ? 'Try adjusting your search criteria.' : 'Upload your first bird song recording to get started.'}
+              {searchTerm
+                ? "Try adjusting your search criteria."
+                : "Upload your first bird song recording to get started."}
             </p>
             {!searchTerm && (
               <div className="mt-6">
@@ -558,16 +656,24 @@ const ProjectDetailPage: React.FC = () => {
               <div className="flex items-center">
                 <input
                   type="checkbox"
-                  checked={selectedRecordings.size === recordings.length && recordings.length > 0}
+                  checked={
+                    selectedRecordings.size === recordings.length &&
+                    recordings.length > 0
+                  }
                   onChange={toggleSelectAll}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <span className="ml-3 text-sm font-medium text-gray-700">Select All</span>
+                <span className="ml-3 text-sm font-medium text-gray-700">
+                  Select All
+                </span>
               </div>
             </div>
             <ul className="divide-y divide-gray-200">
               {recordings.map((recording) => (
-                <li key={recording.id} className="hover:bg-gray-50 transition-colors">
+                <li
+                  key={recording.id}
+                  className="hover:bg-gray-50 transition-colors"
+                >
                   <div className="px-4 py-4 sm:px-6 flex items-center">
                     <input
                       type="checkbox"
@@ -576,25 +682,36 @@ const ProjectDetailPage: React.FC = () => {
                       onClick={(e) => e.stopPropagation()}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-4"
                     />
-                    <div 
+                    <div
                       className="flex-1 flex items-center cursor-pointer"
                       onClick={() => handleRecordingClick(recording.id)}
                     >
                       <MusicalNoteIcon className="h-10 w-10 text-gray-400 mr-4" />
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-gray-900">{recording.original_filename}</p>
-                          {recording.annotation_count && recording.annotation_count > 0 && (
-                            <span className="inline-flex items-center rounded-full px-2 text-xs font-semibold leading-5 bg-green-100 text-green-800">
-                              <CheckIcon className="h-3 w-3 mr-1" />
-                              Annotated
-                            </span>
-                          )}
+                          <p className="text-sm font-medium text-gray-900">
+                            {recording.original_filename}
+                          </p>
+                          {recording.annotation_count &&
+                            recording.annotation_count > 0 && (
+                              <span className="inline-flex items-center rounded-full px-2 text-xs font-semibold leading-5 bg-green-100 text-green-800">
+                                <CheckIcon className="h-3 w-3 mr-1" />
+                                Annotated
+                              </span>
+                            )}
                         </div>
                         <div className="text-sm text-gray-500">
-                          <span>Duration: {formatRecordingDuration(recording.duration)}</span>
+                          <span>
+                            Duration:{" "}
+                            {formatRecordingDuration(recording.duration)}
+                          </span>
                           <span className="mx-2">•</span>
-                          <span>Sample Rate: {recording.sample_rate ? `${recording.sample_rate}Hz` : 'Unknown'}</span>
+                          <span>
+                            Sample Rate:{" "}
+                            {recording.sample_rate
+                              ? `${recording.sample_rate}Hz`
+                              : "Unknown"}
+                          </span>
                           <span className="mx-2">•</span>
                           <span>{formatDate(recording.created_at)}</span>
                         </div>

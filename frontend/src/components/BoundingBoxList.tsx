@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
-import { TrashIcon, PencilIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { BoundingBox } from '../types';
-import clsx from 'clsx';
+import React, { useState } from "react";
+import {
+  TrashIcon,
+  PencilIcon,
+  CheckIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
+import { BoundingBox } from "../types";
+import clsx from "clsx";
 
 interface BoundingBoxListProps {
   boxes: BoundingBox[];
@@ -25,7 +30,7 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
   onDeleteMultiple,
 }) => {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingLabel, setEditingLabel] = useState('');
+  const [editingLabel, setEditingLabel] = useState("");
 
   const handleEditStart = (index: number, currentLabel: string) => {
     setEditingIndex(index);
@@ -37,12 +42,12 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
       onUpdateLabel(editingIndex, editingLabel);
     }
     setEditingIndex(null);
-    setEditingLabel('');
+    setEditingLabel("");
   };
 
   const handleEditCancel = () => {
     setEditingIndex(null);
-    setEditingLabel('');
+    setEditingLabel("");
   };
 
   const handleSelectAll = () => {
@@ -86,7 +91,9 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
               }}
               className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
             >
-              {selectedBoxes.size === boxes.length ? 'Unselect All' : 'Select All'}
+              {selectedBoxes.size === boxes.length
+                ? "Unselect All"
+                : "Select All"}
             </button>
             {selectedBoxes.size > 0 && onDeleteMultiple && (
               <button
@@ -100,9 +107,11 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
           </div>
         )}
       </div>
-      
+
       {boxes.length === 0 ? (
-        <p className="text-sm text-gray-500">No annotations yet. Draw a bounding box on the spectrogram to start.</p>
+        <p className="text-sm text-gray-500">
+          No annotations yet. Draw a bounding box on the spectrogram to start.
+        </p>
       ) : (
         <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
           <table className="min-w-full divide-y divide-gray-300">
@@ -112,7 +121,9 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
                   <th className="px-2 py-3 text-left">
                     <input
                       type="checkbox"
-                      checked={selectedBoxes.size === boxes.length && boxes.length > 0}
+                      checked={
+                        selectedBoxes.size === boxes.length && boxes.length > 0
+                      }
                       onChange={() => {
                         if (selectedBoxes.size === boxes.length) {
                           handleUnselectAll();
@@ -127,9 +138,7 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Label
                 </th>
-                <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  
-                </th>
+                <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"></th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -137,14 +146,17 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
                 <tr
                   key={index}
                   className={clsx(
-                    'cursor-pointer hover:bg-gray-50',
-                    selectedBox === box && 'bg-blue-50',
-                    selectedBoxes.has(index) && 'bg-blue-50/50'
+                    "cursor-pointer hover:bg-gray-50",
+                    selectedBox === box && "bg-blue-50",
+                    selectedBoxes.has(index) && "bg-blue-50/50",
                   )}
                   onClick={() => onSelect(box)}
                 >
                   {onSelectMultiple && (
-                    <td className="px-2 py-4" onClick={(e) => e.stopPropagation()}>
+                    <td
+                      className="px-2 py-4"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <input
                         type="checkbox"
                         checked={selectedBoxes.has(index)}
@@ -155,15 +167,18 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
                   )}
                   <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {editingIndex === index ? (
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <div
+                        className="flex items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <input
                           type="text"
                           value={editingLabel}
                           onChange={(e) => setEditingLabel(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
+                            if (e.key === "Enter") {
                               handleEditSave();
-                            } else if (e.key === 'Escape') {
+                            } else if (e.key === "Escape") {
                               handleEditCancel();
                             }
                           }}
@@ -190,7 +205,7 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleEditStart(index, box.label || 'None');
+                              handleEditStart(index, box.label || "None");
                             }}
                             className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
                           >
