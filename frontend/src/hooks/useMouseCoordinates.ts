@@ -34,17 +34,17 @@ export const useMouseCoordinates = (
       // Calculate effective width for the spectrogram
       const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
 
-      // Get absolute screen position accounting for scroll offset
-      const absolutePosition = CoordinateUtils.getAbsoluteScreenPosition(point, scrollOffset);
+      // Since the Stage is inside the scroll container, we don't need to add scrollOffset
+      // The point is already in the correct coordinate space relative to the scrolled content
+      const absolutePosition = { x: point.x, y: point.y };
       const absoluteX = absolutePosition.x;
 
       // Calculate seek position (normalized 0 to 1) for audio playback
       const seekPosition = CoordinateUtils.getSeekPosition(absoluteX, effectiveWidth, zoomLevel);
 
       // Convert to world coordinates for bounding box operations
-      // IMPORTANT: Constrain worldX to valid range when zoomed
-      const maxWorldX = CoordinateUtils.getMaxWorldX(spectrogramDimensions);
-      const worldX = Math.min(maxWorldX, CoordinateUtils.screenToWorldCoordinates(absoluteX, zoomLevel));
+      // Don't constrain worldX here - let individual operations handle their own constraints
+      const worldX = CoordinateUtils.screenToWorldCoordinates(absoluteX, zoomLevel);
 
       // Create position object for bounding box operations
       const pos = { x: worldX, y: point.y };

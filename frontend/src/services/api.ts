@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { AuthToken, LoginCredentials, User, Project, Recording, Annotation } from '../types';
+import { PaginatedResponse } from '../types/pagination';
 
 // Use relative URL to automatically use the same protocol as the page
 const API_URL = process.env.REACT_APP_API_URL || '';
@@ -357,9 +358,18 @@ export const recordingService = {
       max_duration?: number;
       sort_by?: string;
       sort_order?: string;
+      skip?: number;
+      limit?: number;
+      annotation_status?: string;
     }
-  ): Promise<Recording[]> => {
-    const response = await api.get<Recording[]>(`/recordings/${projectId}/recordings`, { params });
+  ): Promise<PaginatedResponse<Recording>> => {
+    const response = await api.get<PaginatedResponse<Recording>>(`/recordings/${projectId}/recordings`, {
+      params: {
+        skip: params?.skip || 0,
+        limit: params?.limit || 50,
+        ...params
+      }
+    });
     return response.data;
   },
   

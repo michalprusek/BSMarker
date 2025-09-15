@@ -220,8 +220,9 @@ class AnnotationApiService {
     error: string | null;
   }> {
     try {
-      const recordings = await recordingService.getRecordings(projectId);
-      return { recordings: recordings || [], error: null };
+      const recordingsResponse = await recordingService.getRecordings(projectId);
+      const recordings = Array.isArray(recordingsResponse) ? recordingsResponse : (recordingsResponse.items || []);
+      return { recordings, error: null };
     } catch (error) {
       console.error('Failed to load project recordings:', error);
 

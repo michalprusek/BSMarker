@@ -758,7 +758,8 @@ const AnnotationEditor: React.FC = () => {
     if (!recordingId) return;
     try {
       const currentRec = await recordingService.getRecording(parseInt(recordingId));
-      const recordings = await recordingService.getRecordings(currentRec.project_id);
+      const recordingsResponse = await recordingService.getRecordings(currentRec.project_id);
+      const recordings = recordingsResponse.items || recordingsResponse;
       setProjectRecordings(recordings);
       const index = recordings.findIndex(r => r.id === parseInt(recordingId));
       setCurrentRecordingIndex(index);
@@ -896,32 +897,70 @@ const AnnotationEditor: React.FC = () => {
       const time = wavesurfer.getCurrentTime();
       setCurrentTime(time);
       // Update timeline cursor position during playback
-      const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-      const position = (time / wavesurfer.getDuration()) * effectiveWidth;
+      // The cursor position needs to account for zoom level and scroll offset
+      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
+      const relativePosition = time / wavesurfer.getDuration();
+      // Calculate position in the zoomed view (matches WaveSurfer's progress indicator)
+      // No need to subtract scrollOffset since the Stage moves with the scroll container
+      const position = relativePosition * effectiveWidth * zoomLevel;
+      setTimelineCursorPosition(position);
+    });
+
+    // Add timeupdate event for smoother cursor updates during playback
+    wavesurfer.on('timeupdate', (currentTime: number) => {
+      setCurrentTime(currentTime);
+      // Update timeline cursor position with the current time
+      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
+      const relativePosition = currentTime / wavesurfer.getDuration();
+      // Calculate position in the zoomed view
+      const position = relativePosition * effectiveWidth * zoomLevel;
       setTimelineCursorPosition(position);
     });
 
     wavesurfer.on('interaction', () => {
       const time = wavesurfer.getCurrentTime();
       setCurrentTime(time);
-      // Update timeline cursor position on interaction
-      const effectiveWidth = spectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
-      const position = (time / wavesurfer.getDuration()) * effectiveWidth;
+      // Update timeline cursor position on interaction (includes seeking)
+      // The cursor position needs to account for zoom level and scroll offset
+      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
+      const relativePosition = time / wavesurfer.getDuration();
+      // Calculate position in the zoomed view (matches WaveSurfer's progress indicator)
+      // No need to subtract scrollOffset since the Stage moves with the scroll container
+      const position = relativePosition * effectiveWidth * zoomLevel;
       setTimelineCursorPosition(position);
     });
 
     wavesurfer.on('play', () => {
       setIsPlaying(true);
+      // Update timeline cursor position when playback starts
+      const time = wavesurfer.getCurrentTime();
+      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
+      const relativePosition = time / wavesurfer.getDuration();
+      const position = relativePosition * effectiveWidth * zoomLevel;
+      setTimelineCursorPosition(position);
     });
 
     wavesurfer.on('pause', () => {
       setIsPlaying(false);
+      // Update timeline cursor position when playback pauses
+      const time = wavesurfer.getCurrentTime();
+      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
+      const relativePosition = time / wavesurfer.getDuration();
+      const position = relativePosition * effectiveWidth * zoomLevel;
+      setTimelineCursorPosition(position);
     });
 
     wavesurfer.on('finish', () => {
       setIsPlaying(false);
+      // Set cursor to end position when playback finishes
+      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
+      const position = effectiveWidth * zoomLevel;
+      setTimelineCursorPosition(position);
     });
     
+    // The 'seeking' event is already handled in 'interaction' above
+    // No need for a separate seek handler
+
     wavesurfer.on('error', (error) => {
       console.error('WaveSurfer error:', error);
       toast.error('Failed to load waveform');
@@ -1199,11 +1238,12 @@ const AnnotationEditor: React.FC = () => {
     const spectrogramHeight = containerHeight * 0.60;
     
     // Use centralized coordinate transformation hook
-    const { absoluteX, seekPosition, pos, worldX } = transformMousePoint(point);
+    const { absoluteX, seekPosition, pos, worldX, effectiveWidth } = transformMousePoint(point);
 
-    // Update timeline cursor position using world coordinates (unzoomed)
-    // This ensures consistency with WaveSurfer events which also use unzoomed coordinates
-    setTimelineCursorPosition(worldX);
+    // Calculate timeline cursor position that works for both spectrogram and waveform
+    // The cursor position only needs to account for zoom level since the Stage moves with scroll
+    const cursorPosition = seekPosition * effectiveWidth * zoomLevel;
+    setTimelineCursorPosition(cursorPosition);
     
     // Check if clicking in waveform area (starts after spectrogram at 65%)
     const timelineHeight = containerHeight * 0.65; // Timeline starts at 65%
@@ -1381,10 +1421,8 @@ const AnnotationEditor: React.FC = () => {
     const { seekPosition, pos, worldX } = transformMousePoint(point);
     setMousePosition(pos);
 
-    // Update timeline cursor position during mouse move (using world coordinates for consistency)
-    if (!isPanning && !draggingBox && !resizingBox && !isDrawing && !isSelecting) {
-      setTimelineCursorPosition(worldX);
-    }
+    // Don't update timeline cursor on mouse move - only on click
+    // This prevents the cursor from following the mouse without clicking
     
     // Handle panning for both horizontal and vertical
     if (isPanning && panStartPos && unifiedScrollRef.current) {
@@ -2461,8 +2499,8 @@ const AnnotationEditor: React.FC = () => {
                 onMouseUp={handleMouseUp}
                 onContextMenu={handleContextMenu}
                 ref={stageRef}
-                x={0}  // Remove zoomOffset.x to prevent double transformation
-                y={-zoomOffset.y}
+                x={0}  // No x offset needed - Stage is relative to container
+                y={-zoomOffset.y}  // Keep vertical offset for consistency
                 scaleX={1}
                 scaleY={1}
                 listening={true}
@@ -2489,7 +2527,6 @@ const AnnotationEditor: React.FC = () => {
                     listening={false}
                     cache={false}
                     clearBeforeDraw={true}
-                    offsetX={scrollOffset}
                   >
                     {/* Selection rectangle - scale to spectrogram area */}
                     {selectionRect && (
@@ -2510,7 +2547,6 @@ const AnnotationEditor: React.FC = () => {
                   <Layer
                     listening={true}
                     clearBeforeDraw={true}
-                    offsetX={scrollOffset}
                   >
                     {/* Mirror highlights for selected boxes - render first so they appear behind */}
                     {transformedBoxes.map((transformedBox, index) => {
@@ -2696,9 +2732,9 @@ const AnnotationEditor: React.FC = () => {
                     {duration > 0 && (
                       <Line
                         points={[
-                          timelineCursorPosition * zoomLevel,
+                          timelineCursorPosition,  // Already in zoomed coordinates
                           0,
-                          timelineCursorPosition * zoomLevel,
+                          timelineCursorPosition,  // Already in zoomed coordinates
                           spectrogramDimensions.height  // Fixed height - no vertical zoom
                         ]}
                         stroke="#EF4444"
