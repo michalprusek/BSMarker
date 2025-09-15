@@ -449,6 +449,14 @@ const AnnotationEditor: React.FC = () => {
         saveAnnotations(recording.id, boundingBoxes, false);
       }
 
+      // Clean up previous spectrogram immediately when switching recordings
+      if (spectrogramUrl && spectrogramUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(spectrogramUrl);
+      }
+      setSpectrogramUrl("");
+      setSpectrogramError(null);
+      setSpectrogramStatus("not_started");
+
       // Then fetch new recording data
       fetchRecordingData();
       fetchProjectRecordings();
@@ -818,6 +826,8 @@ const AnnotationEditor: React.FC = () => {
 
   const loadSpectrogramImage = async (recordingId: number) => {
     try {
+      console.log(`Loading spectrogram for recording ${recordingId}`);
+
       const blob = await recordingService.getSpectrogramBlob(recordingId);
       if (blob) {
         // Clean up previous URL
@@ -826,10 +836,13 @@ const AnnotationEditor: React.FC = () => {
         }
 
         const objectUrl = URL.createObjectURL(blob);
+        console.log(`Created blob URL for recording ${recordingId}:`, objectUrl);
         setSpectrogramUrl(objectUrl);
+        setSpectrogramError(null);
       }
     } catch (error) {
-      console.error("Failed to load spectrogram image:", error);
+      console.error(`Failed to load spectrogram image for recording ${recordingId}:`, error);
+      setSpectrogramError(`Failed to load spectrogram for recording ${recordingId}`);
       throw error;
     }
   };
