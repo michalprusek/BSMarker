@@ -30,10 +30,15 @@ class CacheService:
     def _initialize_connection(self):
         """Initialize Redis connection with retry logic."""
         try:
+            # Parse Redis URL and create connection
+            # URL format: redis://host:port/db
+            import urllib.parse
+            parsed_url = urllib.parse.urlparse(settings.REDIS_URL)
+
             # Create connection pool for better performance
             pool = redis.ConnectionPool(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
+                host=parsed_url.hostname or 'localhost',
+                port=parsed_url.port or 6379,
                 db=1,  # Use db=1 for cache (db=0 for rate limiting)
                 decode_responses=True,
                 max_connections=50,
