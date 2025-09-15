@@ -298,8 +298,9 @@ def read_recordings(
         query = query.order_by(order_field.desc())
 
     # Get total count before pagination
-    count_query = query.with_entities(func.count(Recording.id))
-    total_count = count_query.scalar() or 0
+    # We need to create a subquery for counting when using GROUP BY
+    count_subquery = query.subquery()
+    total_count = db.query(func.count()).select_from(count_subquery).scalar() or 0
 
     # Execute query and build response
     results = query.offset(skip).limit(limit).all()
