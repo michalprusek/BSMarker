@@ -471,8 +471,9 @@ export const recordingService = {
       const status = await recordingService.getSpectrogramStatus(recordingId);
 
       if (status.status === "completed" && status.available) {
-        // Return direct API URL for completed spectrograms
-        return `${API_URL}/api/v1/recordings/${recordingId}/spectrogram`;
+        // Return direct API URL for completed spectrograms with cache-busting timestamp
+        const timestamp = Date.now();
+        return `${API_URL}/api/v1/recordings/${recordingId}/spectrogram?v=${timestamp}`;
       }
 
       return null; // Spectrogram not ready yet
@@ -484,7 +485,9 @@ export const recordingService = {
 
   getSpectrogramBlob: async (recordingId: number): Promise<Blob | null> => {
     try {
-      const response = await api.get(`/recordings/${recordingId}/spectrogram`, {
+      // Add cache-busting timestamp to prevent stale spectrograms
+      const timestamp = Date.now();
+      const response = await api.get(`/recordings/${recordingId}/spectrogram?v=${timestamp}`, {
         responseType: "blob",
       });
       return response.data;
