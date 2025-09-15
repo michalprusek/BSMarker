@@ -1244,19 +1244,18 @@ const AnnotationEditor: React.FC = () => {
     // The cursor position only needs to account for zoom level since the Stage moves with scroll
     const cursorPosition = seekPosition * effectiveWidth * zoomLevel;
     setTimelineCursorPosition(cursorPosition);
+
+    // Perform audio seeking when not in annotation mode and clicking with left mouse button
+    // This ensures audio seeks regardless of whether clicking on empty space or near bounding boxes
+    if (!isAnnotationMode && e.evt.button === 0 && wavesurferRef.current && duration > 0 &&
+        !e.evt.shiftKey && !e.evt.ctrlKey && !e.evt.metaKey) {
+      const clampedSeekPosition = clampSeekPosition(seekPosition);
+      wavesurferRef.current.seekTo(clampedSeekPosition);
+    }
     
     // Check if clicking in waveform area (starts after spectrogram at 65%)
     const timelineHeight = containerHeight * 0.65; // Timeline starts at 65%
     if (point.y > timelineHeight) {
-      // Handle waveform click for seeking
-      if (wavesurferRef.current && duration > 0 && !e.evt.shiftKey && !e.evt.ctrlKey && e.evt.button === 0) {
-        // Only seek on left click if not holding shift or ctrl (which might be for panning)
-        // Use the pre-calculated seekPosition which is invariant to zoom and scroll
-        const clampedSeekPosition = clampSeekPosition(seekPosition);
-        wavesurferRef.current.seekTo(clampedSeekPosition);
-        // Don't set currentTime manually - let WaveSurfer's 'interaction' event handle it
-      }
-
       // Enable panning in waveform area (same as spectrogram area for consistency)
       if (e.evt.button === 1 || (e.evt.button === 0 && (e.evt.shiftKey || e.evt.ctrlKey))) {
         setIsPanning(true);
@@ -1366,16 +1365,8 @@ const AnnotationEditor: React.FC = () => {
         return;
       }
       
-      // If not shift/ctrl clicking, handle click-to-seek or start panning
+      // If not shift/ctrl clicking, handle deselection or start panning
       if (!e.evt.shiftKey && !e.evt.ctrlKey && !e.evt.metaKey) {
-        // Single left click to seek in spectrogram
-        if (e.evt.button === 0 && wavesurferRef.current && duration > 0) {
-          // Use the pre-calculated seekPosition from above (invariant to zoom and scroll)
-          const clampedSeekPosition = clampSeekPosition(seekPosition);
-          wavesurferRef.current.seekTo(clampedSeekPosition);
-          // Don't set currentTime manually - let WaveSurfer's 'interaction' event handle it
-        }
-
         // Deselect all bounding boxes when clicking outside
         if (selectedBoxes.size > 0 || selectedBox) {
           setSelectedBoxes(new Set());
@@ -2383,17 +2374,16 @@ const AnnotationEditor: React.FC = () => {
                     height: '27%'
                   }}
                 >
-                  <div 
-                    ref={waveformRef} 
+                  <div
+                    ref={waveformRef}
                     id="waveform-container"
-                    className="absolute inset-0"
-                    style={{ 
+                    className="absolute"
+                    style={{
                       width: `${CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)}px`,  // Sync width with zoom
                       height: '100%',
                       position: 'absolute',
                       top: 0,
-                      left: 0,
-                      marginLeft: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Align with spectrogram
+                      left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Use left instead of marginLeft for consistency with SVG
                       display: 'block'
                     }}
                   />
