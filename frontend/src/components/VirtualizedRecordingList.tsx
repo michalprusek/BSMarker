@@ -3,7 +3,6 @@ import { format } from "date-fns";
 import {
   PlayIcon,
   PauseIcon,
-  DocumentMagnifyingGlassIcon,
   ChartBarIcon,
   CheckIcon,
 } from "@heroicons/react/24/outline";
@@ -43,13 +42,9 @@ const RecordingItem = React.memo<{
     const navigate = useNavigate();
     const [isPlaying, setIsPlaying] = useState(false);
 
-    const handleAnnotate = useCallback(
-      (e: React.MouseEvent) => {
-        e.stopPropagation();
-        navigate(`/recordings/${recording.id}/annotate`);
-      },
-      [navigate, recording.id],
-    );
+    const handleCardClick = useCallback(() => {
+      navigate(`/recordings/${recording.id}/annotate`);
+    }, [navigate, recording.id]);
 
     const handleCheckboxClick = useCallback(
       (e: React.MouseEvent) => {
@@ -62,7 +57,8 @@ const RecordingItem = React.memo<{
     return (
       <div
         style={style}
-        className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
+        className="border-b border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer"
+        onClick={handleCardClick}
       >
         <div className="px-6 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-4 flex-1">
@@ -83,7 +79,7 @@ const RecordingItem = React.memo<{
                   recording.annotation_count > 0 && (
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
                       <CheckIcon className="w-3 h-3 mr-1" />
-                      {recording.annotation_count} annotations
+                      Annotated
                     </span>
                   )}
               </div>
@@ -97,16 +93,6 @@ const RecordingItem = React.memo<{
                 </span>
               </div>
             </div>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={handleAnnotate}
-              className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-              title="Annotate"
-            >
-              <DocumentMagnifyingGlassIcon className="w-5 h-5" />
-            </button>
           </div>
         </div>
       </div>
