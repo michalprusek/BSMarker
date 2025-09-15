@@ -17,11 +17,11 @@ from app.models.project import Project
 from app.models.recording import Recording
 from app.models.spectrogram import Spectrogram, SpectrogramStatus
 from app.models.user import User
+from app.schemas.pagination import PaginatedResponse, PaginationMetadata
 from app.schemas.recording import Recording as RecordingSchema
-from app.schemas.pagination import PaginatedResponse, PaginationMetadata, PaginationParams
 from app.services.audio_service import audio_service
-from app.services.minio_client import minio_client
 from app.services.cache_service import cache_service
+from app.services.minio_client import minio_client
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_
@@ -248,7 +248,7 @@ def read_recordings(
         max_duration=max_duration,
         annotation_status=annotation_status,
         sort_by=sort_by,
-        sort_order=sort_order
+        sort_order=sort_order,
     )
 
     if cached_data:
@@ -333,10 +333,7 @@ def read_recordings(
         has_prev=current_page > 1,
     )
 
-    response = PaginatedResponse(
-        items=recordings_with_counts,
-        pagination=pagination_metadata
-    )
+    response = PaginatedResponse(items=recordings_with_counts, pagination=pagination_metadata)
 
     # Cache the response
     cache_service.set_project_recordings(
@@ -350,7 +347,7 @@ def read_recordings(
         annotation_status=annotation_status,
         sort_by=sort_by,
         sort_order=sort_order,
-        ttl=300  # Cache for 5 minutes
+        ttl=300,  # Cache for 5 minutes
     )
 
     return response
