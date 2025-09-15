@@ -896,66 +896,80 @@ const AnnotationEditor: React.FC = () => {
     wavesurfer.on('audioprocess', () => {
       const time = wavesurfer.getCurrentTime();
       setCurrentTime(time);
-      // Update timeline cursor position during playback
-      // The cursor position needs to account for zoom level and scroll offset
-      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
+      // Update timeline cursor position during playback using WaveSurfer's exact coordinate system
       const relativePosition = time / wavesurfer.getDuration();
-      // Calculate position in the zoomed view (matches WaveSurfer's progress indicator)
-      // No need to subtract scrollOffset since the Stage moves with the scroll container
-      const position = relativePosition * effectiveWidth * zoomLevel;
-      setTimelineCursorPosition(position);
+      // Use the exact same width calculation as WaveSurfer container for perfect alignment
+      const waveformContainer = waveformRef.current;
+      if (waveformContainer) {
+        const containerWidth = waveformContainer.offsetWidth;
+        const position = relativePosition * containerWidth;
+        setTimelineCursorPosition(position);
+      }
     });
 
     // Add timeupdate event for smoother cursor updates during playback
     wavesurfer.on('timeupdate', (currentTime: number) => {
       setCurrentTime(currentTime);
-      // Update timeline cursor position with the current time
-      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
+      // Update timeline cursor position using WaveSurfer's exact coordinate system
       const relativePosition = currentTime / wavesurfer.getDuration();
-      // Calculate position in the zoomed view
-      const position = relativePosition * effectiveWidth * zoomLevel;
-      setTimelineCursorPosition(position);
+      // Use the exact same width calculation as WaveSurfer container for perfect alignment
+      const waveformContainer = waveformRef.current;
+      if (waveformContainer) {
+        const containerWidth = waveformContainer.offsetWidth;
+        const position = relativePosition * containerWidth;
+        setTimelineCursorPosition(position);
+      }
     });
 
     wavesurfer.on('interaction', () => {
       const time = wavesurfer.getCurrentTime();
       setCurrentTime(time);
-      // Update timeline cursor position on interaction (includes seeking)
-      // The cursor position needs to account for zoom level and scroll offset
-      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
+      // Update timeline cursor position using WaveSurfer's exact coordinate system
       const relativePosition = time / wavesurfer.getDuration();
-      // Calculate position in the zoomed view (matches WaveSurfer's progress indicator)
-      // No need to subtract scrollOffset since the Stage moves with the scroll container
-      const position = relativePosition * effectiveWidth * zoomLevel;
-      setTimelineCursorPosition(position);
+      // Use the exact same width calculation as WaveSurfer container for perfect alignment
+      const waveformContainer = waveformRef.current;
+      if (waveformContainer) {
+        const containerWidth = waveformContainer.offsetWidth;
+        const position = relativePosition * containerWidth;
+        setTimelineCursorPosition(position);
+      }
     });
 
     wavesurfer.on('play', () => {
       setIsPlaying(true);
-      // Update timeline cursor position when playback starts
+      // Update timeline cursor position using WaveSurfer's exact coordinate system
       const time = wavesurfer.getCurrentTime();
-      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
       const relativePosition = time / wavesurfer.getDuration();
-      const position = relativePosition * effectiveWidth * zoomLevel;
-      setTimelineCursorPosition(position);
+      const waveformContainer = waveformRef.current;
+      if (waveformContainer) {
+        const containerWidth = waveformContainer.offsetWidth;
+        const position = relativePosition * containerWidth;
+        setTimelineCursorPosition(position);
+      }
     });
 
     wavesurfer.on('pause', () => {
       setIsPlaying(false);
-      // Update timeline cursor position when playback pauses
+      // Update timeline cursor position using WaveSurfer's exact coordinate system
       const time = wavesurfer.getCurrentTime();
-      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
       const relativePosition = time / wavesurfer.getDuration();
-      const position = relativePosition * effectiveWidth * zoomLevel;
-      setTimelineCursorPosition(position);
+      const waveformContainer = waveformRef.current;
+      if (waveformContainer) {
+        const containerWidth = waveformContainer.offsetWidth;
+        const position = relativePosition * containerWidth;
+        setTimelineCursorPosition(position);
+      }
     });
 
     wavesurfer.on('finish', () => {
       setIsPlaying(false);
-      // Set cursor to end position when playback finishes
-      const effectiveWidth = CoordinateUtils.getEffectiveWidth(spectrogramDimensions.width);
-      const position = effectiveWidth * zoomLevel;
-      setTimelineCursorPosition(position);
+      // Set cursor to end position using WaveSurfer's exact coordinate system
+      const waveformContainer = waveformRef.current;
+      if (waveformContainer) {
+        const containerWidth = waveformContainer.offsetWidth;
+        const position = containerWidth; // Full width for finished playback
+        setTimelineCursorPosition(position);
+      }
     });
     
     // The 'seeking' event is already handled in 'interaction' above
@@ -1228,22 +1242,36 @@ const AnnotationEditor: React.FC = () => {
 
   const handleMouseDown = (e: any) => {
     if (!canvasContainerRef.current) return;
-    
-    // Skip left mouse button handling if right-click was detected
-    if (e.evt.button === 2) return;
-    
+
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     const containerHeight = Math.max(spectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.60;
-    
-    // Use centralized coordinate transformation hook
-    const { absoluteX, seekPosition, pos, worldX, effectiveWidth } = transformMousePoint(point);
 
-    // Calculate timeline cursor position that works for both spectrogram and waveform
-    // The cursor position only needs to account for zoom level since the Stage moves with scroll
-    const cursorPosition = seekPosition * effectiveWidth * zoomLevel;
-    setTimelineCursorPosition(cursorPosition);
+    // Use centralized coordinate transformation hook
+    const { seekPosition, pos } = transformMousePoint(point);
+
+    // Calculate timeline cursor position using WaveSurfer's exact coordinate system
+    // Use the same width calculation as WaveSurfer container for perfect alignment
+    const waveformContainer = waveformRef.current;
+    if (waveformContainer) {
+      const containerWidth = waveformContainer.offsetWidth;
+      const cursorPosition = seekPosition * containerWidth;
+      setTimelineCursorPosition(cursorPosition);
+    }
+
+    // Handle right-click for panning (prevent context menu and enable panning)
+    if (e.evt.button === 2) {
+      e.evt.preventDefault();
+      setIsPanning(true);
+      setPanStartPos({
+        x: e.evt.clientX,
+        y: e.evt.clientY,
+        scrollX: unifiedScrollRef.current?.scrollLeft || 0,
+        scrollY: unifiedScrollRef.current?.scrollTop || 0,
+      });
+      return;
+    }
 
     // Perform audio seeking when not in annotation mode and clicking with left mouse button
     // This ensures audio seeks regardless of whether clicking on empty space or near bounding boxes
@@ -1256,7 +1284,10 @@ const AnnotationEditor: React.FC = () => {
     // Check if clicking in waveform area (starts after spectrogram at 65%)
     const timelineHeight = containerHeight * 0.65; // Timeline starts at 65%
     if (point.y > timelineHeight) {
-      // Enable panning in waveform area (same as spectrogram area for consistency)
+      // Enable panning in waveform area with multiple options:
+      // - Middle mouse button (button === 1)
+      // - Right mouse button (button === 2) - already handled above
+      // - Left mouse button with Shift/Ctrl modifiers
       if (e.evt.button === 1 || (e.evt.button === 0 && (e.evt.shiftKey || e.evt.ctrlKey))) {
         setIsPanning(true);
         setPanStartPos({
@@ -1373,7 +1404,8 @@ const AnnotationEditor: React.FC = () => {
           setSelectedBox(null);
         }
 
-        // Start panning for middle mouse button or when dragging with left button
+        // Start panning for middle mouse button, right mouse button (handled above), or left button
+        // Note: Right-click panning is already handled at the top of handleMouseDown
         if (e.evt.button === 1 || e.evt.button === 0) {
           if (unifiedScrollRef.current) {
             setIsPanning(true);
@@ -1409,7 +1441,7 @@ const AnnotationEditor: React.FC = () => {
     const spectrogramHeight = containerHeight * 0.60;
     
     // Use centralized coordinate transformation hook (same as handleMouseDown)
-    const { seekPosition, pos, worldX } = transformMousePoint(point);
+    const { seekPosition, pos } = transformMousePoint(point);
     setMousePosition(pos);
 
     // Don't update timeline cursor on mouse move - only on click
@@ -1660,20 +1692,26 @@ const AnnotationEditor: React.FC = () => {
 
   const handleContextMenu = (e: any) => {
     e.evt.preventDefault();
+
+    // Skip context menu if we're panning
+    if (isPanning) {
+      return;
+    }
+
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
-    
+
     // Use centralized coordinate transformation hook
     const { pos } = transformMousePoint(point);
     const adjustedX = pos.x;
     const adjustedY = pos.y;
-    
+
     // Check if right-clicking on a box
     const clickedBoxIndex = boundingBoxes.findIndex(
       box => adjustedX >= box.x && adjustedX <= box.x + box.width &&
              adjustedY >= box.y && adjustedY <= box.y + box.height
     );
-    
+
     if (clickedBoxIndex !== -1) {
       // Check if clicking on a selected box
       if (selectedBoxes.has(clickedBoxIndex)) {
@@ -1686,8 +1724,9 @@ const AnnotationEditor: React.FC = () => {
       }
       setContextMenu({ x: e.evt.clientX, y: e.evt.clientY, boxIndex: clickedBoxIndex });
     } else {
-      // Right-click on empty space
-      // Optionally clear selection (or keep it - depends on UX preference)
+      // Right-click on empty space - don't show context menu for panning
+      // Since we handle right-click panning in handleMouseDown, only show context menu
+      // when not panning (e.g., when clicking on boxes)
       // For now, we'll keep the selection as per requirement
       setContextMenu({ x: e.evt.clientX, y: e.evt.clientY });
     }
