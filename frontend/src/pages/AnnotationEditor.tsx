@@ -1522,8 +1522,9 @@ const AnnotationEditor: React.FC = () => {
           scrollX: unifiedScrollRef.current?.scrollLeft || 0,
           scrollY: unifiedScrollRef.current?.scrollTop || 0,
         });
+        return; // Only return here if we're starting panning
       }
-      return;
+      // Don't return if clicking on selected box - let context menu handler run
     }
 
     // Update timeline cursor position ONLY when:
@@ -2060,17 +2061,25 @@ const AnnotationEditor: React.FC = () => {
     );
 
     if (clickedBoxIndex !== -1) {
-      // Only show context menu if clicking on a selected box
+      // Show context menu if clicking on a selected box OR if we should select this box
       if (selectedBoxes.has(clickedBoxIndex)) {
         // Clicked on one of the selected boxes - keep all selected boxes
-        // Don't change selection, just show context menu
+        // Don't change selection, just show context menu for all selected
+        setContextMenu({
+          x: e.evt.clientX,
+          y: e.evt.clientY,
+          boxIndex: clickedBoxIndex,
+        });
+      } else {
+        // Clicked on a non-selected box - select it first, then show menu
+        setSelectedBox(boundingBoxes[clickedBoxIndex]);
+        setSelectedBoxes(new Set([clickedBoxIndex]));
         setContextMenu({
           x: e.evt.clientX,
           y: e.evt.clientY,
           boxIndex: clickedBoxIndex,
         });
       }
-      // If clicking on non-selected box, do nothing (no context menu)
     }
     // No context menu on empty space
   };
@@ -3205,15 +3214,18 @@ const AnnotationEditor: React.FC = () => {
                             e.evt.preventDefault();
                             e.cancelBubble = true;
 
-                            // Only show context menu if this box is selected
-                            if (selectedBoxes.has(globalIndex)) {
-                              setContextMenu({
-                                x: e.evt.clientX,
-                                y: e.evt.clientY,
-                                boxIndex: globalIndex,
-                              });
+                            // Show context menu - if not selected, select it first
+                            if (!selectedBoxes.has(globalIndex)) {
+                              // Select this box first
+                              setSelectedBox(transformedBox);
+                              setSelectedBoxes(new Set([globalIndex]));
                             }
-                            // If not selected, ignore right-click (no context menu)
+
+                            setContextMenu({
+                              x: e.evt.clientX,
+                              y: e.evt.clientY,
+                              boxIndex: globalIndex,
+                            });
                           }}
                         />
 
