@@ -1507,10 +1507,13 @@ const AnnotationEditor: React.FC = () => {
         pos.y <= box.y + box.height,
     );
 
-    // Handle right-click for panning (only if not clicking on a bounding box)
+    // Handle right-click for panning (only if not clicking on a selected bounding box)
     if (e.evt.button === 2) {
-      // If clicking on a bounding box, don't enable panning - let context menu show
-      if (clickedBoxIndex === -1) {
+      // Check if clicking on a SELECTED bounding box
+      const isClickingSelectedBox = clickedBoxIndex !== -1 && selectedBoxes.has(clickedBoxIndex);
+
+      // Only enable panning if NOT clicking on a selected box
+      if (!isClickingSelectedBox) {
         e.evt.preventDefault();
         setIsPanning(true);
         setPanStartPos({
@@ -2039,11 +2042,6 @@ const AnnotationEditor: React.FC = () => {
   const handleContextMenu = (e: any) => {
     e.evt.preventDefault();
 
-    // Skip context menu if we're panning
-    if (isPanning) {
-      return;
-    }
-
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
 
@@ -2062,27 +2060,19 @@ const AnnotationEditor: React.FC = () => {
     );
 
     if (clickedBoxIndex !== -1) {
-      // Check if clicking on a selected box
+      // Only show context menu if clicking on a selected box
       if (selectedBoxes.has(clickedBoxIndex)) {
         // Clicked on one of the selected boxes - keep all selected boxes
         // Don't change selection, just show context menu
-      } else {
-        // Clicked on a non-selected box - select only this one
-        setSelectedBox(boundingBoxes[clickedBoxIndex]);
-        setSelectedBoxes(new Set([clickedBoxIndex]));
+        setContextMenu({
+          x: e.evt.clientX,
+          y: e.evt.clientY,
+          boxIndex: clickedBoxIndex,
+        });
       }
-      setContextMenu({
-        x: e.evt.clientX,
-        y: e.evt.clientY,
-        boxIndex: clickedBoxIndex,
-      });
-    } else {
-      // Right-click on empty space - don't show context menu for panning
-      // Since we handle right-click panning in handleMouseDown, only show context menu
-      // when not panning (e.g., when clicking on boxes)
-      // For now, we'll keep the selection as per requirement
-      setContextMenu({ x: e.evt.clientX, y: e.evt.clientY });
+      // If clicking on non-selected box, do nothing (no context menu)
     }
+    // No context menu on empty space
   };
 
   const handleLabelSubmit = (label: string) => {
@@ -3215,26 +3205,15 @@ const AnnotationEditor: React.FC = () => {
                             e.evt.preventDefault();
                             e.cancelBubble = true;
 
-                            // Skip context menu if we're panning
-                            if (isPanning) {
-                              return;
-                            }
-
-                            // Check if clicking on a selected box
+                            // Only show context menu if this box is selected
                             if (selectedBoxes.has(globalIndex)) {
-                              // Clicked on one of the selected boxes - keep all selected boxes
-                              // Don't change selection, just show context menu
-                            } else {
-                              // Clicked on a non-selected box - select only this one
-                              setSelectedBox(transformedBox);
-                              setSelectedBoxes(new Set([globalIndex]));
+                              setContextMenu({
+                                x: e.evt.clientX,
+                                y: e.evt.clientY,
+                                boxIndex: globalIndex,
+                              });
                             }
-
-                            setContextMenu({
-                              x: e.evt.clientX,
-                              y: e.evt.clientY,
-                              boxIndex: globalIndex,
-                            });
+                            // If not selected, ignore right-click (no context menu)
                           }}
                         />
 
