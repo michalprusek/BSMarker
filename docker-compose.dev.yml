@@ -13,7 +13,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"  # Exposed for debugging
+      - "5433:5432"  # Exposed for debugging on different port
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bsmarker"]
       interval: 10s
@@ -23,7 +23,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"  # Exposed for debugging
+      - "6380:6379"  # Exposed for debugging on different port
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

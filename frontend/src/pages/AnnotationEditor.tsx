@@ -21,6 +21,7 @@ import {
   MagnifyingGlassPlusIcon,
   MagnifyingGlassMinusIcon,
   ArrowsPointingOutIcon,
+  QuestionMarkCircleIcon,
 } from "@heroicons/react/24/solid";
 import toast from "react-hot-toast";
 import WaveSurfer from "wavesurfer.js";
@@ -32,6 +33,7 @@ import LabelModal from "../components/LabelModal";
 import ContextMenu from "../components/ContextMenu";
 import SpectrogramScales from "../components/SpectrogramScales";
 import LoadingSpinner from "../components/LoadingSpinner";
+import KeyboardShortcutsModal from "../components/KeyboardShortcutsModal";
 import { CoordinateUtils, LAYOUT_CONSTANTS } from "../utils/coordinates";
 import {
   AXIS_STYLES,
@@ -193,6 +195,8 @@ const AnnotationEditor: React.FC = () => {
     y?: number;
     scrollY?: number;
   } | null>(null);
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] =
+    useState<boolean>(false);
   const rewindIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const wasPlayingRef = useRef<boolean>(false);
   const keyDownArrowRef = useRef<boolean>(false);
@@ -280,13 +284,23 @@ const AnnotationEditor: React.FC = () => {
           box,
           zoomLevel,
         );
+        // Find the original index in the full boundingBoxes array
+        const originalIndex = boundingBoxes.findIndex(
+          (b) =>
+            b.id === box.id &&
+            b.x === box.x &&
+            b.y === box.y &&
+            b.width === box.width &&
+            b.height === box.height,
+        );
         return {
           ...box,
           ...screenCoords,
           color: getLabelColorMemoized(box.label || "None"),
+          originalIndex, // Store the original index for later use
         };
       }),
-    [visibleBoundingBoxes, zoomLevel, getLabelColorMemoized],
+    [visibleBoundingBoxes, boundingBoxes, zoomLevel, getLabelColorMemoized],
   );
 
   // FPS monitoring for development
@@ -541,9 +555,9 @@ const AnnotationEditor: React.FC = () => {
         }
       }
 
-      // Handle 'A' key for annotation mode toggle
+      // Handle '.' key for annotation mode toggle
       if (
-        e.key.toLowerCase() === "a" &&
+        e.key === "." &&
         !e.ctrlKey &&
         !e.metaKey &&
         !e.altKey &&
@@ -555,11 +569,18 @@ const AnnotationEditor: React.FC = () => {
         return;
       }
 
-      // Handle A-Z quick labeling when boxes are selected
+      // Handle '?' key for showing keyboard shortcuts
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setShowKeyboardShortcuts(true);
+        return;
+      }
+
+      // Handle A-Z quick labeling when boxes are selected (excluding '.', '?')
       if (
         selectedBoxes.size > 0 &&
         e.key.length === 1 &&
-        /^[b-zB-Z]$/.test(e.key) &&
+        /^[a-zA-Z]$/.test(e.key) &&
         !e.ctrlKey &&
         !e.metaKey &&
         !e.altKey
@@ -570,15 +591,13 @@ const AnnotationEditor: React.FC = () => {
         return;
       }
 
-      // Handle arrow key hold for rewind/fast-forward
-      if (e.key === "ArrowLeft" && !keyDownArrowRef.current) {
+      // Handle arrow keys for horizontal panning
+      if (e.key === "ArrowLeft") {
         e.preventDefault();
-        keyDownArrowRef.current = true;
-        startRewind("backward");
-      } else if (e.key === "ArrowRight" && !keyDownArrowRef.current) {
+        handlePanLeft();
+      } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        keyDownArrowRef.current = true;
-        startRewind("forward");
+        handlePanRight();
       } else if (e.key === " ") {
         e.preventDefault();
         handlePlayPause();
@@ -592,7 +611,7 @@ const AnnotationEditor: React.FC = () => {
         if (showCustomLabelInput) {
           setShowCustomLabelInput(false);
         }
-      } else if (e.key === "Delete" && selectedBoxes.size > 0) {
+      } else if (e.key === "Backspace" && selectedBoxes.size > 0) {
         e.preventDefault();
         handleDeleteSelectedBoxes();
       } else if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
@@ -626,11 +645,7 @@ const AnnotationEditor: React.FC = () => {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        e.preventDefault();
-        keyDownArrowRef.current = false;
-        stopRewind();
-      }
+      // Arrow keys no longer need keyup handling since they're used for panning
     };
 
     // Removed old handleWheel to prevent dual zoom system conflicts
@@ -836,13 +851,21 @@ const AnnotationEditor: React.FC = () => {
         }
 
         const objectUrl = URL.createObjectURL(blob);
-        console.log(`Created blob URL for recording ${recordingId}:`, objectUrl);
+        console.log(
+          `Created blob URL for recording ${recordingId}:`,
+          objectUrl,
+        );
         setSpectrogramUrl(objectUrl);
         setSpectrogramError(null);
       }
     } catch (error) {
-      console.error(`Failed to load spectrogram image for recording ${recordingId}:`, error);
-      setSpectrogramError(`Failed to load spectrogram for recording ${recordingId}`);
+      console.error(
+        `Failed to load spectrogram image for recording ${recordingId}:`,
+        error,
+      );
+      setSpectrogramError(
+        `Failed to load spectrogram for recording ${recordingId}`,
+      );
       throw error;
     }
   };
@@ -1272,6 +1295,32 @@ const AnnotationEditor: React.FC = () => {
     setIsAnnotationMode(!isAnnotationMode);
   };
 
+  // Handle horizontal panning with arrow keys
+  const handlePanLeft = () => {
+    if (unifiedScrollRef.current) {
+      const scrollAmount = 100; // Pixels to scroll
+      const newScrollLeft = Math.max(
+        0,
+        unifiedScrollRef.current.scrollLeft - scrollAmount,
+      );
+      unifiedScrollRef.current.scrollLeft = newScrollLeft;
+    }
+  };
+
+  const handlePanRight = () => {
+    if (unifiedScrollRef.current) {
+      const scrollAmount = 100; // Pixels to scroll
+      const maxScroll =
+        unifiedScrollRef.current.scrollWidth -
+        unifiedScrollRef.current.clientWidth;
+      const newScrollLeft = Math.min(
+        maxScroll,
+        unifiedScrollRef.current.scrollLeft + scrollAmount,
+      );
+      unifiedScrollRef.current.scrollLeft = newScrollLeft;
+    }
+  };
+
   // Helper function to constrain box within boundaries
   const constrainBox = (box: BoundingBox): BoundingBox => {
     // Use centralized coordinate utilities for consistent constraint handling
@@ -1510,9 +1559,10 @@ const AnnotationEditor: React.FC = () => {
         pos.y <= box.y + box.height,
     );
 
-    // Handle right-click for panning (only if not clicking on any bounding box)
+    // Handle right-click for panning
     if (e.evt.button === 2) {
-      // Only enable panning if NOT clicking on any box
+      // Enable panning only if NOT clicking on any box
+      // If clicking on a box, let the context menu handler take over
       if (clickedBoxIndex === -1) {
         e.evt.preventDefault();
         setIsPanning(true);
@@ -2065,12 +2115,14 @@ const AnnotationEditor: React.FC = () => {
     );
 
     if (clickedBoxIndex !== -1) {
-      // Show context menu for the box without changing selection
+      // Show context menu without selecting the box
+      // The context menu will operate on the clicked box directly
       setContextMenu({
         x: e.evt.clientX,
         y: e.evt.clientY,
         boxIndex: clickedBoxIndex,
       });
+      return; // Prevent panning when showing context menu
     } else {
       // Right-click on empty space - show paste option if clipboard has content
       if (clipboardBox) {
@@ -3110,7 +3162,7 @@ const AnnotationEditor: React.FC = () => {
                 <Layer listening={true} clearBeforeDraw={true}>
                   {/* Mirror highlights for selected boxes - render first so they appear behind */}
                   {transformedBoxes.map((transformedBox, index) => {
-                    const globalIndex = boundingBoxes.indexOf(transformedBox);
+                    const globalIndex = transformedBox.originalIndex;
                     const isSelected = selectedBoxes.has(globalIndex);
 
                     if (!isSelected) return null;
@@ -3160,9 +3212,10 @@ const AnnotationEditor: React.FC = () => {
                   {/* Optimized Bounding boxes - only render visible boxes */}
                   {transformedBoxes.map((transformedBox, index) => {
                     // const originalIndex = visibleBoundingBoxes.indexOf(transformedBox); // Unused
-                    const globalIndex = boundingBoxes.indexOf(transformedBox);
+                    const globalIndex = transformedBox.originalIndex;
                     const isSelected = selectedBoxes.has(globalIndex);
-                    const isSingleSelected = selectedBox === transformedBox;
+                    const isSingleSelected =
+                      selectedBox && boundingBoxes[globalIndex] === selectedBox;
                     const labelColor = transformedBox.color;
 
                     // Use transformed coordinates for better performance
@@ -3213,13 +3266,8 @@ const AnnotationEditor: React.FC = () => {
                             e.evt.preventDefault();
                             e.cancelBubble = true;
 
-                            // Auto-select the box if it's not already selected
-                            if (!selectedBoxes.has(globalIndex)) {
-                              setSelectedBoxes(new Set([globalIndex]));
-                              setSelectedBox(transformedBox);
-                            }
-
-                            // Show context menu for this box
+                            // Show context menu without selecting the box
+                            // The context menu will operate on the clicked box directly
                             setContextMenu({
                               x: e.evt.clientX,
                               y: e.evt.clientY,
@@ -3502,9 +3550,18 @@ const AnnotationEditor: React.FC = () => {
                 ? "bg-green-100 text-green-700 hover:bg-green-200"
                 : "text-gray-600 hover:bg-gray-100"
             }`}
-            title="Toggle annotation mode (A)"
+            title="Toggle annotation mode (.)"
           >
             <PencilIcon className="h-5 w-5" />
+          </button>
+
+          {/* Keyboard Shortcuts Help */}
+          <button
+            onClick={() => setShowKeyboardShortcuts(true)}
+            className="p-2 rounded-md transition-colors text-gray-600 hover:bg-gray-100"
+            title="Keyboard shortcuts (?)"
+          >
+            <QuestionMarkCircleIcon className="h-5 w-5" />
           </button>
 
           {/* Show/Hide Sidebar */}
@@ -3577,95 +3634,110 @@ const AnnotationEditor: React.FC = () => {
         />
       )}
 
+      <KeyboardShortcutsModal
+        isOpen={showKeyboardShortcuts}
+        onClose={() => setShowKeyboardShortcuts(false)}
+      />
+
       {/* Context Menu */}
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={
-            contextMenu.boxIndex !== undefined
-              ? selectedBoxes.size > 1 &&
-                selectedBoxes.has(contextMenu.boxIndex)
-                ? [
-                    {
-                      label: `Edit Label for ${selectedBoxes.size} items`,
-                      icon: <PencilIcon className="w-4 h-4" />,
-                      onClick: () => {
-                        handleCustomLabel();
+          items={(() => {
+            // Context menu for a specific bounding box
+            if (contextMenu.boxIndex !== undefined) {
+              const boxIndex = contextMenu.boxIndex; // Capture the value for TypeScript
+              const targetBox = boundingBoxes[boxIndex];
+
+              // Check if we're dealing with multiple selected boxes
+              if (selectedBoxes.size > 1 && selectedBoxes.has(boxIndex)) {
+                // Multiple selection - operate on all selected boxes
+                return [
+                  {
+                    label: `Edit Label for ${selectedBoxes.size} items`,
+                    icon: <PencilIcon className="w-4 h-4" />,
+                    onClick: () => {
+                      handleCustomLabel();
+                      setContextMenu(null);
+                    },
+                  },
+                  {
+                    label: `Copy ${selectedBoxes.size} items`,
+                    icon: <ClipboardDocumentIcon className="w-4 h-4" />,
+                    onClick: () => {
+                      handleCopySelection();
+                      setContextMenu(null);
+                    },
+                    shortcut: "Ctrl+C",
+                  },
+                  {
+                    label: `Delete ${selectedBoxes.size} items`,
+                    icon: <TrashIcon className="w-4 h-4" />,
+                    onClick: () => {
+                      handleDeleteSelectedBoxes();
+                      setContextMenu(null);
+                    },
+                    shortcut: "Del",
+                  },
+                ];
+              } else {
+                // Single box - operate on the clicked box directly
+                return [
+                  {
+                    label: "Edit Label",
+                    icon: <PencilIcon className="w-4 h-4" />,
+                    onClick: () => {
+                      // Direct operation on the clicked box
+                      handleEditLabel(boxIndex);
+                      setContextMenu(null);
+                    },
+                  },
+                  {
+                    label: "Copy",
+                    icon: <ClipboardDocumentIcon className="w-4 h-4" />,
+                    onClick: () => {
+                      // Direct copy of the clicked box
+                      if (targetBox) {
+                        setClipboardBox({ ...targetBox });
+                        toast.success("Bounding box copied");
                         setContextMenu(null);
-                      },
+                      }
                     },
-                    {
-                      label: `Copy ${selectedBoxes.size} items`,
-                      icon: <ClipboardDocumentIcon className="w-4 h-4" />,
-                      onClick: () => {
-                        handleCopySelection();
-                        setContextMenu(null);
-                      },
-                      shortcut: "Ctrl+C",
+                    shortcut: "Ctrl+C",
+                  },
+                  {
+                    label: "Delete",
+                    icon: <TrashIcon className="w-4 h-4" />,
+                    onClick: () => {
+                      // Direct deletion of the clicked box
+                      handleDeleteBox(boxIndex);
+                      setContextMenu(null);
                     },
-                    {
-                      label: `Delete ${selectedBoxes.size} items`,
-                      icon: <TrashIcon className="w-4 h-4" />,
-                      onClick: () => {
-                        handleDeleteSelectedBoxes();
-                        setContextMenu(null);
-                      },
-                      shortcut: "Del",
-                    },
-                  ]
-                : [
-                    {
-                      label: "Edit Label",
-                      icon: <PencilIcon className="w-4 h-4" />,
-                      onClick: () => {
-                        if (contextMenu.boxIndex !== undefined) {
-                          handleEditLabel(contextMenu.boxIndex);
-                          setContextMenu(null);
-                        }
-                      },
-                    },
-                    {
-                      label: "Copy",
-                      icon: <ClipboardDocumentIcon className="w-4 h-4" />,
-                      onClick: () => {
-                        if (contextMenu.boxIndex !== undefined) {
-                          const boxToCopy = boundingBoxes[contextMenu.boxIndex];
-                          if (boxToCopy) {
-                            setClipboardBox({ ...boxToCopy });
-                            toast.success("Bounding box copied");
-                            setContextMenu(null);
-                          }
-                        }
-                      },
-                      shortcut: "Ctrl+C",
-                    },
-                    {
-                      label: "Delete",
-                      icon: <TrashIcon className="w-4 h-4" />,
-                      onClick: () => {
-                        if (contextMenu.boxIndex !== undefined) {
-                          handleDeleteBox(contextMenu.boxIndex);
-                          setContextMenu(null);
-                        }
-                      },
-                      shortcut: "Del",
-                    },
-                  ]
-              : clipboardBox
-                ? [
-                    {
-                      label: "Paste",
-                      icon: <ClipboardDocumentIcon className="w-4 h-4" />,
-                      onClick: () => {
-                        handlePasteSelection();
-                        setContextMenu(null);
-                      },
-                      shortcut: "Ctrl+V",
-                    },
-                  ]
-                : []
-          }
+                    shortcut: "Del",
+                  },
+                ];
+              }
+            }
+
+            // Context menu for empty space
+            if (clipboardBox) {
+              return [
+                {
+                  label: "Paste",
+                  icon: <ClipboardDocumentIcon className="w-4 h-4" />,
+                  onClick: () => {
+                    handlePasteSelection();
+                    setContextMenu(null);
+                  },
+                  shortcut: "Ctrl+V",
+                },
+              ];
+            }
+
+            // No options available
+            return [];
+          })()}
           onClose={() => setContextMenu(null)}
         />
       )}

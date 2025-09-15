@@ -67,4 +67,3 @@ echo "4. Verify all 3 context menu options work"
 echo ""
 echo "📊 To monitor logs:"
 echo "docker-compose -f docker-compose.prod.yml logs -f [service_name]"
-

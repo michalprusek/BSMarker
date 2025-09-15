@@ -1,203 +1,284 @@
 ---
-argument-hint: [error or implementation description or browser console log]
-description: Comprehensive app analysis and sophisticated fix or feature implementation
+name: di
+description: Debug issues or implement features with intelligent agent orchestration
+argument-hint: [error description or feature request]
 ---
 
-# Comprehensive Error Debugging and Resolution
+# Overview
 
-## Error Context
-**User-reported error/implementation:** $ARGUMENTS
+This command provides comprehensive debugging and feature implementation capabilities for the BSMarker application. It orchestrates multiple specialized agents in parallel to gather context, analyze issues, implement solutions, and verify results using a systematic two-phase approach.
 
-## System Context Collection
+## Variables
 
-### Current Docker Container Status
-!`docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "cell-segmentation|spheroseg" || echo "No relevant containers running"`
+- `$ARGUMENTS`: The error description or feature request to address
+- Agent types: `context-gatherer`, `ssot-analyzer`, `frontend-debugger`, `backend-debugger`, `ml-debugger`, `docker-debugger`, `websocket-debugger`, `performance-debugger`, `feature-implementor`, `test-generator`, `integration-mapper`
 
-### Backend Container Logs (last 50 lines)
-!`docker logs <backend_container_name> --tail 50 2>&1 || docker logs blue-backend --tail 50 2>&1 || docker logs green-backend --tail 50 2>&1 || echo "Backend container not found"`
+## Instructions
 
-### Frontend Container Logs (last 30 lines)
-!`docker logs <frontend_container_name> --tail 30 2>&1 || docker logs blue-frontend --tail 30 2>&1 || docker logs green-frontend --tail 30 2>&1 || echo "Frontend container not found"`
+1. **Context Collection**: Gather system state and error logs
+2. **Agent Deployment**: Launch specialized agents for analysis
+3. **Root Cause Analysis**: Consolidate findings from all agents
+4. **Solution Design**: Create comprehensive fix or implementation plan
+5. **Implementation**: Deploy implementation agents to apply changes
+6. **Verification**: Test and validate the solution
+7. **Knowledge Storage**: Document the solution for future reference
 
-### ML Service Container Logs (last 30 lines)
-!`docker logs <ml_container_name> --tail 30 2>&1 || docker logs blue-ml --tail 30 2>&1 || docker logs green-ml --tail 30 2>&1 || echo "ML container not found"`
+## Workflow
 
-### Database Connection Status
-!`docker exec <backend_container_name> npm run db:test 2>&1 || docker exec <backend_name> npm run db:test 2>&1 || echo "Could not test database connection"`
+### Phase 1: System Context Collection
+```bash
+echo "🔍 Collecting system context for: $ARGUMENTS"
 
-### Current Git Status
-!`git status --short`
+# Docker container status
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "bsmarker|spheroseg" || echo "No relevant containers"
 
-### Recent Git Changes
-!`git diff HEAD~1 --name-status | head -20`
+# Recent logs from all services
+echo "📋 Backend logs:"
+docker logs bsmarker-backend --tail 50 2>&1 || echo "Backend not available"
 
-### Environment Check
-!`[ -f .env ] && echo ".env file exists" || echo ".env file missing"`
-!`[ -f .env.blue ] && echo ".env.blue file exists" || echo ".env.blue file missing"`
-!`[ -f .env.green ] && echo ".env.green file exists" || echo ".env.green file missing"`
+echo "📋 Frontend logs:"
+docker logs bsmarker-frontend --tail 30 2>&1 || echo "Frontend not available"
 
-### Package Dependencies Status
-!`cd backend && npm ls 2>&1 | grep -E "UNMET|missing|error" | head -10 || echo "No dependency issues found"`
+echo "📋 ML Service logs:"
+docker logs bsmarker-ml --tail 30 2>&1 || echo "ML service not available"
 
-### TypeScript Compilation Check
-!`cd backend && npx tsc --noEmit 2>&1 | head -20 || echo "TypeScript check passed"`
+# Database connection test
+docker exec bsmarker-backend npm run db:test 2>&1 || echo "Database connection test failed"
 
-### Current Directory Structure
-!`ls -la | head -15`
+# Git status
+git status --short
 
-## Your Mission
+# Environment check
+[ -f .env ] && echo "✅ .env exists" || echo "❌ .env missing"
 
-You are an expert debugging and feature implementation engineer with deep knowledge of the Cell Segmentation Hub application. Your goal is to systematically diagnose and fix the reported error or design and implement a new feature using a sophisticated two-phase approach.
-
----
-
-# PHASE 1: MAXIMUM CONTEXT GATHERING
-**Objective**: Gather comprehensive context about the error or implementation using specialized subagents in parallel
-
-## Step 1: Initial Analysis
-Use the TodoWrite tool to create a task list for debugging phases, then analyze the logs above and feature description from user to determine which specialized debugging agents to deploy.
-
-## Step 2: Deploy Specialized Context-Gathering Agents (IN PARALLEL)
-
-**IMPORTANT**: Launch multiple agents simultaneously for maximum efficiency. Based on the requirement type, use these specialized agents:
-
-### Core Agents:
-- **context-gatherer**: ALWAYS use first - gathers comprehensive context from codebase and knowledge systems
-- **ssot-analyzer**: Identifies code patterns, reusable components, and architectural violations
-
-### Specialized Agents (choose based on error type):
-- **frontend-debugger**: React errors, TypeScript issues, UI rendering problems, state management bugs
-- **backend-debugger**: Node.js errors, Express issues, Prisma/database problems, API failures
-- **ml-debugger**: ML model errors, segmentation failures, PyTorch issues, GPU problems
-- **docker-debugger**: Container failures, build issues, networking problems, volume errors
-- **websocket-debugger**: Real-time update failures, Socket.io disconnections, event handling issues
-- **performance-debugger**: Slow queries, memory leaks, high CPU usage, bottlenecks
-
-**Example parallel launch for a full-stack error/implementation:**
-
-VERY IMPORTANT: Call subagents with very detailed and comprehensive task description:
-1. context-gatherer: "Analyze all touchpoints for [request description]"
-2. frontend-debugger: "Investigate UI related to [request description]"
-3. backend-debugger: "Check API and database for [request description]"
-4. ssot-analyzer: "Find reusable patterns for fixing/implementing [request description]"
-
-VERY IMPORTANT: Use Serena MCP as much as you can
-
-1. Search Serena knowledge base for similar errors/implementations and solutions
-2. Query for best practices and architectural patterns
-3. Look for previous fixes to related issues
-
-
-## Step 3: Consolidate Findings
-
-1. Review all agent reports and Serena knowledge base reports
-2. Identify common patterns and root causes
-3. Map all affected components and dependencies
-
-# PHASE 2: SOPHISTICATED FIX IMPLEMENTATION
-**Objective**: Apply comprehensive fixes/implementations using specialized implementation agents
-
-## Step 1: Solution Design
-
-Based on Phase 1 findings, design a solution that:
-- Addresses all identified root causes
-- Follows discovered patterns and best practices
-- Considers all affected components
-- Includes proper error handling and monitoring
-
-## Step 2: Deploy Implementation Agents (IN PARALLEL)
-
-### Primary Implementation Agent:
-- **feature-implementor**: Use for comprehensive fixes that span multiple files/components
-  - Provide detailed implementation plan from Phase 1
-  - Include all touchpoints identified by context-gatherer
-  - Specify SSOT patterns to follow
-
-### Supporting Implementation Agents (as needed):
-- **test-generator**: Create tests BEFORE implementation (TDD approach)
-- **integration-mapper**: Map all integration points for complex fixes
-- **i18n-updater**: Update translations if UI messages change
-
-**Example parallel implementation:**
-```
-Use Task tool with:
-1. test-generator: "Write tests for [fix description] based on [error scenario]..."
-2. feature-implementor: "Implement fix for [error] following patterns: [list patterns]..."
-3. integration-mapper: "Ensure fix integrates with [list of components]..."
+# TypeScript compilation check
+cd /home/prusek/BSMarker/backend && npx tsc --noEmit 2>&1 | head -20 || echo "TypeScript check passed"
 ```
 
-## Step 3: Verification Phase
+### Phase 2: Maximum Context Gathering
 
-Deploy verification agents:
-1. Run implemented tests
-2. Check all affected workflows
-3. Verify no regressions introduced
-4. Confirm error is resolved
+Deploy specialized agents in parallel based on the issue type:
 
-## Step 4: Knowledge Storage
+```python
+# Core agents (always deploy)
+core_agents = [
+    {
+        "agent": "context-gatherer",
+        "task": f"Gather comprehensive context about: {ARGUMENTS}. Analyze all touchpoints, dependencies, and related components."
+    },
+    {
+        "agent": "ssot-analyzer",
+        "task": f"Identify code patterns, reusable components, and architectural violations related to: {ARGUMENTS}"
+    }
+]
 
-Store the complete solution in Serena memories:
-1. Document the error pattern and symptoms
-2. Explain all root causes discovered
-3. Detail the solution approach and implementation
-4. Include code patterns for future reference
-5. List all affected components and integration points
+# Specialized agents (deploy based on error type)
+specialized_agents = []
 
-## Step 5: Commit
-Commit all changes made to the dev branch - make sure the pre-commit checks pass- NEVER skip them
+# Analyze the error/request to determine which agents to deploy
+if any(keyword in ARGUMENTS.lower() for keyword in ['ui', 'react', 'frontend', 'component']):
+    specialized_agents.append({
+        "agent": "frontend-debugger",
+        "task": f"Debug React/UI issues related to: {ARGUMENTS}. Check components, state management, rendering."
+    })
 
-## Critical Guidelines
+if any(keyword in ARGUMENTS.lower() for keyword in ['api', 'backend', 'database', 'prisma']):
+    specialized_agents.append({
+        "agent": "backend-debugger",
+        "task": f"Debug backend issues related to: {ARGUMENTS}. Check API endpoints, database queries, middleware."
+    })
 
-### Phase 1 - Context Gathering:
-1. **ALWAYS use parallel agent deployment** - Launch multiple agents simultaneously
-2. **ALWAYS start with context-gatherer** - It provides the foundation for other agents
-3. **Provide comprehensive instructions to agents** - They don't share context with you
-4. **Include specific error details** - Give agents the exact error messages and logs
-5. **Request specific deliverables** - Tell agents exactly what information to return
+if any(keyword in ARGUMENTS.lower() for keyword in ['ml', 'model', 'segmentation', 'pytorch']):
+    specialized_agents.append({
+        "agent": "ml-debugger",
+        "task": f"Debug ML issues related to: {ARGUMENTS}. Check model loading, inference, GPU usage."
+    })
 
-### Phase 2 - Implementation:
-1. **No Hot Fixes**: Every change must be architecturally sound
-2. **Use SSOT patterns**: Follow patterns identified by ssot-analyzer
-3. **TDD Approach**: Generate tests before implementation when possible
-4. **Comprehensive Testing**: Verify all affected workflows
-5. **Knowledge Preservation**: Store solutions for future use
+if any(keyword in ARGUMENTS.lower() for keyword in ['docker', 'container', 'build']):
+    specialized_agents.append({
+        "agent": "docker-debugger",
+        "task": f"Debug Docker issues related to: {ARGUMENTS}. Check containers, networking, volumes."
+    })
 
-### General Principles:
-1. **Root Cause Focus**: Fix underlying issues, not symptoms
-2. **Pattern Consistency**: Follow existing codebase patterns
-3. **Error Handling**: Add proper validation and user-friendly messages
-4. **Performance Impact**: Consider and measure performance changes
-5. **Security First**: Ensure no vulnerabilities are introduced
+if any(keyword in ARGUMENTS.lower() for keyword in ['websocket', 'realtime', 'socket.io']):
+    specialized_agents.append({
+        "agent": "websocket-debugger",
+        "task": f"Debug WebSocket issues related to: {ARGUMENTS}. Check connections, events, real-time updates."
+    })
 
-## Expected Deliverables
+if any(keyword in ARGUMENTS.lower() for keyword in ['slow', 'performance', 'memory', 'cpu']):
+    specialized_agents.append({
+        "agent": "performance-debugger",
+        "task": f"Analyze performance issues related to: {ARGUMENTS}. Check bottlenecks, memory leaks, optimization opportunities."
+    })
 
-### After Phase 1 (Context Gathering):
-1. **Complete Error Context**: Consolidated findings from all agents
-2. **Root Cause Analysis**: Multiple perspectives on why the error occurred
-3. **Affected Components Map**: All files, services, and integrations involved
-4. **Pattern Analysis**: Existing patterns that apply to this fix
-5. **Risk Assessment**: Potential side effects and regression risks
-
-### After Phase 2 (Implementation):
-1. **Implementation Summary**: What was changed and why
-2. **Test Results**: Evidence that the fix works
-3. **Integration Verification**: Confirmation that all touchpoints work
-4. **Performance Metrics**: Any performance impact measurements
-5. **Knowledge Base Entry**: Stored solution for future reference
-6. **Commit to dev branch**: Commit to dev brach and make sure all of the pre commit chack pass - NEVER skip them
-
-## Execution Flow Summary
-
-```
-1. Receive Error/implementation description → Create Todo List
-2. Launch Context Agents (parallel) → Gather Maximum Context
-3. Analyze Findings → Design Solution
-4. Launch Implementation Agents (parallel) → Apply Fixes
-5. Verify Solution → Store Knowledge
+# Deploy all agents in parallel
+all_agents = core_agents + specialized_agents
 ```
 
-VERY IMPORTANT: Subagents have their own context - always make sure you descripe them everything comprehensively
+### Phase 3: Consolidate Findings
 
-VERY IMPORTANT: Respect SSOT approach and ALWAYS delete duplicate code (merge code with the same functionality)
+Analyze all agent reports to identify:
+- Root causes
+- Affected components
+- Existing patterns to follow
+- Potential side effects
+- Required changes
 
-**Remember**: The power of this approach is in parallel agent execution and comprehensive context gathering. Never skip Phase 1 to rush into fixing - understanding must come first!
+### Phase 4: Solution Implementation
+
+Deploy implementation agents based on findings:
+
+```python
+implementation_agents = [
+    {
+        "agent": "feature-implementor",
+        "task": f"Implement comprehensive solution for: {ARGUMENTS}. Follow patterns: [identified patterns]. Include all touchpoints: [affected components]."
+    }
+]
+
+# Add supporting agents as needed
+if "new functionality" in findings:
+    implementation_agents.append({
+        "agent": "test-generator",
+        "task": f"Generate tests for: {ARGUMENTS}. Cover unit tests, integration tests, and edge cases."
+    })
+
+if "multiple components" in findings:
+    implementation_agents.append({
+        "agent": "integration-mapper",
+        "task": f"Map all integration points for: {ARGUMENTS}. Ensure seamless integration across components."
+    })
+
+# Deploy implementation agents in parallel
+```
+
+### Phase 5: Verification
+```bash
+echo "✅ Verifying solution..."
+
+# Run relevant tests
+npm test -- --related 2>&1 || echo "Tests need attention"
+
+# Check affected workflows
+# [Specific verification steps based on the issue]
+
+# Verify no regressions
+docker-compose -f docker-compose.dev.yml ps
+
+# Confirm issue resolution
+echo "Original issue: $ARGUMENTS"
+echo "Status: [RESOLVED/PARTIALLY_RESOLVED/NEEDS_REVIEW]"
+```
+
+### Phase 6: Knowledge Storage
+
+Store the solution pattern for future reference:
+
+```javascript
+const solutionPattern = {
+    issue: ARGUMENTS,
+    symptoms: [/* observed symptoms */],
+    rootCauses: [/* identified root causes */],
+    solution: {
+        approach: "Description of solution approach",
+        changes: [/* list of changes made */],
+        patterns: [/* reusable patterns */]
+    },
+    affectedComponents: [/* list of affected files/services */],
+    testingNotes: "How to verify the fix",
+    preventionTips: "How to prevent similar issues"
+};
+
+// Store in knowledge base
+```
+
+### Phase 7: Commit Changes
+```bash
+# Ensure pre-commit hooks pass
+npm run lint:fix
+npm run format
+
+# Stage changes
+git add .
+
+# Commit with descriptive message
+git commit -m "fix: $ARGUMENTS
+
+- Root cause: [description]
+- Solution: [description]
+- Testing: [what was tested]
+
+Closes #[issue-number]"
+
+# Push to dev branch
+git push origin dev
+```
+
+## Report
+
+### Debug/Implementation Summary
+- **Request**: $ARGUMENTS
+- **Type**: [Bug Fix / Feature Implementation / Performance Fix]
+- **Severity**: [Critical / High / Medium / Low]
+- **Status**: [Resolved / Partially Resolved / Needs Review]
+
+### Analysis Results
+```
+📊 Context Gathering:
+- Agents Deployed: [count]
+- Components Analyzed: [list]
+- Patterns Identified: [count]
+- Root Causes Found: [count]
+```
+
+### Root Cause Analysis
+1. **Primary Cause**: [description]
+2. **Contributing Factors**: [list]
+3. **Affected Systems**: [list]
+
+### Solution Implementation
+```
+✅ Changes Applied:
+- Files Modified: [count]
+- Lines Changed: [+X / -Y]
+- Tests Added: [count]
+- Documentation Updated: [yes/no]
+```
+
+### Verification Results
+- Unit Tests: [pass/fail]
+- Integration Tests: [pass/fail]
+- Manual Testing: [completed/pending]
+- Performance Impact: [improved/neutral/degraded]
+
+### Knowledge Base Entry
+```yaml
+pattern_id: [unique-id]
+category: [error-type]
+solution: [reusable-solution]
+prevention: [prevention-tips]
+```
+
+### Recommendations
+1. **Immediate Actions**:
+   - Monitor the fix in development
+   - Run full test suite
+   - Review related code for similar issues
+
+2. **Follow-up Tasks**:
+   - Add monitoring for this error pattern
+   - Update documentation
+   - Consider architectural improvements
+
+3. **Prevention Strategies**:
+   - Add linting rules to catch similar issues
+   - Improve test coverage in affected areas
+   - Document the pattern for team awareness
+
+### Next Steps
+- Deploy to staging: `/deploy --staging`
+- Run comprehensive tests: `/test all`
+- Create pull request: `/commit "Fix: $ARGUMENTS"`
+- Monitor for 24 hours
+- Update team documentation

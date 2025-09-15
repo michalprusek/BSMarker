@@ -672,7 +672,8 @@ const ProjectDetailPage: React.FC = () => {
               {recordings.map((recording) => (
                 <li
                   key={recording.id}
-                  className="hover:bg-gray-50 transition-colors"
+                  className="hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={() => handleRecordingClick(recording.id)}
                 >
                   <div className="px-4 py-4 sm:px-6 flex items-center">
                     <input
@@ -682,10 +683,7 @@ const ProjectDetailPage: React.FC = () => {
                       onClick={(e) => e.stopPropagation()}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-4"
                     />
-                    <div
-                      className="flex-1 flex items-center cursor-pointer"
-                      onClick={() => handleRecordingClick(recording.id)}
-                    >
+                    <div className="flex-1 flex items-center">
                       <MusicalNoteIcon className="h-10 w-10 text-gray-400 mr-4" />
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
