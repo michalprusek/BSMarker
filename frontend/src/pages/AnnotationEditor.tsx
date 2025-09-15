@@ -1379,12 +1379,15 @@ const AnnotationEditor: React.FC = () => {
   const handlePasteSelection = useCallback(() => {
     if (!clipboardBox) return;
 
-    // Get the paste position - use context menu position if available, otherwise mouse position
-    const pasteAt = contextMenu || mousePosition;
+    // Use mouse position that was stored during right-click
+    if (!mousePosition) {
+      toast.error("Click position not available");
+      return;
+    }
 
-    // Adjust paste position for zoom level (keep display coordinates)
-    const adjustedPasteX = pasteAt.x / zoomLevel;
-    const adjustedPasteY = pasteAt.y; // Keep display coordinates
+    // Use the stored mouse position directly (already in spectrogram coordinates)
+    const adjustedPasteX = mousePosition.x;
+    const adjustedPasteY = mousePosition.y;
 
     if (Array.isArray(clipboardBox)) {
       // Multiple boxes - maintain relative positions
@@ -2049,6 +2052,9 @@ const AnnotationEditor: React.FC = () => {
     const adjustedX = pos.x;
     const adjustedY = pos.y;
 
+    // Store mouse position for paste operation
+    setMousePosition({ x: adjustedX, y: adjustedY });
+
     // Check if right-clicking on a box
     const clickedBoxIndex = boundingBoxes.findIndex(
       (box) =>
@@ -2059,15 +2065,28 @@ const AnnotationEditor: React.FC = () => {
     );
 
     if (clickedBoxIndex !== -1) {
-      // Show context menu for any box (selected or not)
-      // But DON'T automatically select unselected boxes
+      // If clicking on an unselected box, select it
+      if (!selectedBoxes.has(clickedBoxIndex)) {
+        setSelectedBox(boundingBoxes[clickedBoxIndex]);
+        setSelectedBoxes(new Set([clickedBoxIndex]));
+      }
+
+      // Show context menu for the box
       setContextMenu({
         x: e.evt.clientX,
         y: e.evt.clientY,
         boxIndex: clickedBoxIndex,
       });
+    } else {
+      // Right-click on empty space - show paste option if clipboard has content
+      if (clipboardBox) {
+        setContextMenu({
+          x: e.evt.clientX,
+          y: e.evt.clientY,
+          boxIndex: undefined,
+        });
+      }
     }
-    // No context menu on empty space
   };
 
   const handleLabelSubmit = (label: string) => {
@@ -3200,8 +3219,13 @@ const AnnotationEditor: React.FC = () => {
                             e.evt.preventDefault();
                             e.cancelBubble = true;
 
+                            // If clicking on an unselected box, select it
+                            if (!selectedBoxes.has(globalIndex)) {
+                              setSelectedBox(box);
+                              setSelectedBoxes(new Set([globalIndex]));
+                            }
+
                             // Show context menu for this box
-                            // Don't automatically select if not selected
                             setContextMenu({
                               x: e.evt.clientX,
                               y: e.evt.clientY,
