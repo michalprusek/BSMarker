@@ -1251,15 +1251,6 @@ const AnnotationEditor: React.FC = () => {
     // Use centralized coordinate transformation hook
     const { seekPosition, pos } = transformMousePoint(point);
 
-    // Calculate timeline cursor position using WaveSurfer's exact coordinate system
-    // Use the same width calculation as WaveSurfer container for perfect alignment
-    const waveformContainer = waveformRef.current;
-    if (waveformContainer) {
-      const containerWidth = waveformContainer.offsetWidth;
-      const cursorPosition = seekPosition * containerWidth;
-      setTimelineCursorPosition(cursorPosition);
-    }
-
     // Handle right-click for panning (prevent context menu and enable panning)
     if (e.evt.button === 2) {
       e.evt.preventDefault();
@@ -1271,6 +1262,25 @@ const AnnotationEditor: React.FC = () => {
         scrollY: unifiedScrollRef.current?.scrollTop || 0,
       });
       return;
+    }
+
+    // Check if clicking on a bounding box first (before updating cursor)
+    const clickedBoxIndex = boundingBoxes.findIndex(
+      box => pos.x >= box.x && pos.x <= box.x + box.width &&
+             pos.y >= box.y && pos.y <= box.y + box.height
+    );
+
+    // Update timeline cursor position ONLY when:
+    // 1. NOT in annotation mode
+    // 2. NOT clicking on a bounding box
+    // This prevents cursor jumping when selecting/manipulating boxes
+    if (!isAnnotationMode && clickedBoxIndex === -1) {
+      const waveformContainer = waveformRef.current;
+      if (waveformContainer) {
+        const containerWidth = waveformContainer.offsetWidth;
+        const cursorPosition = seekPosition * containerWidth;
+        setTimelineCursorPosition(cursorPosition);
+      }
     }
 
     // Perform audio seeking when not in annotation mode and clicking with left mouse button
@@ -1308,11 +1318,8 @@ const AnnotationEditor: React.FC = () => {
     
     // Check for double-click to play segment
     const currentTime = Date.now();
-    const clickedBoxIndex = boundingBoxes.findIndex(
-      box => pos.x >= box.x && pos.x <= box.x + box.width &&
-             pos.y >= box.y && pos.y <= box.y + box.height
-    );
-    
+    // Note: clickedBoxIndex is already calculated above before cursor update logic
+
     if (clickedBoxIndex !== -1 && clickedBoxIndex === lastClickedBox && currentTime - lastClickTime < 500) {
       // Double-click detected - play the segment
       const box = boundingBoxes[clickedBoxIndex];
