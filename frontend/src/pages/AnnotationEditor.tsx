@@ -2065,13 +2065,7 @@ const AnnotationEditor: React.FC = () => {
     );
 
     if (clickedBoxIndex !== -1) {
-      // If clicking on an unselected box, select it
-      if (!selectedBoxes.has(clickedBoxIndex)) {
-        setSelectedBox(boundingBoxes[clickedBoxIndex]);
-        setSelectedBoxes(new Set([clickedBoxIndex]));
-      }
-
-      // Show context menu for the box
+      // Show context menu for the box without changing selection
       setContextMenu({
         x: e.evt.clientX,
         y: e.evt.clientY,
@@ -3219,13 +3213,7 @@ const AnnotationEditor: React.FC = () => {
                             e.evt.preventDefault();
                             e.cancelBubble = true;
 
-                            // If clicking on an unselected box, select it
-                            if (!selectedBoxes.has(globalIndex)) {
-                              setSelectedBox(box);
-                              setSelectedBoxes(new Set([globalIndex]));
-                            }
-
-                            // Show context menu for this box
+                            // Show context menu for this box without changing selection
                             setContextMenu({
                               x: e.evt.clientX,
                               y: e.evt.clientY,
