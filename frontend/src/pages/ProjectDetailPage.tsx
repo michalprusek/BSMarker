@@ -43,7 +43,7 @@ const ProjectDetailPage: React.FC = () => {
       params.sort_order = sortOrder;
       
       const recordingsData = await recordingService.getRecordings(parseInt(projectId), params);
-      setRecordings(recordingsData);
+      setRecordings(recordingsData.items || recordingsData);
     } catch (error) {
       toast.error('Failed to fetch project data');
     } finally {
