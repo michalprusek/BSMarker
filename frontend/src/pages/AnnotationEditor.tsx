@@ -81,6 +81,8 @@ const AnnotationEditor: React.FC = () => {
   const [mousePosition, setMousePosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [resizingBox, setResizingBox] = useState<{ index: number; handle: string } | null>(null);
   const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
+  const [isDuringDragOperation, setIsDuringDragOperation] = useState<boolean>(false);
+  const [preOperationState, setPreOperationState] = useState<BoundingBox[] | null>(null);
   const [labelColorMap, setLabelColorMap] = useState<Map<string, number>>(new Map([['None', 0]]));
   const [history, setHistory] = useState<BoundingBox[][]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
@@ -381,18 +383,23 @@ const AnnotationEditor: React.FC = () => {
 
   // Update history when bounding boxes change
   useEffect(() => {
+    // Skip history updates during drag/resize operations to prevent excessive undo/redo entries
+    if (isDuringDragOperation) {
+      return;
+    }
+
     // Only add to history if this is a user action, not loading from backend
     if (boundingBoxes.length > 0 || history.length > 0) {
       const currentState = JSON.stringify(boundingBoxes);
       const lastHistoryState = history[historyIndex] ? JSON.stringify(history[historyIndex]) : '';
-      
+
       if (currentState !== lastHistoryState && currentState !== JSON.stringify(lastSavedState)) {
         addToHistory(boundingBoxes);
         setHasUnsavedChanges(JSON.stringify(boundingBoxes) !== JSON.stringify(lastSavedState));
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boundingBoxes]);
+  }, [boundingBoxes, isDuringDragOperation]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1251,24 +1258,27 @@ const AnnotationEditor: React.FC = () => {
     // Use centralized coordinate transformation hook
     const { seekPosition, pos } = transformMousePoint(point);
 
-    // Handle right-click for panning (prevent context menu and enable panning)
-    if (e.evt.button === 2) {
-      e.evt.preventDefault();
-      setIsPanning(true);
-      setPanStartPos({
-        x: e.evt.clientX,
-        y: e.evt.clientY,
-        scrollX: unifiedScrollRef.current?.scrollLeft || 0,
-        scrollY: unifiedScrollRef.current?.scrollTop || 0,
-      });
-      return;
-    }
-
-    // Check if clicking on a bounding box first (before updating cursor)
+    // Check if clicking on a bounding box first (before handling right-click)
     const clickedBoxIndex = boundingBoxes.findIndex(
       box => pos.x >= box.x && pos.x <= box.x + box.width &&
              pos.y >= box.y && pos.y <= box.y + box.height
     );
+
+    // Handle right-click for panning (only if not clicking on a bounding box)
+    if (e.evt.button === 2) {
+      // If clicking on a bounding box, don't enable panning - let context menu show
+      if (clickedBoxIndex === -1) {
+        e.evt.preventDefault();
+        setIsPanning(true);
+        setPanStartPos({
+          x: e.evt.clientX,
+          y: e.evt.clientY,
+          scrollX: unifiedScrollRef.current?.scrollLeft || 0,
+          scrollY: unifiedScrollRef.current?.scrollTop || 0,
+        });
+      }
+      return;
+    }
 
     // Update timeline cursor position ONLY when:
     // 1. NOT in annotation mode
@@ -1338,6 +1348,9 @@ const AnnotationEditor: React.FC = () => {
         const box = boundingBoxes[i];
         const handle = getResizeHandle(box, pos.x, pos.y);
         if (handle) {
+          // Start resize operation - capture initial state and prevent history updates during resize
+          setPreOperationState([...boundingBoxes]);
+          setIsDuringDragOperation(true);
           setResizingBox({ index: i, handle });
           setDragStartPos(pos);
           setSelectedBox(box);
@@ -1380,7 +1393,10 @@ const AnnotationEditor: React.FC = () => {
                   initialPositions.set(idx, { x: box.x, y: box.y });
                 }
               });
-              
+
+              // Start drag operation - capture initial state and prevent history updates during drag
+              setPreOperationState([...boundingBoxes]);
+              setIsDuringDragOperation(true);
               setDraggingBox({
                 index: clickedBoxIndex,
                 initialBox: { ...clickedBox },
@@ -1392,6 +1408,10 @@ const AnnotationEditor: React.FC = () => {
               // Box is not selected, select only this one and start dragging
               setSelectedBoxes(new Set([clickedBoxIndex]));
               setSelectedBox(clickedBox);
+
+              // Start drag operation - capture initial state and prevent history updates during drag
+              setPreOperationState([...boundingBoxes]);
+              setIsDuringDragOperation(true);
               setDraggingBox({
                 index: clickedBoxIndex,
                 initialBox: { ...clickedBox },
@@ -1646,14 +1666,42 @@ const AnnotationEditor: React.FC = () => {
     
     // Handle drag end
     if (draggingBox) {
+      // End drag operation - re-enable history updates and add single history entry
+      setIsDuringDragOperation(false);
       setDraggingBox(null);
+
+      // Add single history entry for the entire drag operation
+      if (preOperationState) {
+        const currentState = JSON.stringify(boundingBoxes);
+        const preOpState = JSON.stringify(preOperationState);
+
+        if (currentState !== preOpState) {
+          addToHistory(boundingBoxes);
+          setHasUnsavedChanges(true);
+        }
+        setPreOperationState(null);
+      }
       return;
     }
     
     // Handle resize end
     if (resizingBox) {
+      // End resize operation - re-enable history updates and add single history entry
+      setIsDuringDragOperation(false);
       setResizingBox(null);
       setDragStartPos(null);
+
+      // Add single history entry for the entire resize operation
+      if (preOperationState) {
+        const currentState = JSON.stringify(boundingBoxes);
+        const preOpState = JSON.stringify(preOperationState);
+
+        if (currentState !== preOpState) {
+          addToHistory(boundingBoxes);
+          setHasUnsavedChanges(true);
+        }
+        setPreOperationState(null);
+      }
       return;
     }
     
@@ -2690,6 +2738,31 @@ const AnnotationEditor: React.FC = () => {
                             shadowBlur={shadowBlur}
                             shadowColor={shadowColor}
                             dash={dashArray}
+                            onContextMenu={(e) => {
+                              e.evt.preventDefault();
+                              e.cancelBubble = true;
+
+                              // Skip context menu if we're panning
+                              if (isPanning) {
+                                return;
+                              }
+
+                              // Check if clicking on a selected box
+                              if (selectedBoxes.has(globalIndex)) {
+                                // Clicked on one of the selected boxes - keep all selected boxes
+                                // Don't change selection, just show context menu
+                              } else {
+                                // Clicked on a non-selected box - select only this one
+                                setSelectedBox(transformedBox);
+                                setSelectedBoxes(new Set([globalIndex]));
+                              }
+
+                              setContextMenu({
+                                x: e.evt.clientX,
+                                y: e.evt.clientY,
+                                boxIndex: globalIndex
+                              });
+                            }}
                           />
                           
                           {/* Label text - always show, including "None" */}
@@ -2703,6 +2776,7 @@ const AnnotationEditor: React.FC = () => {
                                 height={18}
                                 fill={`rgba(0, 0, 0, ${transformedBox.label && transformedBox.label !== 'None' ? 0.8 : 0.6})`}
                                 cornerRadius={3}
+                                listening={false}
                               />
                               {/* Label text */}
                               <Text
@@ -2713,6 +2787,7 @@ const AnnotationEditor: React.FC = () => {
                                 fontSize={12}
                                 fontFamily="Inter, system-ui, sans-serif"
                                 fontStyle={!transformedBox.label || transformedBox.label === 'None' ? 'italic' : 'normal'}
+                                listening={false}
                               />
                             </>
                           )}
@@ -2728,6 +2803,7 @@ const AnnotationEditor: React.FC = () => {
                                 fill="#FFD700"
                                 stroke="white"
                                 strokeWidth={2}
+                                listening={false}
                               />
                               <Circle
                                 x={scaledBox.x + scaledBox.width}
@@ -2736,6 +2812,7 @@ const AnnotationEditor: React.FC = () => {
                                 fill="#FFD700"
                                 stroke="white"
                                 strokeWidth={2}
+                                listening={false}
                               />
                               <Circle
                                 x={scaledBox.x}
@@ -2744,6 +2821,7 @@ const AnnotationEditor: React.FC = () => {
                                 fill="#FFD700"
                                 stroke="white"
                                 strokeWidth={2}
+                                listening={false}
                               />
                               <Circle
                                 x={scaledBox.x + scaledBox.width}
@@ -2752,6 +2830,7 @@ const AnnotationEditor: React.FC = () => {
                                 fill="#FFD700"
                                 stroke="white"
                                 strokeWidth={2}
+                                listening={false}
                               />
                             </>
                           )}
