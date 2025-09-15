@@ -23,7 +23,7 @@ from app.services.audio_service import audio_service
 from app.services.cache_service import cache_service
 from app.services.minio_client import minio_client
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -303,7 +303,9 @@ def read_recordings(
     total_count = db.query(func.count()).select_from(count_subquery).scalar() or 0
 
     # Calculate total duration for all recordings in the project (not just current page)
-    total_duration_query = db.query(func.sum(Recording.duration)).filter(Recording.project_id == project_id)
+    total_duration_query = db.query(func.sum(Recording.duration)).filter(
+        Recording.project_id == project_id
+    )
 
     # Apply the same filters as the main query for consistency
     if search:
@@ -317,9 +319,15 @@ def read_recordings(
 
     if annotation_status:
         if annotation_status == "annotated":
-            total_duration_query = total_duration_query.join(Annotation).group_by(Recording.id).having(func.count(Annotation.id) > 0)
+            total_duration_query = (
+                total_duration_query.join(Annotation)
+                .group_by(Recording.id)
+                .having(func.count(Annotation.id) > 0)
+            )
         elif annotation_status == "unannotated":
-            total_duration_query = total_duration_query.outerjoin(Annotation).filter(Annotation.id.is_(None))
+            total_duration_query = total_duration_query.outerjoin(Annotation).filter(
+                Annotation.id.is_(None)
+            )
 
     total_duration = total_duration_query.scalar() or 0.0
 
@@ -546,10 +554,11 @@ def get_spectrogram_status(
 async def get_recording_spectrogram(
     request: Request,
     recording_id: int,
+    v: Optional[str] = Query(None, description="Cache busting version"),
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
-    """Get spectrogram for a recording."""
+    """Get spectrogram for a recording with proper cache validation."""
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=404, detail="Recording not found")
@@ -591,6 +600,26 @@ async def get_recording_spectrogram(
     if not image_path:
         raise HTTPException(status_code=404, detail="Spectrogram file not found")
 
+    # Generate ETag based on spectrogram update time
+    etag = f'"{spectrogram.id}-{int(spectrogram.updated_at.timestamp())}"'
+    last_modified = spectrogram.updated_at.strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+    # Handle conditional requests (unless cache-busting)
+    if not v:
+        if_none_match = request.headers.get("if-none-match")
+        if if_none_match and if_none_match == etag:
+            return Response(status_code=304)
+
+        if_modified_since = request.headers.get("if-modified-since")
+        if if_modified_since == last_modified:
+            return Response(status_code=304)
+
+    # Determine cache control based on version parameter
+    if v:  # Cache-busting mode
+        cache_control = "no-cache, no-store, must-revalidate"
+    else:  # Normal caching with validation
+        cache_control = "public, max-age=300"  # 5 minutes instead of 24 hours
+
     # Serve the spectrogram image
     try:
         spectrogram_data = minio_client.get_file(
@@ -602,7 +631,10 @@ async def get_recording_spectrogram(
             media_type="image/png",
             headers={
                 "Content-Disposition": f"inline; filename=spectrogram_{recording_id}.png",
-                "Cache-Control": "public, max-age=86400",  # Cache for 24 hours
+                "Cache-Control": cache_control,
+                "ETag": etag,
+                "Last-Modified": last_modified,
+                "Vary": "If-None-Match, If-Modified-Since",
             },
         )
     except Exception as e:
