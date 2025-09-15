@@ -2399,13 +2399,13 @@ const AnnotationEditor: React.FC = () => {
                   />
                   
                   {/* Bounding box projections on waveform */}
-                  <svg 
+                  <svg
                     className="absolute top-0 pointer-events-none"
-                    style={{ 
+                    style={{
                       left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Align with waveform
                       width: `${CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)}px`,  // Use consistent width calculation
-                      height: '100%',
-                      transform: `translateX(-${scrollOffset}px)`  // Apply same scroll offset as spectrogram
+                      height: '100%'
+                      // No transform needed - parent container handles scrolling
                     }}
                   >
                     {boundingBoxes.map((box, index) => {
