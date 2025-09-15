@@ -3213,7 +3213,13 @@ const AnnotationEditor: React.FC = () => {
                             e.evt.preventDefault();
                             e.cancelBubble = true;
 
-                            // Show context menu for this box without changing selection
+                            // Auto-select the box if it's not already selected
+                            if (!selectedBoxes.has(globalIndex)) {
+                              setSelectedBoxes(new Set([globalIndex]));
+                              setSelectedBox(transformedBox);
+                            }
+
+                            // Show context menu for this box
                             setContextMenu({
                               x: e.evt.clientX,
                               y: e.evt.clientY,
@@ -3584,18 +3590,27 @@ const AnnotationEditor: React.FC = () => {
                     {
                       label: `Edit Label for ${selectedBoxes.size} items`,
                       icon: <PencilIcon className="w-4 h-4" />,
-                      onClick: handleCustomLabel,
+                      onClick: () => {
+                        handleCustomLabel();
+                        setContextMenu(null);
+                      },
                     },
                     {
                       label: `Copy ${selectedBoxes.size} items`,
                       icon: <ClipboardDocumentIcon className="w-4 h-4" />,
-                      onClick: handleCopySelection,
+                      onClick: () => {
+                        handleCopySelection();
+                        setContextMenu(null);
+                      },
                       shortcut: "Ctrl+C",
                     },
                     {
                       label: `Delete ${selectedBoxes.size} items`,
                       icon: <TrashIcon className="w-4 h-4" />,
-                      onClick: handleDeleteSelectedBoxes,
+                      onClick: () => {
+                        handleDeleteSelectedBoxes();
+                        setContextMenu(null);
+                      },
                       shortcut: "Del",
                     },
                   ]
@@ -3603,18 +3618,37 @@ const AnnotationEditor: React.FC = () => {
                     {
                       label: "Edit Label",
                       icon: <PencilIcon className="w-4 h-4" />,
-                      onClick: () => handleEditLabel(contextMenu.boxIndex!),
+                      onClick: () => {
+                        if (contextMenu.boxIndex !== undefined) {
+                          handleEditLabel(contextMenu.boxIndex);
+                          setContextMenu(null);
+                        }
+                      },
                     },
                     {
                       label: "Copy",
                       icon: <ClipboardDocumentIcon className="w-4 h-4" />,
-                      onClick: handleCopySelection,
+                      onClick: () => {
+                        if (contextMenu.boxIndex !== undefined) {
+                          const boxToCopy = boundingBoxes[contextMenu.boxIndex];
+                          if (boxToCopy) {
+                            setClipboardBox({ ...boxToCopy });
+                            toast.success("Bounding box copied");
+                            setContextMenu(null);
+                          }
+                        }
+                      },
                       shortcut: "Ctrl+C",
                     },
                     {
                       label: "Delete",
                       icon: <TrashIcon className="w-4 h-4" />,
-                      onClick: () => handleDeleteBox(contextMenu.boxIndex!),
+                      onClick: () => {
+                        if (contextMenu.boxIndex !== undefined) {
+                          handleDeleteBox(contextMenu.boxIndex);
+                          setContextMenu(null);
+                        }
+                      },
                       shortcut: "Del",
                     },
                   ]
@@ -3623,7 +3657,10 @@ const AnnotationEditor: React.FC = () => {
                     {
                       label: "Paste",
                       icon: <ClipboardDocumentIcon className="w-4 h-4" />,
-                      onClick: handlePasteSelection,
+                      onClick: () => {
+                        handlePasteSelection();
+                        setContextMenu(null);
+                      },
                       shortcut: "Ctrl+V",
                     },
                   ]
