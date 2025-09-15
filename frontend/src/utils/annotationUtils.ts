@@ -3,15 +3,15 @@
  * Provides SSOT for bounding box validation, constraints, and transformations
  */
 
-import { BoundingBox } from '../types';
-import { CoordinateUtils } from './coordinates';
+import { BoundingBox } from "../types";
+import { CoordinateUtils } from "./coordinates";
 
 /**
  * Check if a point is inside a bounding box
  */
 export function isPointInBox(
   point: { x: number; y: number },
-  box: { x: number; y: number; width: number; height: number }
+  box: { x: number; y: number; width: number; height: number },
 ): boolean {
   return (
     point.x >= box.x &&
@@ -26,7 +26,7 @@ export function isPointInBox(
  */
 export function doBoxesOverlap(
   box1: { x: number; y: number; width: number; height: number },
-  box2: { x: number; y: number; width: number; height: number }
+  box2: { x: number; y: number; width: number; height: number },
 ): boolean {
   return !(
     box1.x + box1.width < box2.x ||
@@ -41,7 +41,7 @@ export function doBoxesOverlap(
  */
 export function isBoxInsideBox(
   inner: { x: number; y: number; width: number; height: number },
-  outer: { x: number; y: number; width: number; height: number }
+  outer: { x: number; y: number; width: number; height: number },
 ): boolean {
   return (
     inner.x >= outer.x &&
@@ -56,7 +56,7 @@ export function isBoxInsideBox(
  */
 export function getBoxIntersection(
   box1: { x: number; y: number; width: number; height: number },
-  box2: { x: number; y: number; width: number; height: number }
+  box2: { x: number; y: number; width: number; height: number },
 ): { x: number; y: number; width: number; height: number } | null {
   const x = Math.max(box1.x, box2.x);
   const y = Math.max(box1.y, box2.y);
@@ -68,7 +68,7 @@ export function getBoxIntersection(
       x,
       y,
       width: right - x,
-      height: bottom - y
+      height: bottom - y,
     };
   }
 
@@ -78,13 +78,18 @@ export function getBoxIntersection(
 /**
  * Calculate the center point of a bounding box
  */
-export function getBoxCenter(box: { x: number; y: number; width: number; height: number }): {
+export function getBoxCenter(box: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}): {
   x: number;
   y: number;
 } {
   return {
     x: box.x + box.width / 2,
-    y: box.y + box.height / 2
+    y: box.y + box.height / 2,
   };
 }
 
@@ -93,7 +98,7 @@ export function getBoxCenter(box: { x: number; y: number; width: number; height:
  */
 export function getDistance(
   point1: { x: number; y: number },
-  point2: { x: number; y: number }
+  point2: { x: number; y: number },
 ): number {
   const dx = point2.x - point1.x;
   const dy = point2.y - point1.y;
@@ -106,24 +111,33 @@ export function getDistance(
 export function getNearestBoxEdge(
   point: { x: number; y: number },
   box: { x: number; y: number; width: number; height: number },
-  threshold: number = 5
-): 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | null {
+  threshold: number = 5,
+):
+  | "top"
+  | "bottom"
+  | "left"
+  | "right"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right"
+  | null {
   const nearLeft = Math.abs(point.x - box.x) < threshold;
   const nearRight = Math.abs(point.x - (box.x + box.width)) < threshold;
   const nearTop = Math.abs(point.y - box.y) < threshold;
   const nearBottom = Math.abs(point.y - (box.y + box.height)) < threshold;
 
   // Check corners first
-  if (nearLeft && nearTop) return 'top-left';
-  if (nearRight && nearTop) return 'top-right';
-  if (nearLeft && nearBottom) return 'bottom-left';
-  if (nearRight && nearBottom) return 'bottom-right';
+  if (nearLeft && nearTop) return "top-left";
+  if (nearRight && nearTop) return "top-right";
+  if (nearLeft && nearBottom) return "bottom-left";
+  if (nearRight && nearBottom) return "bottom-right";
 
   // Check edges
-  if (nearLeft) return 'left';
-  if (nearRight) return 'right';
-  if (nearTop) return 'top';
-  if (nearBottom) return 'bottom';
+  if (nearLeft) return "left";
+  if (nearRight) return "right";
+  if (nearTop) return "top";
+  if (nearBottom) return "bottom";
 
   return null;
 }
@@ -134,7 +148,7 @@ export function getNearestBoxEdge(
 export function validateBoxDimensions(
   box: { width: number; height: number },
   minWidth: number = 5,
-  minHeight: number = 5
+  minHeight: number = 5,
 ): boolean {
   return box.width >= minWidth && box.height >= minHeight;
 }
@@ -145,7 +159,7 @@ export function validateBoxDimensions(
 export function constrainBoxInBounds(
   box: { x: number; y: number; width: number; height: number },
   bounds: { width: number; height: number },
-  minSize: { width: number; height: number } = { width: 5, height: 5 }
+  minSize: { width: number; height: number } = { width: 5, height: 5 },
 ): { x: number; y: number; width: number; height: number } {
   // Ensure minimum size
   const width = Math.max(box.width, minSize.width);
@@ -163,7 +177,7 @@ export function constrainBoxInBounds(
     x,
     y,
     width: constrainedWidth,
-    height: constrainedHeight
+    height: constrainedHeight,
   };
 }
 
@@ -172,13 +186,13 @@ export function constrainBoxInBounds(
  */
 export function getBoxFromPoints(
   start: { x: number; y: number },
-  end: { x: number; y: number }
+  end: { x: number; y: number },
 ): { x: number; y: number; width: number; height: number } {
   return {
     x: Math.min(start.x, end.x),
     y: Math.min(start.y, end.y),
     width: Math.abs(end.x - start.x),
-    height: Math.abs(end.y - start.y)
+    height: Math.abs(end.y - start.y),
   };
 }
 
@@ -190,43 +204,43 @@ export function resizeBoxFromHandle(
   handle: string,
   deltaX: number,
   deltaY: number,
-  maintainAspectRatio: boolean = false
+  maintainAspectRatio: boolean = false,
 ): { x: number; y: number; width: number; height: number } {
   let { x, y, width, height } = box;
 
   switch (handle) {
-    case 'top-left':
+    case "top-left":
       x += deltaX;
       y += deltaY;
       width -= deltaX;
       height -= deltaY;
       break;
-    case 'top-right':
+    case "top-right":
       y += deltaY;
       width += deltaX;
       height -= deltaY;
       break;
-    case 'bottom-left':
+    case "bottom-left":
       x += deltaX;
       width -= deltaX;
       height += deltaY;
       break;
-    case 'bottom-right':
+    case "bottom-right":
       width += deltaX;
       height += deltaY;
       break;
-    case 'left':
+    case "left":
       x += deltaX;
       width -= deltaX;
       break;
-    case 'right':
+    case "right":
       width += deltaX;
       break;
-    case 'top':
+    case "top":
       y += deltaY;
       height -= deltaY;
       break;
-    case 'bottom':
+    case "bottom":
       height += deltaY;
       break;
   }
@@ -234,7 +248,7 @@ export function resizeBoxFromHandle(
   // Maintain aspect ratio if required
   if (maintainAspectRatio && box.width > 0 && box.height > 0) {
     const aspectRatio = box.width / box.height;
-    if (handle.includes('left') || handle.includes('right')) {
+    if (handle.includes("left") || handle.includes("right")) {
       height = width / aspectRatio;
     } else {
       width = height * aspectRatio;
@@ -249,7 +263,7 @@ export function resizeBoxFromHandle(
  */
 export function getBoxesInSelection(
   selectionRect: { x: number; y: number; width: number; height: number },
-  boxes: Array<{ x: number; y: number; width: number; height: number }>
+  boxes: Array<{ x: number; y: number; width: number; height: number }>,
 ): number[] {
   const selectedIndices: number[] = [];
 
@@ -265,9 +279,7 @@ export function getBoxesInSelection(
 /**
  * Sort bounding boxes by position (left to right, top to bottom)
  */
-export function sortBoxesByPosition(
-  boxes: BoundingBox[]
-): BoundingBox[] {
+export function sortBoxesByPosition(boxes: BoundingBox[]): BoundingBox[] {
   return [...boxes].sort((a, b) => {
     // First sort by x position
     if (Math.abs(a.x - b.x) > 10) {
@@ -281,9 +293,7 @@ export function sortBoxesByPosition(
 /**
  * Group overlapping boxes
  */
-export function groupOverlappingBoxes(
-  boxes: BoundingBox[]
-): BoundingBox[][] {
+export function groupOverlappingBoxes(boxes: BoundingBox[]): BoundingBox[][] {
   const groups: BoundingBox[][] = [];
   const visited = new Set<number>();
 
@@ -301,8 +311,8 @@ export function groupOverlappingBoxes(
         if (visited.has(otherIndex)) return;
 
         // Check if this box overlaps with any box in the group
-        const overlapsWithGroup = group.some(groupBox =>
-          doBoxesOverlap(groupBox, otherBox)
+        const overlapsWithGroup = group.some((groupBox) =>
+          doBoxesOverlap(groupBox, otherBox),
         );
 
         if (overlapsWithGroup) {
@@ -323,7 +333,7 @@ export function groupOverlappingBoxes(
  * Merge overlapping boxes into a single box
  */
 export function mergeBoxes(
-  boxes: Array<{ x: number; y: number; width: number; height: number }>
+  boxes: Array<{ x: number; y: number; width: number; height: number }>,
 ): { x: number; y: number; width: number; height: number } | null {
   if (boxes.length === 0) return null;
 
@@ -332,7 +342,7 @@ export function mergeBoxes(
   let maxX = -Infinity;
   let maxY = -Infinity;
 
-  boxes.forEach(box => {
+  boxes.forEach((box) => {
     minX = Math.min(minX, box.x);
     minY = Math.min(minY, box.y);
     maxX = Math.max(maxX, box.x + box.width);
@@ -343,7 +353,7 @@ export function mergeBoxes(
     x: minX,
     y: minY,
     width: maxX - minX,
-    height: maxY - minY
+    height: maxY - minY,
   };
 }
 
@@ -351,7 +361,7 @@ export function mergeBoxes(
  * Calculate the minimum bounding box that contains all given boxes
  */
 export function getBoundingBoxOfBoxes(
-  boxes: Array<{ x: number; y: number; width: number; height: number }>
+  boxes: Array<{ x: number; y: number; width: number; height: number }>,
 ): { x: number; y: number; width: number; height: number } | null {
   return mergeBoxes(boxes);
 }
@@ -368,13 +378,13 @@ export function snapToGrid(value: number, gridSize: number): number {
  */
 export function snapBoxToGrid(
   box: { x: number; y: number; width: number; height: number },
-  gridSize: number
+  gridSize: number,
 ): { x: number; y: number; width: number; height: number } {
   return {
     x: snapToGrid(box.x, gridSize),
     y: snapToGrid(box.y, gridSize),
     width: snapToGrid(box.width, gridSize),
-    height: snapToGrid(box.height, gridSize)
+    height: snapToGrid(box.height, gridSize),
   };
 }
 
@@ -386,15 +396,15 @@ export function formatTimestamp(date: Date): string {
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
   if (diffInSeconds < 60) {
-    return 'just now';
+    return "just now";
   } else if (diffInSeconds < 3600) {
     const minutes = Math.floor(diffInSeconds / 60);
-    return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+    return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
   } else if (diffInSeconds < 86400) {
     const hours = Math.floor(diffInSeconds / 3600);
-    return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    return `${hours} hour${hours > 1 ? "s" : ""} ago`;
   } else {
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    return date.toLocaleDateString() + " " + date.toLocaleTimeString();
   }
 }
 
@@ -425,5 +435,5 @@ export default {
   snapToGrid,
   snapBoxToGrid,
   formatTimestamp,
-  generateBoxId
+  generateBoxId,
 };

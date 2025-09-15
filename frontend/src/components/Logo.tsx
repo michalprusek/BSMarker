@@ -1,11 +1,11 @@
-import React from 'react';
+import React from "react";
 
 interface LogoProps {
   className?: string;
   size?: number;
 }
 
-const Logo: React.FC<LogoProps> = ({ className = '', size = 48 }) => {
+const Logo: React.FC<LogoProps> = ({ className = "", size = 48 }) => {
   return (
     <svg
       width={size}
@@ -23,7 +23,7 @@ const Logo: React.FC<LogoProps> = ({ className = '', size = 48 }) => {
         stroke="#1E90FF"
         strokeWidth="20"
       />
-      
+
       {/* Bird shape with waveform */}
       <g>
         {/* Bird body and head */}
@@ -43,7 +43,7 @@ const Logo: React.FC<LogoProps> = ({ className = '', size = 48 }) => {
              Z"
           fill="#1E90FF"
         />
-        
+
         {/* Waveform through bird */}
         <path
           d="M 30 100 

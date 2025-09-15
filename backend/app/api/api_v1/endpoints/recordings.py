@@ -302,6 +302,27 @@ def read_recordings(
     count_subquery = query.subquery()
     total_count = db.query(func.count()).select_from(count_subquery).scalar() or 0
 
+    # Calculate total duration for all recordings in the project (not just current page)
+    total_duration_query = db.query(func.sum(Recording.duration)).filter(Recording.project_id == project_id)
+
+    # Apply the same filters as the main query for consistency
+    if search:
+        total_duration_query = total_duration_query.filter(
+            Recording.original_filename.ilike(f"%{search}%")
+        )
+    if min_duration is not None:
+        total_duration_query = total_duration_query.filter(Recording.duration >= min_duration)
+    if max_duration is not None:
+        total_duration_query = total_duration_query.filter(Recording.duration <= max_duration)
+
+    if annotation_status:
+        if annotation_status == "annotated":
+            total_duration_query = total_duration_query.join(Annotation).group_by(Recording.id).having(func.count(Annotation.id) > 0)
+        elif annotation_status == "unannotated":
+            total_duration_query = total_duration_query.outerjoin(Annotation).filter(Annotation.id.is_(None))
+
+    total_duration = total_duration_query.scalar() or 0.0
+
     # Execute query and build response
     results = query.offset(skip).limit(limit).all()
 
@@ -332,6 +353,7 @@ def read_recordings(
         total_pages=total_pages,
         has_next=current_page < total_pages,
         has_prev=current_page > 1,
+        total_duration=total_duration,
     )
 
     response = PaginatedResponse(items=recordings_with_counts, pagination=pagination_metadata)

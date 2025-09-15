@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from "react";
 
 interface ContextMenuItem {
   label: string;
@@ -27,17 +27,17 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }) => {
     };
 
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         onClose();
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
     };
   }, [onClose]);
 
@@ -47,25 +47,25 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }) => {
       const rect = menuRef.current.getBoundingClientRect();
       const menuHeight = rect.height;
       const menuWidth = rect.width;
-      
+
       // Calculate adjusted position to keep menu fully visible
       let adjustedX = x;
       let adjustedY = y;
-      
+
       // Check right edge
       if (x + menuWidth > window.innerWidth - 10) {
         adjustedX = window.innerWidth - menuWidth - 10;
       }
-      
+
       // Check bottom edge - this is the main fix for the cutoff issue
       if (y + menuHeight > window.innerHeight - 10) {
         adjustedY = window.innerHeight - menuHeight - 10;
       }
-      
+
       // Ensure minimum distance from edges
       adjustedX = Math.max(10, adjustedX);
       adjustedY = Math.max(10, adjustedY);
-      
+
       setAdjustedPosition({ x: adjustedX, y: adjustedY });
     }
   }, [x, y]);
@@ -87,7 +87,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }) => {
           }}
           disabled={item.disabled}
           className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-gray-100 transition-colors ${
-            item.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+            item.disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
           }`}
         >
           <div className="flex items-center space-x-2">

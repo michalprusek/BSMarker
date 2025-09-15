@@ -3,9 +3,12 @@
  * Provides consistent error handling, retry logic, and response processing
  */
 
-import api, { annotationService, recordingService } from './api';
-import { notificationService, NotificationMessages } from './notificationService';
-import { BoundingBox, Recording, Annotation } from '../types';
+import api, { annotationService, recordingService } from "./api";
+import {
+  notificationService,
+  NotificationMessages,
+} from "./notificationService";
+import { BoundingBox, Recording, Annotation } from "../types";
 
 export interface SaveAnnotationOptions {
   showNotification?: boolean;
@@ -29,17 +32,17 @@ class AnnotationApiService {
   async saveAnnotations(
     annotationId: number,
     boundingBoxes: BoundingBox[],
-    options: SaveAnnotationOptions = {}
+    options: SaveAnnotationOptions = {},
   ): Promise<{ success: boolean; timestamp: Date }> {
     const {
       showNotification = true,
       retryCount = 3,
-      retryDelay = 1000
+      retryDelay = 1000,
     } = options;
 
     if (this.saveInProgress) {
       if (showNotification) {
-        notificationService.warning('Save already in progress');
+        notificationService.warning("Save already in progress");
       }
       return { success: false, timestamp: new Date() };
     }
@@ -52,7 +55,7 @@ class AnnotationApiService {
       for (let attempt = 0; attempt < retryCount; attempt++) {
         try {
           await annotationService.updateAnnotation(annotationId, {
-            bounding_boxes: boundingBoxes
+            bounding_boxes: boundingBoxes,
           });
 
           this.lastSaveTime = new Date();
@@ -74,7 +77,7 @@ class AnnotationApiService {
       // All retries failed
       throw lastError;
     } catch (error) {
-      console.error('Failed to save annotations:', error);
+      console.error("Failed to save annotations:", error);
 
       if (showNotification) {
         const errorMessage = this.getErrorMessage(error);
@@ -92,16 +95,13 @@ class AnnotationApiService {
    */
   async loadRecording(
     recordingId: number,
-    options: LoadRecordingOptions = {}
+    options: LoadRecordingOptions = {},
   ): Promise<{
     recording: Recording | null;
     annotations: BoundingBox[];
     error: string | null;
   }> {
-    const {
-      includeAnnotations = true,
-      showNotification = true
-    } = options;
+    const { includeAnnotations = true, showNotification = true } = options;
 
     try {
       const recording = await recordingService.getRecording(recordingId);
@@ -123,7 +123,7 @@ class AnnotationApiService {
 
       return { recording, annotations, error: null };
     } catch (error) {
-      console.error('Failed to load recording:', error);
+      console.error("Failed to load recording:", error);
 
       const errorMsg = this.getErrorMessage(error);
       if (showNotification) {
@@ -139,7 +139,7 @@ class AnnotationApiService {
    */
   async loadSpectrogram(
     recordingId: number,
-    onStatusUpdate?: (status: string) => void
+    onStatusUpdate?: (status: string) => void,
   ): Promise<{
     url: string | null;
     error: string | null;
@@ -152,34 +152,34 @@ class AnnotationApiService {
         const recording = await recordingService.getRecording(recordingId);
 
         if (!recording) {
-          throw new Error('Recording not found');
+          throw new Error("Recording not found");
         }
 
         // Note: Spectrogram status would need to be added to Recording type
         // For now, we'll check if there's a spectrogram URL in the response
         const spectrogramUrl = (recording as any).spectrogram_url;
-        const status = (recording as any).spectrogram_status || 'pending';
+        const status = (recording as any).spectrogram_status || "pending";
         onStatusUpdate?.(status);
 
-        if (status === 'completed' && spectrogramUrl) {
+        if (status === "completed" && spectrogramUrl) {
           notificationService.success(NotificationMessages.SPECTROGRAM_LOADED);
           return { url: spectrogramUrl, error: null };
         }
 
-        if (status === 'failed') {
-          throw new Error('Spectrogram generation failed');
+        if (status === "failed") {
+          throw new Error("Spectrogram generation failed");
         }
 
-        if (status === 'processing' && attempt === 0) {
+        if (status === "processing" && attempt === 0) {
           notificationService.info(NotificationMessages.SPECTROGRAM_PROCESSING);
         }
 
         await this.delay(pollInterval);
       }
 
-      throw new Error('Spectrogram generation timeout');
+      throw new Error("Spectrogram generation timeout");
     } catch (error) {
-      console.error('Failed to load spectrogram:', error);
+      console.error("Failed to load spectrogram:", error);
 
       const errorMsg = this.getErrorMessage(error);
       notificationService.error(errorMsg);
@@ -201,7 +201,7 @@ class AnnotationApiService {
 
       return true;
     } catch (error) {
-      console.error('Failed to generate spectrogram:', error);
+      console.error("Failed to generate spectrogram:", error);
 
       const errorMsg = this.getErrorMessage(error);
       notificationService.error(errorMsg);
@@ -213,18 +213,19 @@ class AnnotationApiService {
   /**
    * Load project recordings for navigation
    */
-  async loadProjectRecordings(
-    projectId: number
-  ): Promise<{
+  async loadProjectRecordings(projectId: number): Promise<{
     recordings: Recording[];
     error: string | null;
   }> {
     try {
-      const recordingsResponse = await recordingService.getRecordings(projectId);
-      const recordings = Array.isArray(recordingsResponse) ? recordingsResponse : (recordingsResponse.items || []);
+      const recordingsResponse =
+        await recordingService.getRecordings(projectId);
+      const recordings = Array.isArray(recordingsResponse)
+        ? recordingsResponse
+        : recordingsResponse.items || [];
       return { recordings, error: null };
     } catch (error) {
-      console.error('Failed to load project recordings:', error);
+      console.error("Failed to load project recordings:", error);
 
       const errorMsg = this.getErrorMessage(error);
 
@@ -238,7 +239,7 @@ class AnnotationApiService {
   async deleteBoundingBoxes(
     annotationId: number,
     boxIds: number[],
-    options: { showNotification?: boolean } = {}
+    options: { showNotification?: boolean } = {},
   ): Promise<boolean> {
     const { showNotification = true } = options;
 
@@ -251,7 +252,7 @@ class AnnotationApiService {
 
       return true;
     } catch (error) {
-      console.error('Failed to delete annotations:', error);
+      console.error("Failed to delete annotations:", error);
 
       if (showNotification) {
         const errorMsg = this.getErrorMessage(error);
@@ -269,7 +270,7 @@ class AnnotationApiService {
     annotationId: number,
     boxId: number,
     label: string,
-    options: { showNotification?: boolean } = {}
+    options: { showNotification?: boolean } = {},
   ): Promise<boolean> {
     const { showNotification = true } = options;
 
@@ -282,7 +283,7 @@ class AnnotationApiService {
 
       return true;
     } catch (error) {
-      console.error('Failed to update label:', error);
+      console.error("Failed to update label:", error);
 
       if (showNotification) {
         const errorMsg = this.getErrorMessage(error);
@@ -327,7 +328,7 @@ class AnnotationApiService {
       return NotificationMessages.SESSION_EXPIRED;
     }
 
-    if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK') {
+    if (error.code === "ECONNABORTED" || error.code === "ERR_NETWORK") {
       return NotificationMessages.NETWORK_ERROR;
     }
 
@@ -338,7 +339,7 @@ class AnnotationApiService {
    * Helper to delay execution
    */
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 

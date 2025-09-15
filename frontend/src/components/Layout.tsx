@@ -1,8 +1,13 @@
-import React from 'react';
-import { Outlet, Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { HomeIcon, FolderIcon, UsersIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
-import Logo from './Logo';
+import React from "react";
+import { Outlet, Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import {
+  HomeIcon,
+  FolderIcon,
+  UsersIcon,
+  ArrowRightOnRectangleIcon,
+} from "@heroicons/react/24/outline";
+import Logo from "./Logo";
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -10,7 +15,7 @@ const Layout: React.FC = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate("/login");
   };
 
   return (

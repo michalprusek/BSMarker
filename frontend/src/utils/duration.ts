@@ -9,22 +9,22 @@
  * @returns Formatted duration string
  */
 export const formatDuration = (
-  seconds: number | null | undefined, 
-  format: 'short' | 'long' = 'short'
+  seconds: number | null | undefined,
+  format: "short" | "long" = "short",
 ): string => {
   // Handle null, undefined, NaN, or zero
   if (!seconds || isNaN(seconds) || seconds <= 0) {
-    return format === 'short' ? 'Unknown' : '0:00';
+    return format === "short" ? "Unknown" : "0:00";
   }
 
-  if (format === 'short') {
+  if (format === "short") {
     // Format as "X.XXs" for display in lists
     return `${seconds.toFixed(2)}s`;
   } else {
     // Format as "M:SS" for audio players
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 };
 
@@ -33,7 +33,9 @@ export const formatDuration = (
  * @param duration - Duration value to check
  * @returns True if duration is valid (not null/undefined/NaN/zero)
  */
-export const hasValidDuration = (duration: number | null | undefined): boolean => {
+export const hasValidDuration = (
+  duration: number | null | undefined,
+): boolean => {
   return !!(duration && !isNaN(duration) && duration > 0);
 };
 
@@ -45,7 +47,9 @@ export const hasValidDuration = (duration: number | null | undefined): boolean =
  */
 export const formatRecordingDuration = (
   duration: number | null | undefined,
-  fallbackText: string = 'Unknown'
+  fallbackText: string = "Unknown",
 ): string => {
-  return hasValidDuration(duration) ? formatDuration(duration, 'short') : fallbackText;
+  return hasValidDuration(duration)
+    ? formatDuration(duration, "short")
+    : fallbackText;
 };

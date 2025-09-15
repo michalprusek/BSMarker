@@ -99,3 +99,8 @@ certbot/conf/renewal/
 *.crt
 *.csr
 ssl-dhparams.pem
+
+# Claude Code configuration
+CLAUDE.md
+.claude/
+.serena/

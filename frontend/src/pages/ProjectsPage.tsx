@@ -1,17 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { PlusIcon, FolderIcon, TrashIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import { Project } from '../types';
-import { projectService } from '../services/api';
-import toast from 'react-hot-toast';
-import CreateProjectModal from '../components/CreateProjectModal';
-import LoadingSpinner from '../components/LoadingSpinner';
+import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import {
+  PlusIcon,
+  FolderIcon,
+  TrashIcon,
+  ExclamationTriangleIcon,
+} from "@heroicons/react/24/outline";
+import { Project } from "../types";
+import { projectService } from "../services/api";
+import toast from "react-hot-toast";
+import CreateProjectModal from "../components/CreateProjectModal";
+import LoadingSpinner from "../components/LoadingSpinner";
 
 const ProjectsPage: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; project: Project | null }>({
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    show: boolean;
+    project: Project | null;
+  }>({
     show: false,
     project: null,
   });
@@ -22,7 +30,7 @@ const ProjectsPage: React.FC = () => {
       const data = await projectService.getProjects();
       setProjects(data);
     } catch (error) {
-      toast.error('Failed to fetch projects');
+      toast.error("Failed to fetch projects");
     } finally {
       setLoading(false);
     }
@@ -45,15 +53,15 @@ const ProjectsPage: React.FC = () => {
 
   const handleDeleteConfirm = async () => {
     if (!deleteConfirm.project) return;
-    
+
     setDeleting(true);
     try {
       await projectService.deleteProject(deleteConfirm.project.id);
-      toast.success('Project deleted successfully');
+      toast.success("Project deleted successfully");
       setDeleteConfirm({ show: false, project: null });
       fetchProjects();
     } catch (error) {
-      toast.error('Failed to delete project');
+      toast.error("Failed to delete project");
     } finally {
       setDeleting(false);
     }
@@ -100,8 +108,12 @@ const ProjectsPage: React.FC = () => {
                 <FolderIcon className="h-10 w-10 text-gray-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900">{project.name}</p>
-                <p className="text-sm text-gray-500 truncate">{project.description}</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {project.name}
+                </p>
+                <p className="text-sm text-gray-500 truncate">
+                  {project.description}
+                </p>
               </div>
             </Link>
             <button
@@ -117,8 +129,12 @@ const ProjectsPage: React.FC = () => {
       {projects.length === 0 && (
         <div className="text-center py-12">
           <FolderIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No projects</h3>
-          <p className="mt-1 text-sm text-gray-500">Get started by creating a new project.</p>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">
+            No projects
+          </h3>
+          <p className="mt-1 text-sm text-gray-500">
+            Get started by creating a new project.
+          </p>
           <div className="mt-6">
             <button
               onClick={() => setShowCreateModal(true)}
@@ -136,15 +152,17 @@ const ProjectsPage: React.FC = () => {
           onCreated={handleProjectCreated}
         />
       )}
-      
+
       {/* Delete Confirmation Dialog */}
       {deleteConfirm.show && deleteConfirm.project && (
         <div className="fixed z-10 inset-0 overflow-y-auto">
           <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
             <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" />
-            
-            <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
-            
+
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen">
+              &#8203;
+            </span>
+
             <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
               <div className="sm:flex sm:items-start">
                 <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
@@ -156,7 +174,8 @@ const ProjectsPage: React.FC = () => {
                   </h3>
                   <div className="mt-2">
                     <p className="text-sm text-gray-500">
-                      Are you sure you want to delete "{deleteConfirm.project.name}"?
+                      Are you sure you want to delete "
+                      {deleteConfirm.project.name}"?
                     </p>
                     <p className="text-sm text-red-600 mt-2">
                       This action will permanently delete:
@@ -179,12 +198,14 @@ const ProjectsPage: React.FC = () => {
                   onClick={handleDeleteConfirm}
                   className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
                 >
-                  {deleting ? 'Deleting...' : 'Delete'}
+                  {deleting ? "Deleting..." : "Delete"}
                 </button>
                 <button
                   type="button"
                   disabled={deleting}
-                  onClick={() => setDeleteConfirm({ show: false, project: null })}
+                  onClick={() =>
+                    setDeleteConfirm({ show: false, project: null })
+                  }
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:w-auto sm:text-sm disabled:opacity-50"
                 >
                   Cancel
