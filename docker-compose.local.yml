@@ -1,64 +1,73 @@
 version: '3.8'
 
+# Local development configuration with alternative ports
+# This avoids conflicts with system PostgreSQL and Redis
+
 services:
   postgres:
     image: postgres:14-alpine
     environment:
       POSTGRES_USER: bsmarker
-      POSTGRES_PASSWORD: bsmarker_local
+      POSTGRES_PASSWORD: bsmarker_dev
       POSTGRES_DB: bsmarker_db
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_local:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"  # Alternative port to avoid conflict
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bsmarker"]
       interval: 10s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
+    ports:
+      - "6380:6379"  # Alternative port to avoid conflict
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
 
   minio:
     image: minio/minio:latest
     environment:
       MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin123
+      MINIO_ROOT_PASSWORD: minioadmin
     command: server /data --console-address ":9001"
     volumes:
-      - minio_data:/data
+      - minio_data_local:/data
     ports:
-      - "9001:9001"  # MinIO Console for debugging
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
       timeout: 20s
       retries: 3
-    restart: unless-stopped
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_local@postgres:5432/bsmarker_db
+      DATABASE_URL: postgresql://bsmarker:bsmarker_dev@postgres:5432/bsmarker_db
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin123
+      MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET_NAME: bsmarker
-      SECRET_KEY: ${SECRET_KEY:-change-this-secret-key-in-production}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-jwt-secret-in-production}
-      FIRST_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
-      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
-      CORS_ORIGINS: '["http://localhost"]'
-      LOG_LEVEL: INFO
+      SECRET_KEY: dev-secret-key
+      JWT_SECRET_KEY: dev-jwt-secret
+      FIRST_ADMIN_EMAIL: admin@localhost
+      FIRST_ADMIN_PASSWORD: admin123
+      CORS_ORIGINS: '["http://localhost:3000", "http://127.0.0.1:3000"]'
+      LOG_LEVEL: DEBUG
+    volumes:
+      - ./backend:/app  # Hot reload
+    ports:
+      - "8123:8000"  # Map to port 8123 to match proxy config
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,21 +75,22 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    restart: unless-stopped
-    command: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   celery-worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_local@postgres:5432/bsmarker_db
+      DATABASE_URL: postgresql://bsmarker:bsmarker_dev@postgres:5432/bsmarker_db
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin123
+      MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET_NAME: bsmarker
-      LOG_LEVEL: INFO
+      LOG_LEVEL: DEBUG
+    volumes:
+      - ./backend:/app  # Hot reload
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,47 +98,26 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    restart: unless-stopped
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A app.core.celery_app worker --loglevel=debug
 
   celery-beat:
     build:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_local@postgres:5432/bsmarker_db
+      DATABASE_URL: postgresql://bsmarker:bsmarker_dev@postgres:5432/bsmarker_db
       REDIS_URL: redis://redis:6379
-      LOG_LEVEL: INFO
+      LOG_LEVEL: DEBUG
+    volumes:
+      - ./backend:/app  # Hot reload
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    restart: unless-stopped
-    command: celery -A app.core.celery_app beat --loglevel=info
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      target: production
-    environment:
-      - NODE_ENV=production
-    depends_on:
-      - backend
-    restart: unless-stopped
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/nginx.local.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - frontend
-      - backend
-    restart: unless-stopped
+    command: celery -A app.core.celery_app beat --loglevel=debug
 
 volumes:
-  postgres_data:
-  minio_data:
+  postgres_data_local:
+  minio_data_local:
+
