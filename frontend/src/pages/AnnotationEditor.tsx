@@ -1507,13 +1507,10 @@ const AnnotationEditor: React.FC = () => {
         pos.y <= box.y + box.height,
     );
 
-    // Handle right-click for panning (only if not clicking on a selected bounding box)
+    // Handle right-click for panning (only if not clicking on any bounding box)
     if (e.evt.button === 2) {
-      // Check if clicking on a SELECTED bounding box
-      const isClickingSelectedBox = clickedBoxIndex !== -1 && selectedBoxes.has(clickedBoxIndex);
-
-      // Only enable panning if NOT clicking on a selected box
-      if (!isClickingSelectedBox) {
+      // Only enable panning if NOT clicking on any box
+      if (clickedBoxIndex === -1) {
         e.evt.preventDefault();
         setIsPanning(true);
         setPanStartPos({
@@ -2062,17 +2059,13 @@ const AnnotationEditor: React.FC = () => {
     );
 
     if (clickedBoxIndex !== -1) {
-      // Only show context menu if clicking on a selected box
-      if (selectedBoxes.has(clickedBoxIndex)) {
-        // Clicked on one of the selected boxes - keep all selected boxes
-        // Don't change selection, just show context menu for all selected
-        setContextMenu({
-          x: e.evt.clientX,
-          y: e.evt.clientY,
-          boxIndex: clickedBoxIndex,
-        });
-      }
-      // If clicking on non-selected box, do nothing (no automatic selection, no menu)
+      // Show context menu for any box (selected or not)
+      // But DON'T automatically select unselected boxes
+      setContextMenu({
+        x: e.evt.clientX,
+        y: e.evt.clientY,
+        boxIndex: clickedBoxIndex,
+      });
     }
     // No context menu on empty space
   };
@@ -3207,15 +3200,13 @@ const AnnotationEditor: React.FC = () => {
                             e.evt.preventDefault();
                             e.cancelBubble = true;
 
-                            // Only show context menu if this box is selected
-                            if (selectedBoxes.has(globalIndex)) {
-                              setContextMenu({
-                                x: e.evt.clientX,
-                                y: e.evt.clientY,
-                                boxIndex: globalIndex,
-                              });
-                            }
-                            // If not selected, do nothing (no automatic selection, no menu)
+                            // Show context menu for this box
+                            // Don't automatically select if not selected
+                            setContextMenu({
+                              x: e.evt.clientX,
+                              y: e.evt.clientY,
+                              boxIndex: globalIndex,
+                            });
                           }}
                         />
 
