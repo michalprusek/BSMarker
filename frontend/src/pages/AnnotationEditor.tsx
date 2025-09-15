@@ -2375,29 +2375,37 @@ const AnnotationEditor: React.FC = () => {
                   }}
                 >
                   <div
-                    ref={waveformRef}
-                    id="waveform-container"
                     className="absolute"
                     style={{
                       width: `${CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)}px`,  // Sync width with zoom
                       height: '100%',
                       position: 'absolute',
                       top: 0,
-                      left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Use left instead of marginLeft for consistency with SVG
+                      left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Position at frequency scale offset
                       display: 'block'
                     }}
-                  />
-                  
-                  {/* Bounding box projections on waveform */}
-                  <svg
-                    className="absolute top-0 pointer-events-none"
-                    style={{
-                      left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,  // Align with waveform
-                      width: `${CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)}px`,  // Use consistent width calculation
-                      height: '100%'
-                      // No transform needed - parent container handles scrolling
-                    }}
                   >
+                    {/* Waveform container */}
+                    <div
+                      ref={waveformRef}
+                      id="waveform-container"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        position: 'relative'
+                      }}
+                    />
+
+                    {/* Bounding box projections on waveform - overlay on top of waveform */}
+                    <svg
+                      className="absolute top-0 left-0 pointer-events-none"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        position: 'absolute',
+                        zIndex: 10  // Ensure it's above waveform
+                      }}
+                    >
                     {boundingBoxes.map((box, index) => {
                       const isSelected = selectedBoxes.has(index);
                       const labelColor = getLabelColor(box.label || 'None');
@@ -2476,7 +2484,8 @@ const AnnotationEditor: React.FC = () => {
                         </g>
                       );
                     })}
-                  </svg>
+                    </svg>
+                  </div>
                 </div>
               </div>
 
