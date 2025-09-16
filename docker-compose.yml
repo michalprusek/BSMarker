@@ -1,16 +1,14 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:14-alpine
     environment:
       POSTGRES_USER: bsmarker
-      POSTGRES_PASSWORD: bsmarker_local
+      POSTGRES_PASSWORD: bsmarker_local  # pragma: allowlist secret
       POSTGRES_DB: bsmarker_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bsmarker"]
+      test: [CMD-SHELL, pg_isready -U bsmarker]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -19,7 +17,7 @@ services:
   redis:
     image: redis:7-alpine
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [CMD, redis-cli, ping]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,14 +27,14 @@ services:
     image: minio/minio:latest
     environment:
       MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin123
+      MINIO_ROOT_PASSWORD: minioadmin123  # pragma: allowlist secret
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
     ports:
-      - "9001:9001"  # MinIO Console for debugging
+      - 9001:9001  # MinIO Console for debugging
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -47,16 +45,16 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_local@postgres:5432/bsmarker_db
+      DATABASE_URL: postgresql://bsmarker:bsmarker_local@postgres:5432/bsmarker_db  # pragma: allowlist secret
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin123
+      MINIO_SECRET_KEY: minioadmin123  # pragma: allowlist secret
       MINIO_BUCKET_NAME: bsmarker
       SECRET_KEY: ${SECRET_KEY:-change-this-secret-key-in-production}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-jwt-secret-in-production}
       FIRST_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
-      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}  # pragma: allowlist secret
       CORS_ORIGINS: '["http://localhost"]'
       LOG_LEVEL: INFO
     depends_on:
@@ -74,11 +72,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_local@postgres:5432/bsmarker_db
+      DATABASE_URL: postgresql://bsmarker:bsmarker_local@postgres:5432/bsmarker_db  # pragma: allowlist secret
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin123
+      MINIO_SECRET_KEY: minioadmin123  # pragma: allowlist secret
       MINIO_BUCKET_NAME: bsmarker
       LOG_LEVEL: INFO
     depends_on:
@@ -96,7 +94,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_local@postgres:5432/bsmarker_db
+      DATABASE_URL: postgresql://bsmarker:bsmarker_local@postgres:5432/bsmarker_db  # pragma: allowlist secret
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
     depends_on:
@@ -121,7 +119,7 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
+      - 80:80
     volumes:
       - ./nginx/nginx.local.conf:/etc/nginx/nginx.conf:ro
     depends_on:
