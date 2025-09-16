@@ -4,18 +4,19 @@ Generate and upload test recordings for performance testing.
 This script creates synthetic audio files and uploads them to test the system with 1000+ recordings.
 """
 
-import os
-import sys
-import time
-import random
-import tempfile
 import asyncio
+import os
+import random
+import sys
+import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Any, Dict, List
+
 import aiohttp
 import numpy as np
 import soundfile as sf
-from pathlib import Path
-from typing import List, Dict, Any
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -119,8 +120,8 @@ async def login(session: aiohttp.ClientSession) -> str:
     print(f"🔐 Logging in as {USERNAME}...")
 
     data = aiohttp.FormData()
-    data.add_field('username', USERNAME)
-    data.add_field('password', PASSWORD)
+    data.add_field("username", USERNAME)
+    data.add_field("password", PASSWORD)
 
     async with session.post(f"{API_URL}/auth/login", data=data) as response:
         if response.status != 200:
@@ -128,7 +129,7 @@ async def login(session: aiohttp.ClientSession) -> str:
             raise Exception(f"Login failed: {response.status} - {text}")
 
         result = await response.json()
-        token = result.get('access_token')
+        token = result.get("access_token")
 
         if not token:
             raise Exception("No access token received")
@@ -138,11 +139,7 @@ async def login(session: aiohttp.ClientSession) -> str:
 
 
 async def upload_recording(
-    session: aiohttp.ClientSession,
-    token: str,
-    project_id: int,
-    file_path: str,
-    file_num: int
+    session: aiohttp.ClientSession, token: str, project_id: int, file_path: str, file_num: int
 ) -> Dict[str, Any]:
     """
     Upload a single recording.
@@ -157,14 +154,11 @@ async def upload_recording(
     Returns:
         Upload result
     """
-    headers = {'Authorization': f'Bearer {token}'}
+    headers = {"Authorization": f"Bearer {token}"}
 
-    with open(file_path, 'rb') as f:
+    with open(file_path, "rb") as f:
         data = aiohttp.FormData()
-        data.add_field('file',
-                      f,
-                      filename=os.path.basename(file_path),
-                      content_type='audio/wav')
+        data.add_field("file", f, filename=os.path.basename(file_path), content_type="audio/wav")
 
         start_time = time.time()
 
@@ -173,49 +167,46 @@ async def upload_recording(
                 f"{API_URL}/recordings/{project_id}/upload",
                 data=data,
                 headers=headers,
-                timeout=aiohttp.ClientTimeout(total=60)
+                timeout=aiohttp.ClientTimeout(total=60),
             ) as response:
                 upload_time = time.time() - start_time
 
                 if response.status == 200:
                     result = await response.json()
                     return {
-                        'success': True,
-                        'file_num': file_num,
-                        'recording_id': result.get('id'),
-                        'upload_time': upload_time,
-                        'filename': os.path.basename(file_path)
+                        "success": True,
+                        "file_num": file_num,
+                        "recording_id": result.get("id"),
+                        "upload_time": upload_time,
+                        "filename": os.path.basename(file_path),
                     }
                 else:
                     text = await response.text()
                     return {
-                        'success': False,
-                        'file_num': file_num,
-                        'error': f"Status {response.status}: {text}",
-                        'upload_time': upload_time
+                        "success": False,
+                        "file_num": file_num,
+                        "error": f"Status {response.status}: {text}",
+                        "upload_time": upload_time,
                     }
 
         except asyncio.TimeoutError:
             return {
-                'success': False,
-                'file_num': file_num,
-                'error': 'Upload timeout',
-                'upload_time': time.time() - start_time
+                "success": False,
+                "file_num": file_num,
+                "error": "Upload timeout",
+                "upload_time": time.time() - start_time,
             }
         except Exception as e:
             return {
-                'success': False,
-                'file_num': file_num,
-                'error': str(e),
-                'upload_time': time.time() - start_time
+                "success": False,
+                "file_num": file_num,
+                "error": str(e),
+                "upload_time": time.time() - start_time,
             }
 
 
 async def upload_batch(
-    session: aiohttp.ClientSession,
-    token: str,
-    project_id: int,
-    files: List[tuple]
+    session: aiohttp.ClientSession, token: str, project_id: int, files: List[tuple]
 ) -> List[Dict[str, Any]]:
     """
     Upload a batch of files concurrently.
@@ -249,28 +240,25 @@ async def test_pagination_performance(session: aiohttp.ClientSession, token: str
     """
     print("\n📊 Testing pagination performance...")
 
-    headers = {'Authorization': f'Bearer {token}'}
+    headers = {"Authorization": f"Bearer {token}"}
     page_sizes = [10, 50, 100, 200]
 
     for page_size in page_sizes:
         start_time = time.time()
 
-        params = {
-            'skip': 0,
-            'limit': page_size
-        }
+        params = {"skip": 0, "limit": page_size}
 
         async with session.get(
-            f"{API_URL}/recordings/{project_id}/recordings",
-            headers=headers,
-            params=params
+            f"{API_URL}/recordings/{project_id}/recordings", headers=headers, params=params
         ) as response:
             if response.status == 200:
                 data = await response.json()
                 response_time = time.time() - start_time
 
-                print(f"  Page size {page_size}: {response_time:.2f}s - "
-                      f"Got {len(data.get('items', []))} items")
+                print(
+                    f"  Page size {page_size}: {response_time:.2f}s - "
+                    f"Got {len(data.get('items', []))} items"
+                )
             else:
                 print(f"  Page size {page_size}: Failed - Status {response.status}")
 
@@ -311,7 +299,7 @@ async def main():
         total_start_time = time.time()
 
         for i in range(0, len(temp_files), BATCH_SIZE):
-            batch = temp_files[i:i + BATCH_SIZE]
+            batch = temp_files[i : i + BATCH_SIZE]
             batch_num = (i // BATCH_SIZE) + 1
             total_batches = (len(temp_files) + BATCH_SIZE - 1) // BATCH_SIZE
 
@@ -321,8 +309,8 @@ async def main():
             all_results.extend(batch_results)
 
             # Print batch summary
-            successful = sum(1 for r in batch_results if r['success'])
-            avg_time = np.mean([r['upload_time'] for r in batch_results])
+            successful = sum(1 for r in batch_results if r["success"])
+            avg_time = np.mean([r["upload_time"] for r in batch_results])
 
             print(f"    ✅ Success: {successful}/{len(batch)}")
             print(f"    ⏱️  Avg upload time: {avg_time:.2f}s")
@@ -338,14 +326,14 @@ async def main():
         print("📊 Upload Summary")
         print("=" * 60)
 
-        successful_uploads = [r for r in all_results if r['success']]
-        failed_uploads = [r for r in all_results if not r['success']]
+        successful_uploads = [r for r in all_results if r["success"]]
+        failed_uploads = [r for r in all_results if not r["success"]]
 
         print(f"✅ Successful uploads: {len(successful_uploads)}/{NUM_RECORDINGS}")
         print(f"❌ Failed uploads: {len(failed_uploads)}/{NUM_RECORDINGS}")
 
         if successful_uploads:
-            upload_times = [r['upload_time'] for r in successful_uploads]
+            upload_times = [r["upload_time"] for r in successful_uploads]
             print(f"\n⏱️  Upload Time Statistics:")
             print(f"  Min: {np.min(upload_times):.2f}s")
             print(f"  Max: {np.max(upload_times):.2f}s")
