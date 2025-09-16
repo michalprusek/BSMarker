@@ -4,7 +4,6 @@
  */
 
 import { BoundingBox } from "../types";
-import { CoordinateUtils } from "./coordinates";
 
 /**
  * Check if a point is inside a bounding box

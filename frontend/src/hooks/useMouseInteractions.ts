@@ -3,7 +3,7 @@
  * Provides centralized mouse event handling with consistent coordinate transformations
  */
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { CoordinateUtils } from "../utils/coordinates";
 import { getNearestBoxEdge, isPointInBox } from "../utils/annotationUtils";
 import { BoundingBox } from "../types";

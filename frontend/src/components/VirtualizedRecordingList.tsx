@@ -1,13 +1,10 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import { format } from "date-fns";
 import {
-  PlayIcon,
-  PauseIcon,
   ChartBarIcon,
   CheckIcon,
 } from "@heroicons/react/24/outline";
 import { useNavigate } from "react-router-dom";
-import toast from "react-hot-toast";
 import { Recording } from "../types";
 import { PaginationMetadata } from "../types/pagination";
 
@@ -40,7 +37,6 @@ const RecordingItem = React.memo<{
 }>(
   ({ recording, isSelected, onSelect, style }) => {
     const navigate = useNavigate();
-    const [isPlaying, setIsPlaying] = useState(false);
 
     const handleCardClick = useCallback(() => {
       navigate(`/recordings/${recording.id}/annotate`);

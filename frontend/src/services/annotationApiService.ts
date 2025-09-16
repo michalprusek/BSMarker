@@ -8,7 +8,7 @@ import {
   notificationService,
   NotificationMessages,
 } from "./notificationService";
-import { BoundingBox, Recording, Annotation } from "../types";
+import { BoundingBox, Recording } from "../types";
 
 export interface SaveAnnotationOptions {
   showNotification?: boolean;
@@ -18,7 +18,6 @@ export interface SaveAnnotationOptions {
 
 export interface LoadRecordingOptions {
   includeSpectrogram?: boolean;
-  includeAnnotations?: boolean;
   showNotification?: boolean;
 }
 
@@ -101,7 +100,7 @@ class AnnotationApiService {
     annotations: BoundingBox[];
     error: string | null;
   }> {
-    const { includeAnnotations = true, showNotification = true } = options;
+    const { showNotification = true } = options;
 
     try {
       const recording = await recordingService.getRecording(recordingId);
