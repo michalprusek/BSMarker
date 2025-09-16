@@ -16,7 +16,6 @@ import {
   TrashIcon,
   CloudArrowDownIcon,
   MagnifyingGlassIcon,
-  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 
 const ProjectDetailPageOptimized: React.FC = () => {

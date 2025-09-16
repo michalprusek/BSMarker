@@ -3,7 +3,6 @@ import { Outlet, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
   HomeIcon,
-  FolderIcon,
   UsersIcon,
   ArrowRightOnRectangleIcon,
 } from "@heroicons/react/24/outline";
