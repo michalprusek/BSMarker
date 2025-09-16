@@ -6,11 +6,12 @@ Provides efficient caching for database queries and API responses.
 import hashlib
 import json
 import logging
-from typing import Any, Optional, Union, List
 from datetime import timedelta
+from typing import Any, List, Optional, Union
+
 import redis
-from redis.exceptions import RedisError
 from app.core.config import settings
+from redis.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +34,12 @@ class CacheService:
             # Parse Redis URL and create connection
             # URL format: redis://host:port/db
             import urllib.parse
+
             parsed_url = urllib.parse.urlparse(settings.REDIS_URL)
 
             # Create connection pool for better performance
             pool = redis.ConnectionPool(
-                host=parsed_url.hostname or 'localhost',
+                host=parsed_url.hostname or "localhost",
                 port=parsed_url.port or 6379,
                 db=1,  # Use db=1 for cache (db=0 for rate limiting)
                 decode_responses=True,
@@ -47,7 +49,7 @@ class CacheService:
                     1: 1,  # TCP_KEEPIDLE
                     2: 3,  # TCP_KEEPINTVL
                     3: 5,  # TCP_KEEPCNT
-                }
+                },
             )
             self.redis_client = redis.Redis(connection_pool=pool)
 
@@ -102,12 +104,7 @@ class CacheService:
             logger.error(f"Cache get error for key {key}: {str(e)}")
             return None
 
-    def set(
-        self,
-        key: str,
-        value: Any,
-        ttl: Optional[int] = None
-    ) -> bool:
+    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         """
         Set value in cache with optional TTL.
 
@@ -190,7 +187,7 @@ class CacheService:
         max_duration: Optional[float] = None,
         annotation_status: Optional[str] = None,
         sort_by: str = "created_at",
-        sort_order: str = "desc"
+        sort_order: str = "desc",
     ) -> Optional[dict]:
         """
         Get cached recordings for a project.
@@ -208,7 +205,7 @@ class CacheService:
             max_duration=max_duration,
             annotation_status=annotation_status,
             sort_by=sort_by,
-            sort_order=sort_order
+            sort_order=sort_order,
         )
         return self.get(key)
 
@@ -224,7 +221,7 @@ class CacheService:
         annotation_status: Optional[str] = None,
         sort_by: str = "created_at",
         sort_order: str = "desc",
-        ttl: int = 300
+        ttl: int = 300,
     ) -> bool:
         """
         Cache recordings for a project.
@@ -249,7 +246,7 @@ class CacheService:
             max_duration=max_duration,
             annotation_status=annotation_status,
             sort_by=sort_by,
-            sort_order=sort_order
+            sort_order=sort_order,
         )
         return self.set(key, data, ttl)
 
@@ -278,12 +275,7 @@ class CacheService:
         key = f"bsmarker:cache:recording:{recording_id}"
         return self.get(key)
 
-    def set_recording_detail(
-        self,
-        recording_id: int,
-        data: dict,
-        ttl: int = 1800
-    ) -> bool:
+    def set_recording_detail(self, recording_id: int, data: dict, ttl: int = 1800) -> bool:
         """
         Cache recording detail.
 
@@ -329,8 +321,8 @@ class CacheService:
                 "keyspace_hits": info.get("keyspace_hits", 0),
                 "keyspace_misses": info.get("keyspace_misses", 0),
                 "hit_rate": (
-                    info.get("keyspace_hits", 0) /
-                    (info.get("keyspace_hits", 0) + info.get("keyspace_misses", 1))
+                    info.get("keyspace_hits", 0)
+                    / (info.get("keyspace_hits", 0) + info.get("keyspace_misses", 1))
                     * 100
                 ),
                 "used_memory_human": memory.get("used_memory_human", "0"),
