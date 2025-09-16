@@ -8,6 +8,7 @@ import os
 import sys
 import time
 from pathlib import Path
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -30,11 +31,15 @@ def apply_indexes():
         print(f"❌ Migration file not found: {migration_file}")
         return False
 
-    with open(migration_file, 'r') as f:
+    with open(migration_file, "r") as f:
         sql_commands = f.read()
 
     # Split commands by semicolon and filter empty ones
-    commands = [cmd.strip() for cmd in sql_commands.split(';') if cmd.strip() and not cmd.strip().startswith('--')]
+    commands = [
+        cmd.strip()
+        for cmd in sql_commands.split(";")
+        if cmd.strip() and not cmd.strip().startswith("--")
+    ]
 
     print(f"📊 Applying {len(commands)} performance indexes...")
     print("=" * 60)
@@ -46,7 +51,7 @@ def apply_indexes():
         for i, command in enumerate(commands, 1):
             try:
                 # Skip comments
-                if command.startswith('--'):
+                if command.startswith("--"):
                     continue
 
                 # Extract index name if possible

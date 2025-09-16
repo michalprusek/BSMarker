@@ -204,10 +204,10 @@ def write_env_file(secrets_dict: Dict[str, Any], output_path: Path) -> None:
 if __name__ == "__main__":
     # Generate new secrets and write to .env file
     import logging
-    
+
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
-    
+
     secrets_dict = generate_all_secrets()
 
     logger.info("Generated secrets for BSMarker:")
