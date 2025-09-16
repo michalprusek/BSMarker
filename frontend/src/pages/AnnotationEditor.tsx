@@ -2254,10 +2254,15 @@ const AnnotationEditor: React.FC = () => {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const cursorY = event.clientY - rect.top;
 
+          // Get current scroll position
+          const currentScrollLeft = unifiedScrollRef.current?.scrollLeft || 0;
+
           // Calculate world coordinates at cursor position (horizontal only)
-          const worldX = (cursorX + zoomOffset.x) / zoomLevel;
+          // World position = (cursor position in viewport + scroll offset) / current zoom
+          const worldX = (cursorX + currentScrollLeft) / zoomLevel;
 
           // Calculate new offset to keep cursor position fixed (horizontal only)
+          // New scroll = world position * new zoom - cursor position in viewport
           const newOffsetX = Math.max(0, worldX * newZoom - cursorX);
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const newOffsetY = 0; // No vertical zoom/offset
@@ -2275,7 +2280,7 @@ const AnnotationEditor: React.FC = () => {
           // WaveSurfer will automatically adjust to the new container width
         });
       }, 16), // 60 FPS throttle
-    [zoomLevel, zoomOffset, spectrogramDimensions.width],
+    [zoomLevel, spectrogramDimensions.width],
   );
 
   // Clean up throttled function on unmount
@@ -2837,7 +2842,7 @@ const AnnotationEditor: React.FC = () => {
                   <div
                     className="relative"
                     style={{
-                      width: `${(spectrogramDimensions.width - 40) * zoomLevel}px`,
+                      width: `${CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)}px`,
                       height: "100%",
                       marginLeft: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,
                     }}
@@ -2850,7 +2855,7 @@ const AnnotationEditor: React.FC = () => {
                       height="100%"
                       className="absolute"
                       style={{
-                        transform: `translateX(-${scrollOffset}px)`,
+                        left: 0,
                         height: "100%",
                       }}
                     >
