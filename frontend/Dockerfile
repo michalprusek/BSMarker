@@ -26,8 +26,8 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Set production API URL
-ENV REACT_APP_API_URL=/api/v1
+# Set production API URL (empty because api.ts adds /api/v1)
+ENV REACT_APP_API_URL=
 ENV REACT_APP_MINIO_URL=/storage
 
 # Build the application
