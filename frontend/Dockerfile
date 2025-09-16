@@ -12,8 +12,8 @@ EXPOSE 3000
 
 CMD ["npm", "start"]
 
-# Production stage
-FROM node:20-alpine AS production
+# Build stage
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -33,8 +33,8 @@ ENV REACT_APP_MINIO_URL=/storage
 # Build the application
 RUN npm run build
 
-# Final stage - serve with nginx
-FROM nginx:alpine
-COPY --from=production /app/build /usr/share/nginx/html
+# Production stage - serve with nginx
+FROM nginx:alpine AS production
+COPY --from=builder /app/build /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
