@@ -3100,7 +3100,7 @@ const AnnotationEditor: React.FC = () => {
                 style={{
                   position: "absolute",
                   top: "0",
-                  left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`, // Offset for frequency scale
+                  left: `${Math.round(LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH)}px`, // Pixel-aligned offset for frequency scale</
                   cursor: isAnnotationMode
                     ? "crosshair"
                     : isPanning

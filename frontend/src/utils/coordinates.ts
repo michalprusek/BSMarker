@@ -5,7 +5,7 @@
 
 // Layout constants - must match the actual layout in AnnotationEditor.tsx
 export const LAYOUT_CONSTANTS = {
-  FREQUENCY_SCALE_WIDTH: 40, // Width of the frequency scale on the left
+  FREQUENCY_SCALE_WIDTH: 40, // Width of the frequency scale on the left (logical pixels)
   SPECTROGRAM_HEIGHT_RATIO: 0.65, // 65% of total height for spectrogram (increased from 60%)
   TIMELINE_TOP_RATIO: 0.65, // Timeline starts at 65% (right after spectrogram)
   TIMELINE_HEIGHT_RATIO: 0.08, // 8% for timeline
@@ -191,6 +191,37 @@ export const CoordinateUtils = {
   },
 
   /**
+   * Get device pixel ratio for high-DPI display support
+   * Returns 1 as fallback for older browsers
+   */
+  getDevicePixelRatio(): number {
+    return window.devicePixelRatio || 1;
+  },
+
+  /**
+   * Apply device pixel ratio to canvas dimensions
+   * Used for high-DPI canvas rendering
+   */
+  getCanvasDimensions(
+    width: number,
+    height: number,
+    zoomLevel: number = 1,
+  ): {
+    canvasWidth: number;
+    canvasHeight: number;
+    styleWidth: string;
+    styleHeight: string;
+  } {
+    const pixelRatio = this.getDevicePixelRatio();
+    return {
+      canvasWidth: Math.round(width * zoomLevel * pixelRatio),
+      canvasHeight: Math.round(height * pixelRatio),
+      styleWidth: `${Math.round(width * zoomLevel)}px`,
+      styleHeight: `${Math.round(height)}px`,
+    };
+  },
+
+  /**
    * Get absolute screen position accounting for scroll offset
    * Used when converting Konva stage coordinates to absolute positions
    */
@@ -247,6 +278,7 @@ export const CoordinateUtils = {
   /**
    * Transform bounding box coordinates from world space to screen space
    * Used for rendering bounding boxes with zoom applied
+   * Now includes sub-pixel rounding for display resolution consistency
    */
   transformBoxToScreen(
     box: {
@@ -262,11 +294,15 @@ export const CoordinateUtils = {
     screenWidth: number;
     screenHeight: number;
   } {
+    // Apply sub-pixel rounding for crisp rendering
+    // This ensures boxes align properly on all display resolutions
     return {
-      screenX: this.worldToScreenCoordinates(box.x, zoomLevel),
-      screenY: box.y, // No vertical zoom
-      screenWidth: this.worldToScreenCoordinates(box.width, zoomLevel),
-      screenHeight: box.height, // No vertical zoom
+      screenX: Math.round(this.worldToScreenCoordinates(box.x, zoomLevel)),
+      screenY: Math.round(box.y), // No vertical zoom, but round for pixel alignment
+      screenWidth: Math.round(
+        this.worldToScreenCoordinates(box.width, zoomLevel),
+      ),
+      screenHeight: Math.round(box.height), // No vertical zoom, but round for pixel alignment
     };
   },
 

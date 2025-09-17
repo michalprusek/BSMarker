@@ -104,3 +104,4 @@ ssl-dhparams.pem
 CLAUDE.md
 .claude/
 .serena/
+backups/
