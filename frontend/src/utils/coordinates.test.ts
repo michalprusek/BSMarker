@@ -109,6 +109,99 @@ describe("CoordinateUtils", () => {
     });
   });
 
+  describe("getDevicePixelRatio", () => {
+    const originalDevicePixelRatio = window.devicePixelRatio;
+
+    afterEach(() => {
+      // Restore original value
+      Object.defineProperty(window, 'devicePixelRatio', {
+        value: originalDevicePixelRatio,
+        writable: true
+      });
+    });
+
+    it("should return window.devicePixelRatio when available", () => {
+      Object.defineProperty(window, 'devicePixelRatio', {
+        value: 2,
+        writable: true
+      });
+      const result = CoordinateUtils.getDevicePixelRatio();
+      expect(result).toBe(2);
+    });
+
+    it("should return 1 when devicePixelRatio is undefined", () => {
+      Object.defineProperty(window, 'devicePixelRatio', {
+        value: undefined,
+        writable: true
+      });
+      const result = CoordinateUtils.getDevicePixelRatio();
+      expect(result).toBe(1);
+    });
+
+    it("should clamp high values to 4 for memory safety", () => {
+      Object.defineProperty(window, 'devicePixelRatio', {
+        value: 5,
+        writable: true
+      });
+      const result = CoordinateUtils.getDevicePixelRatio();
+      expect(result).toBe(4);
+    });
+  });
+
+  describe("getCanvasDimensions", () => {
+    it("should calculate canvas dimensions with pixel ratio", () => {
+      // Mock devicePixelRatio to 2
+      jest.spyOn(CoordinateUtils, 'getDevicePixelRatio').mockReturnValue(2);
+
+      const result = CoordinateUtils.getCanvasDimensions(800, 600, 1.5);
+
+      expect(result.canvasWidth).toBe(Math.round(800 * 1.5 * 2)); // 2400
+      expect(result.canvasHeight).toBe(Math.round(600 * 2)); // 1200
+      expect(result.styleWidth).toBe('1200px'); // 800 * 1.5
+      expect(result.styleHeight).toBe('600px');
+
+      jest.restoreAllMocks();
+    });
+
+    it("should handle zoom level default", () => {
+      jest.spyOn(CoordinateUtils, 'getDevicePixelRatio').mockReturnValue(1);
+
+      const result = CoordinateUtils.getCanvasDimensions(400, 300);
+
+      expect(result.canvasWidth).toBe(400);
+      expect(result.canvasHeight).toBe(300);
+      expect(result.styleWidth).toBe('400px');
+      expect(result.styleHeight).toBe('300px');
+
+      jest.restoreAllMocks();
+    });
+  });
+
+  describe("transformBoxToScreen with rounding", () => {
+    it("should apply sub-pixel rounding for crisp rendering", () => {
+      const box = {
+        x: 10.7,
+        y: 20.3,
+        width: 100.4,
+        height: 50.9
+      };
+
+      const result = CoordinateUtils.transformBoxToScreen(box, 1.5);
+
+      // All values should be rounded to nearest integer
+      expect(result.screenX).toBe(16); // Math.round(10.7 * 1.5)
+      expect(result.screenY).toBe(20); // Math.round(20.3)
+      expect(result.screenWidth).toBe(151); // Math.round(100.4 * 1.5)
+      expect(result.screenHeight).toBe(51); // Math.round(50.9)
+
+      // Ensure all values are integers
+      expect(Number.isInteger(result.screenX)).toBe(true);
+      expect(Number.isInteger(result.screenY)).toBe(true);
+      expect(Number.isInteger(result.screenWidth)).toBe(true);
+      expect(Number.isInteger(result.screenHeight)).toBe(true);
+    });
+  });
+
   describe("frequencyToPixel", () => {
     it("should convert frequency to pixel position with inverted scale", () => {
       const frequency = 10000; // 10kHz
