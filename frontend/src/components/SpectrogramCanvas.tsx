@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback } from "react";
+import { CoordinateUtils } from "../utils/coordinates";
 
 interface SpectrogramCanvasProps {
   imageUrl: string;
@@ -39,11 +40,17 @@ const SpectrogramCanvas: React.FC<SpectrogramCanvasProps> = ({
 
     if (!ctx) return;
 
+    // Get device pixel ratio for high-DPI display support
+    const pixelRatio = CoordinateUtils.getDevicePixelRatio();
+
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Save context state
     ctx.save();
+
+    // Apply device pixel ratio scaling
+    ctx.scale(pixelRatio, pixelRatio);
 
     // Set interpolation quality based on zoom level and type
     if (interpolationType === "nearest" || zoomLevel > 5) {
@@ -106,7 +113,14 @@ const SpectrogramCanvas: React.FC<SpectrogramCanvasProps> = ({
 
     // Apply sharpening filter for better clarity at high zoom
     if (zoomLevel > 2 && interpolationType !== "nearest") {
-      applySharpening(ctx, canvas.width, canvas.height, zoomLevel);
+      const pixelRatio = CoordinateUtils.getDevicePixelRatio();
+      // Use logical dimensions for sharpening, not physical pixels
+      applySharpening(
+        ctx,
+        canvas.width / pixelRatio,
+        canvas.height / pixelRatio,
+        zoomLevel,
+      );
     }
   }, [zoomLevel, zoomOffset, interpolationType]);
 
@@ -188,17 +202,24 @@ const SpectrogramCanvas: React.FC<SpectrogramCanvasProps> = ({
     };
   }, [renderImage]);
 
+  // Calculate canvas dimensions with device pixel ratio support
+  const canvasDimensions = CoordinateUtils.getCanvasDimensions(
+    width,
+    height,
+    zoomLevel,
+  );
+
   return (
     <canvas
       ref={canvasRef}
-      width={width * zoomLevel}
-      height={height}
+      width={canvasDimensions.canvasWidth}
+      height={canvasDimensions.canvasHeight}
       style={{
         position: "absolute",
         top: 0,
         left: 0,
-        width: `${width * zoomLevel}px`,
-        height: `${height}px`,
+        width: canvasDimensions.styleWidth,
+        height: canvasDimensions.styleHeight,
         imageRendering: interpolationType === "nearest" ? "pixelated" : "auto",
         transform: "translateZ(0)", // Force GPU acceleration
         willChange: "transform",
