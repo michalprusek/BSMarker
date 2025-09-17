@@ -192,10 +192,25 @@ export const CoordinateUtils = {
 
   /**
    * Get device pixel ratio for high-DPI display support
-   * Returns 1 as fallback for older browsers
+   * Returns 1 as fallback for older browsers or SSR environments
+   * Includes error handling for edge cases
    */
   getDevicePixelRatio(): number {
-    return window.devicePixelRatio || 1;
+    try {
+      // Check if window is defined (for SSR compatibility)
+      if (typeof window !== 'undefined' && window.devicePixelRatio) {
+        // Clamp value to reasonable range (1-4) to prevent memory issues
+        const ratio = window.devicePixelRatio;
+        if (ratio > 4) {
+          console.warn('Device pixel ratio exceeds 4, clamping to 4 for memory safety');
+          return 4;
+        }
+        return ratio;
+      }
+    } catch (error) {
+      console.debug('Failed to get devicePixelRatio, using fallback:', error);
+    }
+    return 1; // Safe fallback
   },
 
   /**
