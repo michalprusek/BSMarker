@@ -103,6 +103,11 @@ const AnnotationEditor: React.FC = () => {
     width: 800,
     height: 400,
   });
+  // Fixed base dimensions for spectrogram (won't change on window resize)
+  const [baseSpectrogramDimensions, setBaseSpectrogramDimensions] = useState({
+    width: 800,
+    height: 400,
+  });
   const [showSidebar, setShowSidebar] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [verticalScrollOffset, setVerticalScrollOffset] = useState(0);
@@ -717,22 +722,25 @@ const AnnotationEditor: React.FC = () => {
             50,
             spectrogramDimensions.height * 0.23,
           );
+          // Update waveform container height
           if (waveformRef.current) {
             waveformRef.current.style.height = `${waveformHeight}px`;
-            // Set container width to match spectrogram exactly
-            const zoomedWidth = CoordinateUtils.getZoomedContentWidth(
-              spectrogramDimensions.width,
-              zoomLevel,
-            );
-            waveformRef.current.style.width = `${zoomedWidth}px`;
           }
 
-          // Trigger WaveSurfer to redraw at new size
-          if (wavesurferRef.current) {
-            // WaveSurfer will automatically redraw when container size changes
-            // Just ensure it's aware of the change
+          // Recalculate and apply zoom for new dimensions
+          if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
+            const spectrogramContentWidth = baseSpectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+            const basePxPerSec = spectrogramContentWidth / wavesurferRef.current.getDuration();
+            const zoomedPxPerSec = basePxPerSec * zoomLevel;
+
+            // Apply the zoom
+            (wavesurferRef.current as any).zoom?.(zoomedPxPerSec);
+
+            // Update height if the method exists
             (wavesurferRef.current as any).setHeight?.(waveformHeight);
-            // With fillParent: true, WaveSurfer automatically adjusts to container size
+
+            // Force WaveSurfer to redraw with new dimensions
+            (wavesurferRef.current as any).drawer?.redraw?.();
           }
         } catch (error) {
           console.warn("Failed to resize waveform:", error);
@@ -741,30 +749,32 @@ const AnnotationEditor: React.FC = () => {
 
       return () => clearTimeout(resizeTimeout);
     }
-  }, [spectrogramDimensions, zoomLevel]);
+  }, [spectrogramDimensions, zoomLevel, baseSpectrogramDimensions]);
 
-  // Handle zoom changes for waveform - removed internal zoom to rely on container width only
+  // Handle zoom changes for waveform - use WaveSurfer's zoom method
   useEffect(() => {
     if (wavesurferRef.current && waveformRef.current) {
-      // Don't use WaveSurfer's internal zoom - let container width handle it
-      // This ensures perfect synchronization with spectrogram
       try {
         if (wavesurferRef.current && wavesurferRef.current.getDuration() > 0) {
-          // Update container width to match spectrogram
-          const zoomedWidth =
-            (spectrogramDimensions.width -
-              LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) *
-            zoomLevel;
-          if (waveformRef.current) {
-            waveformRef.current.style.width = `${zoomedWidth}px`;
-          }
-          // With fillParent: true, WaveSurfer automatically adjusts to container size
+          // Calculate the base pixels per second from fixed base dimensions
+          const spectrogramContentWidth = baseSpectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+          const basePxPerSec = spectrogramContentWidth / wavesurferRef.current.getDuration();
+
+          // Apply zoom by setting the zoomed pixels per second
+          // This makes WaveSurfer render at the correct scale
+          const zoomedPxPerSec = basePxPerSec * zoomLevel;
+
+          // Use WaveSurfer's zoom method to set the pixels per second
+          (wavesurferRef.current as any).zoom?.(zoomedPxPerSec);
+
+          // Force WaveSurfer to redraw with the new zoom
+          (wavesurferRef.current as any).drawer?.redraw?.();
         }
       } catch (e) {
         // Audio not loaded yet, ignore
       }
     }
-  }, [zoomLevel, spectrogramDimensions.width]);
+  }, [zoomLevel, baseSpectrogramDimensions.width]);
 
   useEffect(() => {
     let resizeTimeout: NodeJS.Timeout;
@@ -779,22 +789,35 @@ const AnnotationEditor: React.FC = () => {
           const containerWidth = unifiedScrollRef.current.clientWidth;
           // Use full available height for the combined view
           const containerHeight = unifiedScrollRef.current.clientHeight;
+
+          // Only update spectrogramDimensions for container size (for scrolling)
+          // but keep baseSpectrogramDimensions fixed for actual content
           setSpectrogramDimensions({
             width: containerWidth,
             height: containerHeight,
           });
+
+          // Set base dimensions only once when spectrogram loads
+          if (!baseSpectrogramDimensions.width || baseSpectrogramDimensions.width === 800) {
+            setBaseSpectrogramDimensions({
+              width: containerWidth,
+              height: containerHeight,
+            });
+          }
         }
       }, 100); // 100ms debounce for dimension updates
     };
 
+    // Only set initial dimensions, don't listen to resize
     updateDimensions();
-    window.addEventListener("resize", updateDimensions);
+    // Remove resize listener to prevent dimensions from changing
+    // window.addEventListener("resize", updateDimensions);
 
     return () => {
       clearTimeout(resizeTimeout);
-      window.removeEventListener("resize", updateDimensions);
+      // window.removeEventListener("resize", updateDimensions);
     };
-  }, [spectrogramUrl]);
+  }, [spectrogramUrl, baseSpectrogramDimensions]);
 
   const loadSpectrogram = async (recordingId: number) => {
     setIsLoadingSpectrogram(true);
@@ -1084,6 +1107,11 @@ const AnnotationEditor: React.FC = () => {
     // Ensure container has proper dimensions
     const waveformHeight = Math.max(50, spectrogramDimensions.height * 0.23);
 
+    // Calculate minPxPerSec to maintain consistent scale
+    // This should match the spectrogram's scale calculation
+    const spectrogramContentWidth = baseSpectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+    const defaultMinPxPerSec = spectrogramContentWidth / 10; // Assuming 10 seconds default view
+
     const wavesurfer = WaveSurfer.create({
       container: waveformRef.current,
       waveColor: "#3B82F6", // Modern blue gradient
@@ -1097,10 +1125,10 @@ const AnnotationEditor: React.FC = () => {
       barHeight: 1, // Full height bars for better visibility
       normalize: true,
       interact: true,
-      fillParent: true, // Use fillParent to match container width exactly
+      fillParent: false, // Set to false to maintain fixed scale
       backend: "WebAudio",
       mediaControls: false,
-      minPxPerSec: 1, // Lower minimum to allow fillParent to work properly
+      minPxPerSec: defaultMinPxPerSec, // Fixed pixels per second for consistent scale
       hideScrollbar: true, // Hide WaveSurfer's own scrollbar
       autoScroll: false, // Disable auto-scroll
       // Remove unsupported options
@@ -2757,7 +2785,7 @@ const AnnotationEditor: React.FC = () => {
                       style={{
                         top: "0",
                         left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`, // Offset for frequency scale
-                        width: `${CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)}px`,
+                        width: `${CoordinateUtils.getZoomedContentWidth(baseSpectrogramDimensions.width, zoomLevel)}px`,
                         height: "100%",
                         objectFit: "fill", // Stretch to fill the exact space
                         pointerEvents: "none",
@@ -2954,12 +2982,12 @@ const AnnotationEditor: React.FC = () => {
                       display: "block",
                     }}
                   >
-                    {/* Waveform container */}
+                    {/* Waveform container - fixed width to prevent resize */}
                     <div
                       ref={waveformRef}
                       id="waveform-container"
                       style={{
-                        width: "100%",
+                        width: `${(baseSpectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,
                         height: "100%",
                         position: "relative",
                       }}
