@@ -22,6 +22,8 @@ import {
   MagnifyingGlassMinusIcon,
   ArrowsPointingOutIcon,
   QuestionMarkCircleIcon,
+  CursorArrowRaysIcon,
+  MinusIcon,
 } from "@heroicons/react/24/solid";
 import toast from "react-hot-toast";
 import WaveSurfer from "wavesurfer.js";
@@ -34,6 +36,7 @@ import ContextMenu from "../components/ContextMenu";
 import SpectrogramScales from "../components/SpectrogramScales";
 import LoadingSpinner from "../components/LoadingSpinner";
 import KeyboardShortcutsModal from "../components/KeyboardShortcutsModal";
+import BottomLineModal from "../components/BottomLineModal";
 import { CoordinateUtils, LAYOUT_CONSTANTS } from "../utils/coordinates";
 import {
   AXIS_STYLES,
@@ -43,6 +46,7 @@ import {
 import { useAutosave } from "../hooks/useAutosave";
 import { useMouseCoordinates } from "../hooks/useMouseCoordinates";
 import { useBoundingBoxTimeFrequency } from "../hooks/useBoundingBoxTimeFrequency";
+import { useBottomLine } from "../hooks/useBottomLine";
 import { ANNOTATION_CONSTANTS, LABEL_COLORS } from "../utils/constants";
 // import { useSpectrogramZoom } from '../hooks/useSpectrogramZoom'; // Unused - replaced with custom throttled zoom
 import { throttle } from "lodash";
@@ -109,11 +113,13 @@ const AnnotationEditor: React.FC = () => {
     height: 400,
   });
   const [showSidebar, setShowSidebar] = useState(false);
+  const [sortMode, setSortMode] = useState<"time" | "alphabetical">("time");
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [verticalScrollOffset, setVerticalScrollOffset] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentSpeedIndex, setCurrentSpeedIndex] = useState(0);
   const [isAnnotationMode, setIsAnnotationMode] = useState(false);
+  const [isRoiSelectionMode, setIsRoiSelectionMode] = useState(false);
   const [isRewindingLeft, setIsRewindingLeft] = useState(false);
   const [isRewindingRight, setIsRewindingRight] = useState(false);
   const [selectedBoxes, setSelectedBoxes] = useState<Set<number>>(new Set());
@@ -129,6 +135,14 @@ const AnnotationEditor: React.FC = () => {
     y: number;
     boxIndex?: number;
   } | null>(null);
+  const [annotationModeContextMenu, setAnnotationModeContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [defaultLabel, setDefaultLabel] = useState<string | null>(null);
+  const [lastUsedLabel, setLastUsedLabel] = useState<string | null>(null);
+  const [showDefaultLabelInput, setShowDefaultLabelInput] = useState(false);
+  const [defaultLabelInput, setDefaultLabelInput] = useState("");
   const [clipboardBox, setClipboardBox] = useState<
     BoundingBox | BoundingBox[] | null
   >(null);
@@ -202,6 +216,7 @@ const AnnotationEditor: React.FC = () => {
   } | null>(null);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] =
     useState<boolean>(false);
+  const [showBottomLineModal, setShowBottomLineModal] = useState<boolean>(false);
   const rewindIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const wasPlayingRef = useRef<boolean>(false);
   const keyDownArrowRef = useRef<boolean>(false);
@@ -268,6 +283,32 @@ const AnnotationEditor: React.FC = () => {
     duration,
     getNyquistFrequency,
   );
+
+  // Bottom line (frequency boundary) management
+  const {
+    bottomLine,
+    isSettingBottomLine,
+    setIsSettingBottomLine,
+    setBottomLineAtPixel,
+    setBottomLineAtFrequency,
+    clearBottomLine,
+  } = useBottomLine();
+
+  // Memoized sorted bounding boxes
+  const sortedBoundingBoxes = useMemo(() => {
+    if (sortMode === "alphabetical") {
+      return [...boundingBoxes].sort((a, b) => {
+        const labelA = (a.label || "None").toLowerCase();
+        const labelB = (b.label || "None").toLowerCase();
+        return labelA.localeCompare(labelB);
+      });
+    } else {
+      // Sort by time (start_time)
+      return [...boundingBoxes].sort((a, b) => {
+        return (a.start_time || 0) - (b.start_time || 0);
+      });
+    }
+  }, [boundingBoxes, sortMode]);
 
   // Memoize color calculations for performance
   const getLabelColorMemoized = useMemo(() => {
@@ -1410,6 +1451,18 @@ const AnnotationEditor: React.FC = () => {
 
   const toggleAnnotationMode = () => {
     setIsAnnotationMode(!isAnnotationMode);
+    // Disable ROI selection mode when enabling annotation mode
+    if (!isAnnotationMode) {
+      setIsRoiSelectionMode(false);
+    }
+  };
+
+  const toggleRoiSelectionMode = () => {
+    setIsRoiSelectionMode(!isRoiSelectionMode);
+    // Disable annotation mode when enabling ROI selection mode
+    if (!isRoiSelectionMode) {
+      setIsAnnotationMode(false);
+    }
   };
 
   // Handle horizontal panning with arrow keys
@@ -1442,13 +1495,29 @@ const AnnotationEditor: React.FC = () => {
   const constrainBox = (box: BoundingBox): BoundingBox => {
     // Use centralized coordinate utilities for consistent constraint handling
     // NOTE: coordinates here are in world space (unzoomed), so use zoom level 1
-    const constrained = CoordinateUtils.constrainBoundingBox(
+    let constrained = CoordinateUtils.constrainBoundingBox(
       box,
       baseSpectrogramDimensions.width,  // Use base dimensions for consistency
       baseSpectrogramDimensions.height,
       true, // Account for frequency scale
       1, // World coordinates are unzoomed, so zoom level is 1
     );
+
+    // Apply bottom line constraint if active
+    if (bottomLine.isActive && bottomLine.pixelY !== null) {
+      const bottomY = bottomLine.pixelY;
+
+      // If box extends below the bottom line, constrain it
+      if (constrained.y + constrained.height > bottomY) {
+        // If box starts below the bottom line, move it up
+        if (constrained.y >= bottomY) {
+          constrained.y = Math.max(0, bottomY - constrained.height);
+        } else {
+          // Box starts above but extends below - clip the height
+          constrained.height = bottomY - constrained.y;
+        }
+      }
+    }
 
     // Use centralized conversion hook for time/frequency
     const timeFrequency = convertBoxToTimeFrequency(constrained);
@@ -1667,6 +1736,22 @@ const AnnotationEditor: React.FC = () => {
     // Use centralized coordinate transformation hook
     const { seekPosition, pos } = transformMousePoint(point);
 
+    // Handle bottom line setting mode
+    if (isSettingBottomLine && point.y <= spectrogramHeight) {
+      // Calculate frequency from pixel position
+      const nyquistFreq = getNyquistFrequency();
+      const minFreq = 0;
+      const maxFreq = nyquistFreq;
+
+      // Convert pixel Y to frequency (Y=0 is top/max freq, Y=height is bottom/min freq)
+      const normalizedY = pos.y / spectrogramHeight;
+      const frequency = maxFreq - (normalizedY * (maxFreq - minFreq));
+
+      setBottomLineAtPixel(pos.y, frequency);
+      toast.success(`Bottom line set at ${Math.round(frequency)} Hz`);
+      return; // Prevent other interactions
+    }
+
     // Check if clicking on a bounding box first (before handling right-click)
     const clickedBoxIndex = boundingBoxes.findIndex(
       (box) =>
@@ -1861,8 +1946,14 @@ const AnnotationEditor: React.FC = () => {
         return;
       }
 
-      // If not shift/ctrl clicking, handle deselection or start panning
-      if (!e.evt.shiftKey && !e.evt.ctrlKey && !e.evt.metaKey) {
+      // If in ROI selection mode or shift/ctrl clicking, start selection rectangle
+      if (isRoiSelectionMode || e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey) {
+        // Start selection rectangle for ROI mode or shift/ctrl
+        setIsSelecting(true);
+        setSelectionRect({ x: pos.x, y: pos.y, width: 0, height: 0 });
+        setSelectedBoxes(new Set());
+        setSelectedBox(null);
+      } else {
         // Deselect all bounding boxes when clicking outside
         if (selectedBoxes.size > 0 || selectedBox) {
           setSelectedBoxes(new Set());
@@ -1883,12 +1974,6 @@ const AnnotationEditor: React.FC = () => {
             e.evt.preventDefault();
           }
         }
-      } else {
-        // Start selection rectangle for shift/ctrl
-        setIsSelecting(true);
-        setSelectionRect({ x: pos.x, y: pos.y, width: 0, height: 0 });
-        setSelectedBoxes(new Set());
-        setSelectedBox(null);
       }
     } else {
       // Annotation mode - start drawing (only in spectrogram area)
@@ -2163,6 +2248,10 @@ const AnnotationEditor: React.FC = () => {
     if (isSelecting) {
       setIsSelecting(false);
       setSelectionRect(null);
+      // Auto-deactivate ROI selection mode after completing selection
+      if (isRoiSelectionMode) {
+        setIsRoiSelectionMode(false);
+      }
       return;
     }
 
@@ -2190,9 +2279,17 @@ const AnnotationEditor: React.FC = () => {
         const timeFrequency =
           convertNormalizedBoxToTimeFrequency(normalizedBox);
 
+        // Determine label based on defaultLabel setting
+        let assignedLabel = "None";
+        if (defaultLabel === "USE_LAST" && lastUsedLabel) {
+          assignedLabel = lastUsedLabel;
+        } else if (defaultLabel && defaultLabel !== "USE_LAST") {
+          assignedLabel = defaultLabel;
+        }
+
         const newBox: BoundingBox = {
           ...normalizedBox,
-          label: "None", // Auto-assign "None" label
+          label: assignedLabel,
           ...timeFrequency,
         };
 
@@ -2200,7 +2297,7 @@ const AnnotationEditor: React.FC = () => {
         setBoundingBoxes([...boundingBoxes, newBox]);
         setHasUnsavedChanges(true);
         toast.success(
-          'Annotation added with "None" label. Right-click to edit label.',
+          `Annotation added with "${assignedLabel}" label. Right-click to edit label.`,
         );
       }
 
@@ -2253,6 +2350,11 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const handleLabelSubmit = (label: string) => {
+    // Track the last used label (excluding "None")
+    if (label && label !== "None") {
+      setLastUsedLabel(label);
+    }
+
     if (tempBox) {
       // Check if we're editing an existing box
       const existingIndex = boundingBoxes.findIndex(
@@ -2286,6 +2388,11 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const handleUpdateLabel = (index: number, newLabel: string) => {
+    // Track the last used label (excluding "None")
+    if (newLabel && newLabel !== "None") {
+      setLastUsedLabel(newLabel);
+    }
+
     setBoundingBoxes((prev) =>
       prev.map((box, i) => (i === index ? { ...box, label: newLabel } : box)),
     );
@@ -3221,42 +3328,44 @@ const AnnotationEditor: React.FC = () => {
                   left: `${Math.round(LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH)}px`, // Pixel-aligned offset for frequency scale</
                   cursor: isAnnotationMode
                     ? "crosshair"
-                    : isPanning
-                      ? "grabbing"
-                      : hoveredHandle
-                        ? (hoveredHandle.handle.includes("n") &&
-                            hoveredHandle.handle.includes("w")) ||
-                          (hoveredHandle.handle.includes("s") &&
-                            hoveredHandle.handle.includes("e"))
-                          ? "nwse-resize"
-                          : "nesw-resize"
-                        : draggingBox
-                          ? "grabbing"
-                          : resizingBox
+                    : isRoiSelectionMode
+                      ? "crosshair"
+                      : isPanning
+                        ? "grabbing"
+                        : hoveredHandle
+                          ? (hoveredHandle.handle.includes("n") &&
+                              hoveredHandle.handle.includes("w")) ||
+                            (hoveredHandle.handle.includes("s") &&
+                              hoveredHandle.handle.includes("e"))
+                            ? "nwse-resize"
+                            : "nesw-resize"
+                          : draggingBox
                             ? "grabbing"
-                            : isSelecting
-                              ? "crosshair"
-                              : boundingBoxes.some(
-                                    (box) =>
-                                      mousePosition.x >= box.x &&
-                                      mousePosition.x <= box.x + box.width &&
-                                      mousePosition.y >= box.y &&
-                                      mousePosition.y <= box.y + box.height,
-                                  )
-                                ? "move"
-                                : mousePosition.y >
-                                    Math.max(
-                                      spectrogramDimensions.height,
-                                      600,
-                                    ) *
-                                      0.8
-                                  ? "pointer"
-                                  : "default",
+                            : resizingBox
+                              ? "grabbing"
+                              : isSelecting
+                                ? "crosshair"
+                                : boundingBoxes.some(
+                                      (box) =>
+                                        mousePosition.x >= box.x &&
+                                        mousePosition.x <= box.x + box.width &&
+                                        mousePosition.y >= box.y &&
+                                        mousePosition.y <= box.y + box.height,
+                                    )
+                                  ? "move"
+                                  : mousePosition.y >
+                                      Math.max(
+                                        spectrogramDimensions.height,
+                                        600,
+                                      ) *
+                                        0.8
+                                    ? "pointer"
+                                    : "default",
                 }}
               >
                 {/* Static layer for selection rectangle - cached */}
                 <Layer listening={false} cache={false} clearBeforeDraw={true}>
-                  {/* Selection rectangle - scale to spectrogram area */}
+                  {/* Selection rectangle - apply horizontal zoom only */}
                   {selectionRect && (
                     <Rect
                       x={
@@ -3269,10 +3378,10 @@ const AnnotationEditor: React.FC = () => {
                         Math.min(
                           selectionRect.y,
                           selectionRect.y + selectionRect.height,
-                        ) * 0.7
+                        )
                       }
                       width={Math.abs(selectionRect.width) * zoomLevel}
-                      height={Math.abs(selectionRect.height) * 0.7}
+                      height={Math.abs(selectionRect.height)}
                       fill="rgba(59, 130, 246, 0.1)"
                       stroke="#3B82F6"
                       strokeWidth={1}
@@ -3524,6 +3633,45 @@ const AnnotationEditor: React.FC = () => {
                     />
                   )}
 
+                  {/* Bottom line (frequency boundary) */}
+                  {bottomLine.isActive && bottomLine.pixelY !== null && (
+                    <>
+                      <Line
+                        points={[
+                          0,
+                          bottomLine.pixelY,
+                          CoordinateUtils.getZoomedContentWidth(
+                            baseSpectrogramDimensions.width,
+                            zoomLevel
+                          ),
+                          bottomLine.pixelY,
+                        ]}
+                        stroke="#3B82F6"
+                        strokeWidth={3}
+                        dash={[10, 5]}
+                        listening={false}
+                      />
+                      {/* Frequency label for bottom line */}
+                      <Group x={10} y={bottomLine.pixelY - 25}>
+                        <Rect
+                          width={120}
+                          height={20}
+                          fill="#3B82F6"
+                          cornerRadius={4}
+                        />
+                        <Text
+                          text={`Bottom: ${Math.round(bottomLine.frequency || 0)} Hz`}
+                          fontSize={12}
+                          fill="white"
+                          fontStyle="bold"
+                          padding={4}
+                          align="center"
+                          width={120}
+                        />
+                      </Group>
+                    </>
+                  )}
+
                   {/* Cursor line only for spectrogram area */}
                   {duration > 0 && (
                     <Line
@@ -3668,14 +3816,60 @@ const AnnotationEditor: React.FC = () => {
           {/* Annotation Mode */}
           <button
             onClick={toggleAnnotationMode}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setAnnotationModeContextMenu({ x: e.clientX, y: e.clientY });
+            }}
             className={`p-2 rounded-md transition-colors group ${
               isAnnotationMode
                 ? "bg-green-100 text-green-700 hover:bg-green-200"
                 : "text-gray-600 hover:bg-gray-100"
             }`}
-            title="Toggle annotation mode (.)"
+            title="Toggle annotation mode (.) | Right-click for default label options"
           >
             <PencilIcon className="h-5 w-5" />
+          </button>
+
+          {/* ROI Selection Mode */}
+          <button
+            onClick={toggleRoiSelectionMode}
+            className={`p-2 rounded-md transition-colors group ${
+              isRoiSelectionMode
+                ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
+                : "text-gray-600 hover:bg-gray-100"
+            }`}
+            title="Toggle ROI selection mode - drag to select multiple annotations"
+          >
+            <CursorArrowRaysIcon className="h-5 w-5" />
+          </button>
+
+          {/* Bottom Line Mode */}
+          <button
+            onClick={() => {
+              if (bottomLine.isActive) {
+                // If bottom line exists, show modal to edit or delete
+                setShowBottomLineModal(true);
+              } else {
+                // If no bottom line, toggle setting mode
+                setIsSettingBottomLine(!isSettingBottomLine);
+              }
+            }}
+            className={`p-2 rounded-md transition-colors group ${
+              isSettingBottomLine
+                ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                : bottomLine.isActive
+                ? "bg-blue-50 text-blue-600 hover:bg-blue-100"
+                : "text-gray-600 hover:bg-gray-100"
+            }`}
+            title={
+              bottomLine.isActive
+                ? "Edit or remove bottom line"
+                : isSettingBottomLine
+                ? "Click on spectrogram to set bottom line"
+                : "Create bottom line (frequency boundary)"
+            }
+          >
+            <MinusIcon className="h-5 w-5" />
           </button>
 
           {/* Keyboard Shortcuts Help */}
@@ -3713,8 +3907,8 @@ const AnnotationEditor: React.FC = () => {
             </svg>
             {/* Badge with count */}
             {boundingBoxes.length > 0 && (
-              <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                {boundingBoxes.length > 9 ? "9+" : boundingBoxes.length}
+              <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+                {boundingBoxes.length}
               </div>
             )}
           </button>
@@ -3735,8 +3929,82 @@ const AnnotationEditor: React.FC = () => {
                 <XMarkIcon className="h-5 w-5 text-gray-500" />
               </button>
             </div>
+
+            {/* Bottom Line Controls */}
+            {bottomLine.isActive && (
+              <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium text-blue-900">Bottom Line</h3>
+                  <button
+                    onClick={clearBottomLine}
+                    className="p-1 rounded-md hover:bg-blue-100 text-blue-700"
+                    title="Remove bottom line"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-blue-700 font-medium w-20">
+                      Frequency:
+                    </label>
+                    <input
+                      type="number"
+                      value={Math.round(bottomLine.frequency || 0)}
+                      onChange={(e) => {
+                        const freq = parseFloat(e.target.value);
+                        if (!isNaN(freq)) {
+                          const nyquistFreq = getNyquistFrequency();
+                          const constrainedFreq = Math.max(0, Math.min(freq, nyquistFreq));
+                          setBottomLineAtFrequency(
+                            constrainedFreq,
+                            spectrogramDimensions.height * 0.6,
+                            0,
+                            nyquistFreq
+                          );
+                        }
+                      }}
+                      className="flex-1 px-2 py-1 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Frequency (Hz)"
+                    />
+                    <span className="text-xs text-blue-600">Hz</span>
+                  </div>
+                  <p className="text-xs text-blue-600 italic">
+                    Bounding boxes cannot extend below this line
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Sorting toggle */}
+            <div className="mb-3 flex items-center justify-between bg-gray-50 p-2 rounded-lg">
+              <span className="text-xs font-medium text-gray-700">Sort by:</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSortMode("time")}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                    sortMode === "time"
+                      ? "bg-blue-600 text-white"
+                      : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-300"
+                  }`}
+                >
+                  Time
+                </button>
+                <button
+                  onClick={() => setSortMode("alphabetical")}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                    sortMode === "alphabetical"
+                      ? "bg-blue-600 text-white"
+                      : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-300"
+                  }`}
+                >
+                  A-Z
+                </button>
+              </div>
+            </div>
+
             <BoundingBoxList
-              boxes={boundingBoxes}
+              boxes={sortedBoundingBoxes}
               selectedBox={selectedBox}
               onSelect={setSelectedBox}
               onDelete={handleDeleteBox}
@@ -3760,6 +4028,27 @@ const AnnotationEditor: React.FC = () => {
       <KeyboardShortcutsModal
         isOpen={showKeyboardShortcuts}
         onClose={() => setShowKeyboardShortcuts(false)}
+      />
+
+      <BottomLineModal
+        isOpen={showBottomLineModal}
+        onClose={() => setShowBottomLineModal(false)}
+        currentFrequency={bottomLine.frequency || 0}
+        maxFrequency={getNyquistFrequency()}
+        onSave={(frequency) => {
+          const spectrogramHeight = baseSpectrogramDimensions.height * 0.6;
+          setBottomLineAtFrequency(
+            frequency,
+            spectrogramHeight,
+            0,
+            getNyquistFrequency()
+          );
+          toast.success(`Bottom line updated to ${Math.round(frequency)} Hz`);
+        }}
+        onDelete={() => {
+          clearBottomLine();
+          toast.success("Bottom line removed");
+        }}
       />
 
       {/* Context Menu */}
@@ -3910,6 +4199,113 @@ const AnnotationEditor: React.FC = () => {
                 className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700"
               >
                 Apply Label
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Annotation Mode Context Menu */}
+      {annotationModeContextMenu && (
+        <ContextMenu
+          x={annotationModeContextMenu.x}
+          y={annotationModeContextMenu.y}
+          items={[
+            {
+              label: "No default label",
+              onClick: () => {
+                setDefaultLabel(null);
+                setAnnotationModeContextMenu(null);
+                toast.success("Default label set to None");
+              },
+            },
+            {
+              label: "Use last assigned label",
+              onClick: () => {
+                setDefaultLabel("USE_LAST");
+                setAnnotationModeContextMenu(null);
+                toast.success(
+                  lastUsedLabel
+                    ? `Will use last label: "${lastUsedLabel}"`
+                    : "Will use last assigned label (none yet)",
+                );
+              },
+              disabled: false,
+            },
+            {
+              label: "Set custom default label...",
+              onClick: () => {
+                setAnnotationModeContextMenu(null);
+                setShowDefaultLabelInput(true);
+                setDefaultLabelInput(
+                  defaultLabel && defaultLabel !== "USE_LAST"
+                    ? defaultLabel
+                    : "",
+                );
+              },
+            },
+          ]}
+          onClose={() => setAnnotationModeContextMenu(null)}
+        />
+      )}
+
+      {/* Default Label Input Modal */}
+      {showDefaultLabelInput && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <h3 className="text-lg font-medium mb-4">
+              Set Default Label for New Annotations
+            </h3>
+            <div className="mb-4">
+              <input
+                type="text"
+                value={defaultLabelInput}
+                onChange={(e) => setDefaultLabelInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    setDefaultLabel(defaultLabelInput || null);
+                    setShowDefaultLabelInput(false);
+                    toast.success(
+                      defaultLabelInput
+                        ? `Default label set to: "${defaultLabelInput}"`
+                        : "Default label cleared",
+                    );
+                  } else if (e.key === "Escape") {
+                    setShowDefaultLabelInput(false);
+                    setDefaultLabelInput("");
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter default label (or leave empty for None)"
+                autoFocus
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                This label will be automatically assigned to new bounding boxes.
+              </p>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => {
+                  setShowDefaultLabelInput(false);
+                  setDefaultLabelInput("");
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setDefaultLabel(defaultLabelInput || null);
+                  setShowDefaultLabelInput(false);
+                  toast.success(
+                    defaultLabelInput
+                      ? `Default label set to: "${defaultLabelInput}"`
+                      : "Default label cleared",
+                  );
+                }}
+                className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700"
+              >
+                Set Default
               </button>
             </div>
           </div>
