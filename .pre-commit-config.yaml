@@ -56,13 +56,13 @@ repos:
         args: [-r, app/, --skip, B101]
         exclude: ^tests/
 
-  # Check for security vulnerabilities
-  # Note: skjold disabled in favor of safety (below) which is more reliable
-  # - repo: https://github.com/twu/skjold
-  #   rev: v0.6.1
-  #   hooks:
-  #     - id: skjold
-  #       verbose: true
+  # Check for security vulnerabilities in Python dependencies
+  - repo: https://github.com/pypa/pip-audit
+    rev: v2.6.1
+    hooks:
+      - id: pip-audit
+        args: [--require-hashes, --disable-pip]
+        files: requirements\.txt$
 
   # Pylint for advanced Python checks
   - repo: https://github.com/PyCQA/pylint

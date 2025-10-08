@@ -989,15 +989,24 @@ const AnnotationEditor: React.FC = () => {
     };
   }, [baseSpectrogramDimensions.height, baseSpectrogramDimensions.width]); // Add deps to compare against current base dimensions
 
+  // Track previous duration to avoid unnecessary recalculations
+  const prevDurationRef = useRef<number>(0);
+  const prevWidthRef = useRef<number>(0);
+
   // Synchronize time coordinates when duration and dimensions become available
   // This ensures mirrors align with bounding boxes regardless of load order
   // IMPORTANT: Always recalculate when duration changes to fix stale coordinates
   // from previous recordings or initial load with duration=0
   useEffect(() => {
+    // Only recalculate if duration or width actually changed
+    const durationChanged = duration !== prevDurationRef.current;
+    const widthChanged = baseSpectrogramDimensions.width !== prevWidthRef.current;
+
     if (
       duration > 0 &&
       baseSpectrogramDimensions.width > 0 &&
-      boundingBoxes.length > 0
+      boundingBoxes.length > 0 &&
+      (durationChanged || widthChanged)
     ) {
       // Performance monitoring: Log warning if too many boxes
       if (boundingBoxes.length > 100) {
@@ -1019,8 +1028,12 @@ const AnnotationEditor: React.FC = () => {
           };
         })
       );
+
+      // Update refs
+      prevDurationRef.current = duration;
+      prevWidthRef.current = baseSpectrogramDimensions.width;
     }
-  }, [duration, baseSpectrogramDimensions.width, convertBoxToTimeFrequency]); // Use base dimensions for consistency
+  }, [duration, baseSpectrogramDimensions.width, convertBoxToTimeFrequency, boundingBoxes.length]); // Use base dimensions for consistency
 
   const loadSpectrogram = async (recordingId: number) => {
     setIsLoadingSpectrogram(true);
