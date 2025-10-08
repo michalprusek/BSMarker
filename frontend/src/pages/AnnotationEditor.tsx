@@ -999,6 +999,14 @@ const AnnotationEditor: React.FC = () => {
       baseSpectrogramDimensions.width > 0 &&
       boundingBoxes.length > 0
     ) {
+      // Performance monitoring: Log warning if too many boxes
+      if (boundingBoxes.length > 100) {
+        console.warn(
+          `Performance warning: Recalculating time coordinates for ${boundingBoxes.length} bounding boxes. ` +
+          `This operation may be slow. Consider optimizing for large datasets.`
+        );
+      }
+
       // Always recalculate time coordinates when duration changes
       // This fixes the issue where waveform mirrors are misaligned after
       // switching recordings because boxes have stale time coordinates

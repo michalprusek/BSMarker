@@ -24,42 +24,62 @@ export interface BoundingBoxConflict {
 
 /**
  * Detects conflicts between bounding boxes where the time gap is less than MIN_TIME_GAP
+ * Optimized algorithm: O(n log n) due to sorting + O(n) for single pass = O(n log n)
+ *
  * @param boxes Array of bounding boxes to check
  * @returns Array of conflicts found
  */
 export function detectConflicts(boxes: BoundingBox[]): BoundingBoxConflict[] {
   const conflicts: BoundingBoxConflict[] = [];
 
-  // Sort boxes by start time for efficient conflict detection
+  if (boxes.length < 2) {
+    return conflicts; // No conflicts possible with 0 or 1 boxes
+  }
+
+  // Sort boxes by start time for efficient conflict detection - O(n log n)
   const sortedBoxes = boxes
     .map((box, index) => ({ box, index }))
     .sort((a, b) => a.box.start_time - b.box.start_time);
 
-  // Check each pair of consecutive boxes
-  for (let i = 0; i < sortedBoxes.length - 1; i++) {
-    for (let j = i + 1; j < sortedBoxes.length; j++) {
-      const { box: box1, index: index1 } = sortedBoxes[i];
-      const { box: box2, index: index2 } = sortedBoxes[j];
+  // Single pass through sorted boxes to find conflicts - O(n)
+  // We maintain a set of "active" boxes (boxes that haven't ended yet)
+  // and check each new box against all active boxes
+  const activeBoxes: Array<{ box: BoundingBox; index: number }> = [];
 
-      // If box2 starts after box1 ends + MIN_TIME_GAP, no conflict possible
-      if (box2.start_time >= box1.end_time + MIN_TIME_GAP) {
-        break;
+  for (let i = 0; i < sortedBoxes.length; i++) {
+    const current = sortedBoxes[i];
+
+    // Remove boxes from active set that have ended before current box starts
+    // (no need to check them anymore)
+    let activeIndex = 0;
+    while (activeIndex < activeBoxes.length) {
+      const active = activeBoxes[activeIndex];
+      if (active.box.end_time + MIN_TIME_GAP <= current.box.start_time) {
+        // This box is no longer active, remove it
+        activeBoxes.splice(activeIndex, 1);
+      } else {
+        activeIndex++;
       }
+    }
 
-      // Check if there's overlap or insufficient gap
-      const gap = box2.start_time - box1.end_time;
+    // Check current box against all remaining active boxes
+    for (const active of activeBoxes) {
+      const gap = current.box.start_time - active.box.end_time;
 
       if (gap < MIN_TIME_GAP) {
         const overlapAmount = MIN_TIME_GAP - gap;
         conflicts.push({
-          box1Index: index1,
-          box2Index: index2,
-          box1,
-          box2,
+          box1Index: active.index,
+          box2Index: current.index,
+          box1: active.box,
+          box2: current.box,
           overlapAmount,
         });
       }
     }
+
+    // Add current box to active set
+    activeBoxes.push(current);
   }
 
   return conflicts;

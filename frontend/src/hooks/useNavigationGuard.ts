@@ -123,6 +123,24 @@ export function useNavigationGuard({
     blocker.reset?.();
   }, [blocker]);
 
+  // Add browser unload warning to prevent accidental tab/window closing
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!enabled) return;
+
+      const conflicts = detectConflicts(boundingBoxes);
+      if (conflicts.length > 0) {
+        // Prevent default and show browser's built-in warning
+        e.preventDefault();
+        // Chrome requires returnValue to be set
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [enabled, boundingBoxes]);
+
   return {
     showConflictModal,
     conflicts: detectedConflicts,

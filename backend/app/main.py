@@ -1,7 +1,9 @@
+# Standard library imports
 import io
 import logging
 from typing import Optional
 
+# Third-party imports
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -10,6 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from slowapi.errors import RateLimitExceeded
 from starlette.datastructures import MutableHeaders
 
+# Local application imports
 from app.api.api_v1.api import api_router
 from app.api.deps import get_current_user
 from app.core.config import settings
@@ -17,9 +20,7 @@ from app.core.rate_limiter import get_rate_limit, limiter, rate_limit_exceeded_h
 from app.core.security import decode_access_token
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
-
-# Import all models first to ensure SQLAlchemy relationships are configured
-from app.models import *  # noqa: F403,F401
+from app.models import *  # noqa: F403,F401  # Import all models first for SQLAlchemy relationships
 from app.models.user import User
 from app.services.minio_client import minio_client
 
