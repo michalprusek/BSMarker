@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { CoordinateUtils } from '../utils/coordinates';
 
 export interface BottomLineState {
   isActive: boolean;
@@ -55,10 +56,8 @@ export const useBottomLine = (): UseBottomLineReturn => {
     minFreq: number,
     maxFreq: number
   ) => {
-    // Calculate pixel Y from frequency using inverse of frequency-to-pixel transformation
-    // In spectrograms, Y=0 is top (max frequency), Y=height is bottom (min frequency)
-    const normalizedFreq = (frequency - minFreq) / (maxFreq - minFreq);
-    const pixelY = spectrogramHeight * (1 - normalizedFreq);
+    // Use canonical coordinate transformation from CoordinateUtils
+    const pixelY = CoordinateUtils.frequencyToPixel(frequency, maxFreq, spectrogramHeight);
 
     setBottomLine({
       isActive: true,
