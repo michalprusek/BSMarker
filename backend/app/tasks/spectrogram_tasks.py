@@ -19,9 +19,7 @@ from app.models import Recording, Spectrogram
 from app.models.spectrogram import SpectrogramStatus
 from app.services.minio_client import minio_client
 from celery.exceptions import SoftTimeLimitExceeded
-from matplotlib import cm
 from PIL import Image
-from sqlalchemy.orm import Session
 
 # Set cache directory for numba/librosa to avoid permission issues in Docker
 os.environ["NUMBA_CACHE_DIR"] = "/tmp"
@@ -84,10 +82,12 @@ def generate_spectrogram_image(
     # Flip vertically so low frequencies are at bottom
     S_db_norm = np.flipud(S_db_norm)
 
-    # Apply viridis colormap
-    viridis = cm.get_cmap("viridis")
-    colored = viridis(S_db_norm)
-    rgb_array = (colored[:, :, :3] * 255).astype(np.uint8)
+    # Apply inverted grayscale colormap (white background, black peaks)
+    # Invert values: 255 (white) for low coefficients, 0 (black) for high coefficients
+    inverted_gray = 255 - S_db_norm
+
+    # Create RGB array from grayscale values
+    rgb_array = np.stack([inverted_gray, inverted_gray, inverted_gray], axis=-1)
 
     # Create PIL image and resize to target dimensions
     img = Image.fromarray(rgb_array)

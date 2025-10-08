@@ -13,22 +13,27 @@ const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   if (!isOpen) return null;
 
   const shortcuts = [
-    { key: "Space", description: "Play/Pause audio" },
-    { key: "←/→", description: "Pan horizontally left/right" },
-    { key: ".", description: "Toggle annotation mode" },
-    { key: "Backspace", description: "Delete selected bounding box" },
-    { key: "Escape", description: "Deselect all / Exit annotation mode" },
-    { key: "Ctrl/Cmd + Z", description: "Undo" },
-    { key: "Ctrl/Cmd + Y", description: "Redo" },
-    { key: "Ctrl/Cmd + Shift + Z", description: "Redo" },
-    { key: "Ctrl/Cmd + C", description: "Copy selected box" },
-    { key: "Ctrl/Cmd + V", description: "Paste box" },
-    { key: "Ctrl/Cmd + S", description: "Save annotations" },
-    { key: "Ctrl/Cmd + =", description: "Zoom in" },
-    { key: "Ctrl/Cmd + -", description: "Zoom out" },
-    { key: "Ctrl/Cmd + 0", description: "Reset zoom" },
-    { key: "A-Z", description: "Quick label (when box selected)" },
-    { key: "?", description: "Show this help" },
+    { key: "Space", description: "Play/Pause audio", section: "Playback" },
+    { key: "←/→", description: "Pan horizontally left/right", section: "Navigation" },
+    { key: ".", description: "Toggle annotation mode", section: "Modes" },
+    { key: ",", description: "Toggle ROI selection mode", section: "Modes" },
+    { key: ";", description: "Toggle bottom line mode", section: "Modes" },
+    { key: "Backspace", description: "Delete selected bounding box", section: "Editing" },
+    { key: "Escape", description: "Deselect all / Exit modes", section: "Editing" },
+    { key: "Ctrl/Cmd + Z", description: "Undo", section: "Editing" },
+    { key: "Ctrl/Cmd + Y", description: "Redo", section: "Editing" },
+    { key: "Ctrl/Cmd + Shift + Z", description: "Redo", section: "Editing" },
+    { key: "Ctrl/Cmd + C", description: "Copy selected box", section: "Editing" },
+    { key: "Ctrl/Cmd + V", description: "Paste box", section: "Editing" },
+    { key: "Ctrl/Cmd + S", description: "Save annotations", section: "File" },
+    { key: "Ctrl/Cmd + =", description: "Zoom in", section: "View" },
+    { key: "Ctrl/Cmd + -", description: "Zoom out", section: "View" },
+    { key: "Ctrl/Cmd + 0", description: "Reset zoom", section: "View" },
+    { key: "Ctrl/Cmd + 1", description: "Label mode: No default label", section: "Labels" },
+    { key: "Ctrl/Cmd + 2", description: "Label mode: Use last assigned", section: "Labels" },
+    { key: "Ctrl/Cmd + 3", description: "Label mode: Set custom default", section: "Labels" },
+    { key: "A-Z", description: "Quick label (when box selected)", section: "Labels" },
+    { key: "?", description: "Show this help", section: "Help" },
   ];
 
   return (
@@ -46,21 +51,45 @@ const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
         </div>
 
         <div className="p-4 overflow-y-auto max-h-[calc(80vh-80px)]">
-          <div className="grid gap-2">
-            {shortcuts.map((shortcut, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between py-2 px-3 hover:bg-gray-50 rounded"
-              >
-                <kbd className="px-2 py-1 text-sm font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">
-                  {shortcut.key}
-                </kbd>
-                <span className="text-gray-700 ml-4 flex-1 text-right">
-                  {shortcut.description}
-                </span>
+          {/* Group shortcuts by section */}
+          {[
+            "Modes",
+            "Playback",
+            "Navigation",
+            "View",
+            "Editing",
+            "Labels",
+            "File",
+            "Help",
+          ].map((section) => {
+            const sectionShortcuts = shortcuts.filter(
+              (s) => s.section === section,
+            );
+            if (sectionShortcuts.length === 0) return null;
+
+            return (
+              <div key={section} className="mb-4">
+                <h3 className="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">
+                  {section}
+                </h3>
+                <div className="grid gap-2">
+                  {sectionShortcuts.map((shortcut, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between py-2 px-3 hover:bg-gray-50 rounded"
+                    >
+                      <kbd className="px-2 py-1 text-sm font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">
+                        {shortcut.key}
+                      </kbd>
+                      <span className="text-gray-700 ml-4 flex-1 text-right">
+                        {shortcut.description}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
 
           <div className="mt-6 p-4 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-800">

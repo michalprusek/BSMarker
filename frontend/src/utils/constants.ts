@@ -162,7 +162,7 @@ export const VALIDATION = {
   },
 } as const;
 
-export default {
+const constants = {
   ANNOTATION_CONSTANTS,
   LABEL_COLORS,
   FILE_UPLOAD,
@@ -172,3 +172,5 @@ export default {
   KEYBOARD_SHORTCUTS,
   VALIDATION,
 };
+
+export default constants;
