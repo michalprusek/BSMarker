@@ -569,37 +569,64 @@ python -m pytest --cov=app     # Coverage report
 
 **Server**: https://bsmarker.utia.cas.cz
 
-**Process**:
+**IMPORTANT**: For production deployment, **ALWAYS use the optimized deployment scripts** located in the `scripts/` directory. These scripts provide:
+- ✅ Parallel builds for faster deployment
+- ✅ BuildKit caching for incremental builds
+- ✅ Zero-downtime rolling updates
+- ✅ Automated health checks
+- ✅ SSL certificate management
+- ✅ Resource monitoring
+
+**Quick Start**:
 ```bash
-# SSH to production server
-ssh user@bsmarker.utia.cas.cz
+# First-time setup (SSL certificates)
+sudo ./scripts/setup-ssl.sh
 
-# Navigate to project directory
-cd /path/to/BSMarker
+# Build and deploy (optimized)
+./scripts/deploy-prod.sh --build
 
-# Pull latest changes
-git pull origin main
+# Deploy without rebuilding
+./scripts/deploy-prod.sh
 
-# Rebuild and restart services
+# Restart services only
+./scripts/deploy-prod.sh --restart-only
+```
+
+**Build Only** (for testing):
+```bash
+# Standard optimized build with caching
+./scripts/build-prod-optimized.sh
+
+# Force rebuild without cache
+./scripts/build-prod-optimized.sh --no-cache
+
+# Pull latest base images before build
+./scripts/build-prod-optimized.sh --pull
+```
+
+**Expected Performance**:
+- First build (no cache): ~5-8 minutes
+- Incremental build (with cache): ~1-2 minutes
+- 3-5x faster than traditional docker-compose build
+
+**⚠️ DO NOT USE** manual docker-compose commands for production:
+```bash
+# ❌ DEPRECATED - Don't use this anymore
 docker-compose -f docker-compose.prod.yml build --no-cache
 docker-compose -f docker-compose.prod.yml up -d
-
-# Verify services are running
-docker-compose -f docker-compose.prod.yml ps
-
-# Check logs for errors
-docker-compose -f docker-compose.prod.yml logs -f
 ```
 
 **Services**:
 - `nginx`: Reverse proxy (ports 80, 443)
-- `frontend`: React production build
+- `frontend`: React production build (nginx + static files)
 - `backend`: FastAPI with Gunicorn
 - `celery-worker`: Background task processor
 - `celery-beat`: Scheduled tasks
 - `postgres`: Database
 - `redis`: Cache & message broker
 - `minio`: Object storage
+
+**For detailed deployment instructions**, see [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ### SSL Certificates
 

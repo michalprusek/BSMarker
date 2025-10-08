@@ -1,0 +1,21 @@
+#!/bin/bash
+# Generate secure secrets for production environment
+
+echo "🔐 Generating secure secrets for BSMarker production..."
+echo ""
+echo "Copy these values to your .env.production file:"
+echo ""
+echo "# ============================================"
+echo "# Generated Secrets - $(date)"
+echo "# ============================================"
+echo ""
+echo "SECRET_KEY=$(openssl rand -hex 32)"
+echo "DB_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=')"
+echo "MINIO_ACCESS_KEY=$(openssl rand -base64 15 | tr -d '/+=')"
+echo "MINIO_SECRET_KEY=$(openssl rand -base64 30 | tr -d '/+=')"
+echo ""
+echo "# ============================================"
+echo ""
+echo "⚠️  IMPORTANT: Save these values securely!"
+echo "   These secrets can only be generated once."
+echo "   If you lose them, you'll need to regenerate and reconfigure."
