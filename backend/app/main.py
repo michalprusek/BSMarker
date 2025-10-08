@@ -2,6 +2,14 @@ import io
 import logging
 from typing import Optional
 
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import Response, StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from slowapi.errors import RateLimitExceeded
+from starlette.datastructures import MutableHeaders
+
 from app.api.api_v1.api import api_router
 from app.api.deps import get_current_user
 from app.core.config import settings
@@ -14,13 +22,6 @@ from app.db.session import SessionLocal
 from app.models import *  # noqa: F403,F401
 from app.models.user import User
 from app.services.minio_client import minio_client
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import Response, StreamingResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from slowapi.errors import RateLimitExceeded
-from starlette.datastructures import MutableHeaders
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -64,8 +65,12 @@ async def proxy_headers_middleware(request: Request, call_next):
                 new_headers.append((header_name, header_value))
         request.scope["headers"] = new_headers
 
-    # Process the request
-    response = await call_next(request)
+    # Process the request - let exceptions propagate properly
+    try:
+        response = await call_next(request)
+    except Exception:
+        # Re-raise all exceptions (including HTTPException) to be handled by FastAPI
+        raise
 
     # Fix redirect URLs to use HTTPS
     if hasattr(response, "headers"):

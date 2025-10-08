@@ -6,9 +6,10 @@ import { BoundingBox } from "../types";
 export const MIN_TIME_GAP = 0.010; // 10 milliseconds
 
 /**
- * Gap to add when resolving conflicts (5ms on each side = 10ms total)
+ * Gap to add when resolving conflicts (6ms on each side = 12ms total)
+ * Using 12ms instead of 10ms to account for floating-point rounding errors
  */
-const RESOLUTION_GAP = 0.005; // 5 milliseconds
+const RESOLUTION_GAP = 0.006; // 6 milliseconds
 
 /**
  * Interface representing a conflict between two bounding boxes

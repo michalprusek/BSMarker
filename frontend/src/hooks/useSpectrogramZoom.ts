@@ -159,6 +159,7 @@ export const useSpectrogramZoom = (options: UseSpectrogramZoomOptions = {}) => {
         onZoomChange?.(newZoomState);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [zoomState, minZoom, maxZoom, zoomSpeed, smoothing, onZoomChange],
   );
 
