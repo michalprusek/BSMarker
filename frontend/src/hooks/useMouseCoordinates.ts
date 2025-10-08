@@ -67,7 +67,7 @@ export const useMouseCoordinates = (
         effectiveWidth,
       };
     },
-    [spectrogramDimensions, scrollOffset, zoomLevel],
+    [spectrogramDimensions, zoomLevel],
   );
 
   /**

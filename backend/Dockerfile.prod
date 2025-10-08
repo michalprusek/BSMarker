@@ -1,5 +1,10 @@
-# Multi-stage build pro produkční backend
-FROM python:3.11-slim as builder
+# Multi-stage build for production backend with aggressive caching
+# Compatible with both BuildKit and legacy builder
+
+# ============================================
+# Stage 1: Dependencies builder (Heavily cached)
+# ============================================
+FROM python:3.11-slim AS deps
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -12,24 +17,31 @@ RUN apt-get update && apt-get install -y \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install Python dependencies
+# Copy only requirements for better caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Production stage
-FROM python:3.11-slim
+# Install Python dependencies
+# Note: Remove --mount for compatibility with legacy builder
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
+
+# ============================================
+# Stage 2: Production runtime
+# ============================================
+FROM python:3.11-slim AS runner
 
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y \
     libpq-dev \
     ffmpeg \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN groupadd -r bsmarker && useradd -r -g bsmarker bsmarker
 
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
+# Copy virtual environment from deps stage
+COPY --from=deps /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Set working directory
@@ -39,12 +51,15 @@ WORKDIR /app
 COPY --chown=bsmarker:bsmarker . .
 
 # Create necessary directories for logs and cache
-RUN mkdir -p /app/logs /tmp/librosa_cache /tmp/matplotlib_cache && \
-    chown -R bsmarker:bsmarker /app/logs /tmp/librosa_cache /tmp/matplotlib_cache
+RUN mkdir -p /app/logs /tmp/librosa_cache /tmp/matplotlib_cache /tmp/numba_cache && \
+    chown -R bsmarker:bsmarker /app/logs /tmp/librosa_cache /tmp/matplotlib_cache /tmp/numba_cache
 
 # Set environment variables for cache directories
 ENV LIBROSA_CACHE_DIR=/tmp/librosa_cache
 ENV MPLCONFIGDIR=/tmp/matplotlib_cache
+ENV NUMBA_CACHE_DIR=/tmp/numba_cache
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # Switch to non-root user
 USER bsmarker

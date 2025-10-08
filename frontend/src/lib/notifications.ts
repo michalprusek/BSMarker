@@ -1,9 +1,10 @@
 /**
  * Centralized notification management for BSMarker
  * Provides consistent toast messaging across the application with rate limiting
+ * Uses react-hot-toast for consistency with the rest of the application
  */
 
-import { toast, ToastOptions } from "react-toastify";
+import toast, { Toast } from "react-hot-toast";
 import { logger } from "./logger";
 
 export enum NotificationType {
@@ -122,6 +123,31 @@ export const Messages = {
     AUTOSAVE_SUCCESS: "Changes auto-saved",
     EXPORT_SUCCESS: "Annotations exported successfully",
     EXPORT_ERROR: "Failed to export annotations",
+    ADDED: (label: string) =>
+      `Annotation added with "${label}" label. Right-click to edit label.`,
+    ADDED_CLIPPED: (label: string) =>
+      `Annotation added with "${label}" label (clipped to bottom line). Right-click to edit label.`,
+    BELOW_BOTTOM_LINE: "Cannot create bounding box below the bottom line",
+  },
+
+  // Label Modes
+  LABEL_MODE: {
+    NO_DEFAULT: "Annotation mode: No default label",
+    USE_LAST: (lastLabel: string | null) =>
+      lastLabel
+        ? `Annotation mode: Use last assigned label (currently: "${lastLabel}")`
+        : "Annotation mode: Use last assigned label (none assigned yet)",
+    CUSTOM_SET: (label: string) => `Default label set to: "${label}"`,
+  },
+
+  // Conflicts
+  CONFLICT: {
+    NONE_DETECTED: "No conflicts detected! All bounding boxes have proper 10ms gaps.",
+    DETECTED: (count: number) =>
+      `${count} conflict${count > 1 ? "s" : ""} detected`,
+    RESOLVED: (count: number) =>
+      `Resolved ${count} conflict${count > 1 ? "s" : ""}!`,
+    NO_CONFLICTS_TO_RESOLVE: "No conflicts to resolve",
   },
 
   // General
@@ -141,20 +167,11 @@ export const Messages = {
 } as const;
 
 class NotificationService {
-  private defaultOptions: ToastOptions = {
-    position: "top-right",
-    autoClose: 4000,
-    hideProgressBar: false,
-    closeOnClick: true,
-    pauseOnHover: true,
-    draggable: true,
-  };
-
   private notify(
     type: NotificationType,
     message: string,
-    options?: ToastOptions,
     context?: string,
+    duration?: number,
   ) {
     // Create rate limit key based on type and message
     const rateLimitKey = `${type}:${message.substring(0, 50)}`;
@@ -171,46 +188,44 @@ class NotificationService {
       return;
     }
 
-    const finalOptions = { ...this.defaultOptions, ...options };
-
     // Log the notification
     const logContext = context || "Notification";
     switch (type) {
       case NotificationType.SUCCESS:
         logger.info(message, logContext);
-        toast.success(message, finalOptions);
+        toast.success(message, { duration: duration || 4000 });
         break;
       case NotificationType.ERROR:
         logger.error(message, logContext);
-        toast.error(message, finalOptions);
+        toast.error(message, { duration: duration || 4000 });
         break;
       case NotificationType.WARNING:
         logger.warn(message, logContext);
-        toast.warning(message, finalOptions);
+        toast(message, { icon: "⚠️", duration: duration || 4000 });
         break;
       case NotificationType.INFO:
         logger.info(message, logContext);
-        toast.info(message, finalOptions);
+        toast(message, { icon: "ℹ️", duration: duration || 4000 });
         break;
     }
   }
 
-  success(message: string, options?: ToastOptions, context?: string) {
-    this.notify(NotificationType.SUCCESS, message, options, context);
+  success(message: string, context?: string, duration?: number) {
+    this.notify(NotificationType.SUCCESS, message, context, duration);
   }
 
-  error(message: string | Error, options?: ToastOptions, context?: string) {
+  error(message: string | Error, context?: string, duration?: number) {
     const errorMessage =
       message instanceof Error ? this.formatError(message) : message;
-    this.notify(NotificationType.ERROR, errorMessage, options, context);
+    this.notify(NotificationType.ERROR, errorMessage, context, duration);
   }
 
-  warning(message: string, options?: ToastOptions, context?: string) {
-    this.notify(NotificationType.WARNING, message, options, context);
+  warning(message: string, context?: string, duration?: number) {
+    this.notify(NotificationType.WARNING, message, context, duration);
   }
 
-  info(message: string, options?: ToastOptions, context?: string) {
-    this.notify(NotificationType.INFO, message, options, context);
+  info(message: string, context?: string, duration?: number) {
+    this.notify(NotificationType.INFO, message, context, duration);
   }
 
   // Helper method to format error objects
@@ -222,6 +237,9 @@ class NotificationService {
       error.response
     ) {
       const response = error.response as any;
+      if (response.data?.detail) {
+        return response.data.detail;
+      }
       if (response.data?.message) {
         return response.data.message;
       }
@@ -244,52 +262,43 @@ class NotificationService {
 
   // Show loading toast that can be updated
   loading(message: string = "Loading...") {
-    return toast.loading(message, {
-      position: this.defaultOptions.position,
-    });
-  }
-
-  // Update a loading toast
-  updateLoading(toastId: any, type: NotificationType, message: string) {
-    toast.update(toastId, {
-      render: message,
-      type: type as any,
-      isLoading: false,
-      autoClose: this.defaultOptions.autoClose,
-      closeButton: true,
-    });
-  }
-
-  // Dismiss specific toast or all toasts
-  dismiss(toastId?: any) {
-    if (toastId) {
-      toast.dismiss(toastId);
-    } else {
-      toast.dismiss();
-    }
+    return toast.loading(message);
   }
 
   // Promise-based notifications
   async promise<T>(
     promise: Promise<T>,
     messages: {
-      pending: string;
+      loading: string;
       success: string;
       error: string;
     },
     context?: string,
   ): Promise<T> {
-    const toastId = this.loading(messages.pending);
-
     try {
-      const result = await promise;
-      this.updateLoading(toastId, NotificationType.SUCCESS, messages.success);
-      logger.info(`Promise resolved: ${messages.pending}`, context);
+      const result = await toast.promise(promise, messages);
+      logger.info(`Promise resolved: ${messages.loading}`, context);
       return result;
     } catch (error) {
-      this.updateLoading(toastId, NotificationType.ERROR, messages.error);
-      logger.error(`Promise rejected: ${messages.pending}`, context, error);
+      logger.error(`Promise rejected: ${messages.loading}`, context, error);
       throw error;
+    }
+  }
+
+  // Custom toast with JSX (for complex content like conflict resolution buttons)
+  custom(
+    content: (t: Toast) => JSX.Element,
+    duration?: number,
+  ) {
+    return toast.custom(content, { duration: duration || 8000 });
+  }
+
+  // Dismiss specific toast or all toasts
+  dismiss(toastId?: string) {
+    if (toastId) {
+      toast.dismiss(toastId);
+    } else {
+      toast.dismiss();
     }
   }
 }
@@ -299,15 +308,15 @@ export const notification = new NotificationService();
 
 // Convenience exports
 export const notifySuccess = (message: string, context?: string) =>
-  notification.success(message, undefined, context);
+  notification.success(message, context);
 
 export const notifyError = (message: string | Error, context?: string) =>
-  notification.error(message, undefined, context);
+  notification.error(message, context);
 
 export const notifyWarning = (message: string, context?: string) =>
-  notification.warning(message, undefined, context);
+  notification.warning(message, context);
 
 export const notifyInfo = (message: string, context?: string) =>
-  notification.info(message, undefined, context);
+  notification.info(message, context);
 
 export default notification;

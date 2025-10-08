@@ -22,18 +22,25 @@ import {
   MagnifyingGlassMinusIcon,
   ArrowsPointingOutIcon,
   QuestionMarkCircleIcon,
+  CursorArrowRaysIcon,
+  MinusIcon,
+  ExclamationTriangleIcon,
+  CheckCircleIcon,
 } from "@heroicons/react/24/solid";
 import toast from "react-hot-toast";
 import WaveSurfer from "wavesurfer.js";
 import { Stage, Layer, Rect, Line, Circle, Group, Text } from "react-konva";
 import { recordingService, annotationService } from "../services/api";
 import { Recording, BoundingBox } from "../types";
+import { notification, Messages } from "../lib/notifications";
 import BoundingBoxList from "../components/BoundingBoxList";
 import LabelModal from "../components/LabelModal";
 import ContextMenu from "../components/ContextMenu";
 import SpectrogramScales from "../components/SpectrogramScales";
 import LoadingSpinner from "../components/LoadingSpinner";
 import KeyboardShortcutsModal from "../components/KeyboardShortcutsModal";
+import BottomLineModal from "../components/BottomLineModal";
+import ConflictWarningModal from "../components/ConflictWarningModal";
 import { CoordinateUtils, LAYOUT_CONSTANTS } from "../utils/coordinates";
 import {
   AXIS_STYLES,
@@ -43,7 +50,14 @@ import {
 import { useAutosave } from "../hooks/useAutosave";
 import { useMouseCoordinates } from "../hooks/useMouseCoordinates";
 import { useBoundingBoxTimeFrequency } from "../hooks/useBoundingBoxTimeFrequency";
+import { useBottomLine } from "../hooks/useBottomLine";
+import { useNavigationGuard } from "../hooks/useNavigationGuard";
 import { ANNOTATION_CONSTANTS, LABEL_COLORS } from "../utils/constants";
+import {
+  detectConflicts,
+  resolveConflicts,
+  BoundingBoxConflict,
+} from "../utils/conflictDetection";
 // import { useSpectrogramZoom } from '../hooks/useSpectrogramZoom'; // Unused - replaced with custom throttled zoom
 import { throttle } from "lodash";
 
@@ -95,7 +109,8 @@ const AnnotationEditor: React.FC = () => {
     height: number;
   } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [tempBox, setTempBox] = useState<BoundingBox | null>(null);
@@ -109,11 +124,13 @@ const AnnotationEditor: React.FC = () => {
     height: 400,
   });
   const [showSidebar, setShowSidebar] = useState(false);
+  const [sortMode, setSortMode] = useState<"time" | "alphabetical">("time");
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [verticalScrollOffset, setVerticalScrollOffset] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentSpeedIndex, setCurrentSpeedIndex] = useState(0);
   const [isAnnotationMode, setIsAnnotationMode] = useState(false);
+  const [isRoiSelectionMode, setIsRoiSelectionMode] = useState(false);
   const [isRewindingLeft, setIsRewindingLeft] = useState(false);
   const [isRewindingRight, setIsRewindingRight] = useState(false);
   const [selectedBoxes, setSelectedBoxes] = useState<Set<number>>(new Set());
@@ -129,6 +146,14 @@ const AnnotationEditor: React.FC = () => {
     y: number;
     boxIndex?: number;
   } | null>(null);
+  const [annotationModeContextMenu, setAnnotationModeContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [defaultLabel, setDefaultLabel] = useState<string | null>(null);
+  const [lastUsedLabel, setLastUsedLabel] = useState<string | null>(null);
+  const [showDefaultLabelInput, setShowDefaultLabelInput] = useState(false);
+  const [defaultLabelInput, setDefaultLabelInput] = useState("");
   const [clipboardBox, setClipboardBox] = useState<
     BoundingBox | BoundingBox[] | null
   >(null);
@@ -202,9 +227,11 @@ const AnnotationEditor: React.FC = () => {
   } | null>(null);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] =
     useState<boolean>(false);
+  const [showBottomLineModal, setShowBottomLineModal] = useState<boolean>(false);
+  const [conflicts, setConflicts] = useState<BoundingBoxConflict[]>([]);
+  const [highlightConflicts, setHighlightConflicts] = useState<boolean>(false);
   const rewindIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const wasPlayingRef = useRef<boolean>(false);
-  const keyDownArrowRef = useRef<boolean>(false);
 
   const waveformRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
@@ -268,6 +295,43 @@ const AnnotationEditor: React.FC = () => {
     duration,
     getNyquistFrequency,
   );
+
+  // Bottom line (frequency boundary) management
+  const {
+    bottomLine,
+    isSettingBottomLine,
+    setIsSettingBottomLine,
+    setBottomLineAtPixel,
+    setBottomLineAtFrequency,
+    clearBottomLine,
+  } = useBottomLine();
+
+  // Navigation guard - block navigation when conflicts exist
+  const {
+    showConflictModal,
+    conflicts: navigationConflicts,
+    proceedNavigation,
+    cancelNavigation,
+  } = useNavigationGuard({
+    boundingBoxes,
+    enabled: true,
+  });
+
+  // Memoized sorted bounding boxes
+  const sortedBoundingBoxes = useMemo(() => {
+    if (sortMode === "alphabetical") {
+      return [...boundingBoxes].sort((a, b) => {
+        const labelA = (a.label || "None").toLowerCase();
+        const labelB = (b.label || "None").toLowerCase();
+        return labelA.localeCompare(labelB);
+      });
+    } else {
+      // Sort by time (start_time)
+      return [...boundingBoxes].sort((a, b) => {
+        return (a.start_time || 0) - (b.start_time || 0);
+      });
+    }
+  }, [boundingBoxes, sortMode]);
 
   // Memoize color calculations for performance
   const getLabelColorMemoized = useMemo(() => {
@@ -441,15 +505,32 @@ const AnnotationEditor: React.FC = () => {
         wavesurferRef.current.pause();
       }
 
-      if (hasUnsavedChanges && !isAutoSaving && !isSaving) {
+      // Check for conflicts
+      const detectedConflicts = detectConflicts(boundingBoxes);
+      const hasConflicts = detectedConflicts.length > 0;
+
+      if ((hasUnsavedChanges || hasConflicts) && !isAutoSaving && !isSaving) {
         // Enhanced beforeunload with save attempt
-        manualSave().catch(() => {
-          // Silent fail - we can't do much during beforeunload
-        });
+        if (hasUnsavedChanges) {
+          manualSave().catch(() => {
+            // Silent fail - we can't do much during beforeunload
+          });
+        }
 
         event.preventDefault();
-        event.returnValue =
-          "You have unsaved changes. Are you sure you want to leave?";
+
+        // Update message based on what's wrong
+        if (hasConflicts && hasUnsavedChanges) {
+          event.returnValue =
+            `You have ${detectedConflicts.length} unresolved conflict${detectedConflicts.length > 1 ? "s" : ""} and unsaved changes. Are you sure you want to leave?`;
+        } else if (hasConflicts) {
+          event.returnValue =
+            `You have ${detectedConflicts.length} unresolved bounding box conflict${detectedConflicts.length > 1 ? "s" : ""}. Are you sure you want to leave?`;
+        } else {
+          event.returnValue =
+            "You have unsaved changes. Are you sure you want to leave?";
+        }
+
         return event.returnValue;
       }
     };
@@ -459,7 +540,7 @@ const AnnotationEditor: React.FC = () => {
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [hasUnsavedChanges, isAutoSaving, isSaving, manualSave]);
+  }, [hasUnsavedChanges, isAutoSaving, isSaving, manualSave, boundingBoxes]);
 
   useEffect(() => {
     if (recordingId) {
@@ -485,7 +566,8 @@ const AnnotationEditor: React.FC = () => {
     return () => {
       // Cleanup handled by useAutosave hook
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordingId]);
 
   // Cleanup blob URLs when component unmounts
@@ -537,7 +619,7 @@ const AnnotationEditor: React.FC = () => {
         );
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boundingBoxes, isDuringDragOperation]);
 
   useEffect(() => {
@@ -574,6 +656,46 @@ const AnnotationEditor: React.FC = () => {
         return;
       }
 
+      // Handle ',' key for ROI selection mode toggle
+      if (
+        e.key === "," &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !showLabelModal &&
+        !showCustomLabelInput
+      ) {
+        e.preventDefault();
+        toggleRoiSelectionMode();
+        return;
+      }
+
+      // Handle ';' key for bottom line mode toggle
+      if (
+        e.key === ";" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !showLabelModal &&
+        !showCustomLabelInput
+      ) {
+        e.preventDefault();
+        // If bottom line is active, open modal to edit/remove it
+        if (bottomLine.isActive) {
+          setShowBottomLineModal(true);
+        } else {
+          // Toggle bottom line setting mode
+          const newState = !isSettingBottomLine;
+          setIsSettingBottomLine(newState);
+          // Disable other modes when enabling bottom line mode
+          if (newState) {
+            setIsAnnotationMode(false);
+            setIsRoiSelectionMode(false);
+          }
+        }
+        return;
+      }
+
       // Handle '?' key for showing keyboard shortcuts
       if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
@@ -607,8 +729,15 @@ const AnnotationEditor: React.FC = () => {
         e.preventDefault();
         handlePlayPause();
       } else if (e.key === "Escape") {
+        // Exit all modes and clear selections
         if (isAnnotationMode) {
           setIsAnnotationMode(false);
+        }
+        if (isRoiSelectionMode) {
+          setIsRoiSelectionMode(false);
+        }
+        if (isSettingBottomLine) {
+          setIsSettingBottomLine(false);
         }
         if (selectedBoxes.size > 0) {
           setSelectedBoxes(new Set());
@@ -646,6 +775,23 @@ const AnnotationEditor: React.FC = () => {
       } else if ((e.ctrlKey || e.metaKey) && e.key === "0") {
         e.preventDefault();
         handleZoomReset();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "1") {
+        // Set annotation mode: No default label
+        e.preventDefault();
+        setDefaultLabel(null);
+        notification.success(Messages.LABEL_MODE.NO_DEFAULT);
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "2") {
+        // Set annotation mode: Use last assigned label
+        e.preventDefault();
+        setDefaultLabel("USE_LAST");
+        notification.success(Messages.LABEL_MODE.USE_LAST(lastUsedLabel));
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "3") {
+        // Set annotation mode: Custom default label
+        e.preventDefault();
+        setShowDefaultLabelInput(true);
+        setDefaultLabelInput(
+          defaultLabel && defaultLabel !== "USE_LAST" ? defaultLabel : "",
+        );
       }
     };
 
@@ -668,7 +814,7 @@ const AnnotationEditor: React.FC = () => {
         clearInterval(rewindIntervalRef.current);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     isRewindingLeft,
     isRewindingRight,
@@ -704,7 +850,7 @@ const AnnotationEditor: React.FC = () => {
       }
       // Don't revoke URLs here - they might still be needed
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recording, spectrogramUrl]); // Removed spectrogramDimensions to prevent recreation on resize
 
   // Handle waveform resize separately without recreating WaveSurfer
@@ -790,7 +936,9 @@ const AnnotationEditor: React.FC = () => {
         });
       }
     }
-  }, [spectrogramUrl]); // Only depend on spectrogramUrl, not baseSpectrogramDimensions to avoid loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spectrogramUrl]);
 
   // Handle window resize for viewport only (not content dimensions)
   useEffect(() => {
@@ -804,11 +952,27 @@ const AnnotationEditor: React.FC = () => {
           const containerWidth = unifiedScrollRef.current.clientWidth;
           const containerHeight = unifiedScrollRef.current.clientHeight;
 
-          // Only update viewport dimensions, never change base dimensions on resize
+          // Always update viewport dimensions
           setSpectrogramDimensions({
             width: containerWidth,
             height: containerHeight,
           });
+
+          // Update base dimensions if container grew significantly (e.g., console closed)
+          // This allows expansion but prevents unwanted shrinking of coordinate space
+          const RESIZE_THRESHOLD = 50; // pixels
+          const heightGrowth = containerHeight - baseSpectrogramDimensions.height;
+          const widthGrowth = containerWidth - baseSpectrogramDimensions.width;
+
+          if (heightGrowth > RESIZE_THRESHOLD || widthGrowth > RESIZE_THRESHOLD) {
+            console.log(
+              `📐 Container significantly expanded (height: +${heightGrowth}px, width: +${widthGrowth}px), updating base dimensions`
+            );
+            setBaseSpectrogramDimensions({
+              width: containerWidth,
+              height: containerHeight,
+            });
+          }
         }
       }, 100);
     };
@@ -823,39 +987,53 @@ const AnnotationEditor: React.FC = () => {
       clearTimeout(resizeTimeout);
       window.removeEventListener("resize", updateViewportDimensions);
     };
-  }, []); // Empty deps - only set up resize listener once
+  }, [baseSpectrogramDimensions.height, baseSpectrogramDimensions.width]); // Add deps to compare against current base dimensions
+
+  // Track previous duration to avoid unnecessary recalculations
+  const prevDurationRef = useRef<number>(0);
+  const prevWidthRef = useRef<number>(0);
 
   // Synchronize time coordinates when duration and dimensions become available
   // This ensures mirrors align with bounding boxes regardless of load order
+  // IMPORTANT: Always recalculate when duration changes to fix stale coordinates
+  // from previous recordings or initial load with duration=0
   useEffect(() => {
+    // Only recalculate if duration or width actually changed
+    const durationChanged = duration !== prevDurationRef.current;
+    const widthChanged = baseSpectrogramDimensions.width !== prevWidthRef.current;
+
     if (
       duration > 0 &&
       baseSpectrogramDimensions.width > 0 &&
-      boundingBoxes.length > 0
+      boundingBoxes.length > 0 &&
+      (durationChanged || widthChanged)
     ) {
-      // Check if any boxes need time coordinate update
-      const needsUpdate = boundingBoxes.some(
-        (box) => !box.start_time && !box.end_time
-      );
-
-      if (needsUpdate) {
-        // Create a stable reference to avoid re-renders
-        setBoundingBoxes((currentBoxes) =>
-          currentBoxes.map((box) => {
-            // Only update if time coordinates are missing
-            if (!box.start_time && !box.end_time) {
-              const timeFrequency = convertBoxToTimeFrequency(box);
-              return {
-                ...box,
-                ...timeFrequency,
-              };
-            }
-            return box;
-          })
+      // Performance monitoring: Log warning if too many boxes
+      if (boundingBoxes.length > 100) {
+        console.warn(
+          `Performance warning: Recalculating time coordinates for ${boundingBoxes.length} bounding boxes. ` +
+          `This operation may be slow. Consider optimizing for large datasets.`
         );
       }
+
+      // Always recalculate time coordinates when duration changes
+      // This fixes the issue where waveform mirrors are misaligned after
+      // switching recordings because boxes have stale time coordinates
+      setBoundingBoxes((currentBoxes) =>
+        currentBoxes.map((box) => {
+          const timeFrequency = convertBoxToTimeFrequency(box);
+          return {
+            ...box,
+            ...timeFrequency,
+          };
+        })
+      );
+
+      // Update refs
+      prevDurationRef.current = duration;
+      prevWidthRef.current = baseSpectrogramDimensions.width;
     }
-  }, [duration, baseSpectrogramDimensions.width, convertBoxToTimeFrequency]); // Use base dimensions for consistency
+  }, [duration, baseSpectrogramDimensions.width, convertBoxToTimeFrequency, boundingBoxes.length]); // Use base dimensions for consistency
 
   const loadSpectrogram = async (recordingId: number) => {
     setIsLoadingSpectrogram(true);
@@ -1042,8 +1220,10 @@ const AnnotationEditor: React.FC = () => {
       // Store interval reference for cleanup
       return pollInterval;
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [recording?.id],
   );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
   const fetchProjectRecordings = async () => {
     if (!recordingId) return;
@@ -1218,7 +1398,7 @@ const AnnotationEditor: React.FC = () => {
 
     try {
       const response = await fetch(
-        `${baseUrl}/api/v1/recordings/${recording.id}/audio`,
+        `${baseUrl}/recordings/${recording.id}/audio`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -1351,6 +1531,7 @@ const AnnotationEditor: React.FC = () => {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const startRewind = (direction: "forward" | "backward") => {
     if (!wavesurferRef.current || !duration) return;
 
@@ -1392,7 +1573,9 @@ const AnnotationEditor: React.FC = () => {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const stopRewind = () => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
     if (rewindIntervalRef.current) {
       clearInterval(rewindIntervalRef.current);
       rewindIntervalRef.current = null;
@@ -1409,7 +1592,23 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const toggleAnnotationMode = () => {
-    setIsAnnotationMode(!isAnnotationMode);
+    const newState = !isAnnotationMode;
+    setIsAnnotationMode(newState);
+    // Disable other modes when enabling annotation mode
+    if (newState) {
+      setIsRoiSelectionMode(false);
+      setIsSettingBottomLine(false);
+    }
+  };
+
+  const toggleRoiSelectionMode = () => {
+    const newState = !isRoiSelectionMode;
+    setIsRoiSelectionMode(newState);
+    // Disable other modes when enabling ROI selection mode
+    if (newState) {
+      setIsAnnotationMode(false);
+      setIsSettingBottomLine(false);
+    }
   };
 
   // Handle horizontal panning with arrow keys
@@ -1442,13 +1641,25 @@ const AnnotationEditor: React.FC = () => {
   const constrainBox = (box: BoundingBox): BoundingBox => {
     // Use centralized coordinate utilities for consistent constraint handling
     // NOTE: coordinates here are in world space (unzoomed), so use zoom level 1
-    const constrained = CoordinateUtils.constrainBoundingBox(
+    let constrained = CoordinateUtils.constrainBoundingBox(
       box,
       baseSpectrogramDimensions.width,  // Use base dimensions for consistency
       baseSpectrogramDimensions.height,
       true, // Account for frequency scale
       1, // World coordinates are unzoomed, so zoom level is 1
     );
+
+    // Apply bottom line constraint if active
+    // NOTE: Use position-based constraint (like spectrogram boundaries) to preserve box shape
+    if (bottomLine.isActive && bottomLine.pixelY !== null) {
+      const bottomY = bottomLine.pixelY;
+
+      // If box extends below the bottom line, move it up to keep it fully above the line
+      // This preserves the original box height instead of clipping it
+      if (constrained.y + constrained.height > bottomY) {
+        constrained.y = Math.max(0, bottomY - constrained.height);
+      }
+    }
 
     // Use centralized conversion hook for time/frequency
     const timeFrequency = convertBoxToTimeFrequency(constrained);
@@ -1503,6 +1714,19 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const pauseAndNavigate = (path: string) => {
+    // Check for conflicts before navigating
+    const detectedConflicts = detectConflicts(boundingBoxes);
+    if (detectedConflicts.length > 0) {
+      toast.error(
+        `Cannot navigate: ${detectedConflicts.length} conflict${detectedConflicts.length > 1 ? "s" : ""} detected. Please resolve them first.`,
+        { duration: 5000 }
+      );
+      // Highlight conflicts to help user find them
+      setConflicts(detectedConflicts);
+      setHighlightConflicts(true);
+      return;
+    }
+
     // Pause audio before navigating
     if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
       wavesurferRef.current.pause();
@@ -1512,6 +1736,19 @@ const AnnotationEditor: React.FC = () => {
 
   const navigateToRecording = async (index: number) => {
     if (index >= 0 && index < projectRecordings.length) {
+      // Check for conflicts before navigating
+      const detectedConflicts = detectConflicts(boundingBoxes);
+      if (detectedConflicts.length > 0) {
+        toast.error(
+          `Cannot navigate: ${detectedConflicts.length} conflict${detectedConflicts.length > 1 ? "s" : ""} detected. Please resolve them first.`,
+          { duration: 5000 }
+        );
+        // Highlight conflicts to help user find them
+        setConflicts(detectedConflicts);
+        setHighlightConflicts(true);
+        return;
+      }
+
       // Pause audio before navigating
       if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
         wavesurferRef.current.pause();
@@ -1601,6 +1838,8 @@ const AnnotationEditor: React.FC = () => {
       setHasUnsavedChanges(true);
       toast.success("Bounding box pasted");
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     clipboardBox,
     contextMenu,
@@ -1662,10 +1901,26 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     const containerHeight = Math.max(baseSpectrogramDimensions.height, 600);
-    const spectrogramHeight = containerHeight * 0.6;
+    const spectrogramHeight = containerHeight * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
 
     // Use centralized coordinate transformation hook
     const { seekPosition, pos } = transformMousePoint(point);
+
+    // Handle bottom line setting mode
+    if (isSettingBottomLine && point.y <= spectrogramHeight) {
+      // Calculate frequency from pixel position
+      const nyquistFreq = getNyquistFrequency();
+      const minFreq = 0;
+      const maxFreq = nyquistFreq;
+
+      // Convert pixel Y to frequency (Y=0 is top/max freq, Y=height is bottom/min freq)
+      const normalizedY = pos.y / spectrogramHeight;
+      const frequency = maxFreq - (normalizedY * (maxFreq - minFreq));
+
+      setBottomLineAtPixel(pos.y, frequency);
+      toast.success(`Bottom line set at ${Math.round(frequency)} Hz`);
+      return; // Prevent other interactions
+    }
 
     // Check if clicking on a bounding box first (before handling right-click)
     const clickedBoxIndex = boundingBoxes.findIndex(
@@ -1712,6 +1967,7 @@ const AnnotationEditor: React.FC = () => {
     // This ensures audio seeks regardless of whether clicking on empty space or near bounding boxes
     if (
       !isAnnotationMode &&
+      !isSettingBottomLine &&
       e.evt.button === 0 &&
       wavesurferRef.current &&
       duration > 0 &&
@@ -1861,8 +2117,14 @@ const AnnotationEditor: React.FC = () => {
         return;
       }
 
-      // If not shift/ctrl clicking, handle deselection or start panning
-      if (!e.evt.shiftKey && !e.evt.ctrlKey && !e.evt.metaKey) {
+      // If in ROI selection mode or shift/ctrl clicking, start selection rectangle
+      if (isRoiSelectionMode || e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey) {
+        // Start selection rectangle for ROI mode or shift/ctrl
+        setIsSelecting(true);
+        setSelectionRect({ x: pos.x, y: pos.y, width: 0, height: 0 });
+        setSelectedBoxes(new Set());
+        setSelectedBox(null);
+      } else {
         // Deselect all bounding boxes when clicking outside
         if (selectedBoxes.size > 0 || selectedBox) {
           setSelectedBoxes(new Set());
@@ -1883,12 +2145,6 @@ const AnnotationEditor: React.FC = () => {
             e.evt.preventDefault();
           }
         }
-      } else {
-        // Start selection rectangle for shift/ctrl
-        setIsSelecting(true);
-        setSelectionRect({ x: pos.x, y: pos.y, width: 0, height: 0 });
-        setSelectedBoxes(new Set());
-        setSelectedBox(null);
       }
     } else {
       // Annotation mode - start drawing (only in spectrogram area)
@@ -1903,7 +2159,7 @@ const AnnotationEditor: React.FC = () => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     const containerHeight = Math.max(baseSpectrogramDimensions.height, 600);
-    const spectrogramHeight = containerHeight * 0.6;
+    const spectrogramHeight = containerHeight * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
 
     // Use centralized coordinate transformation hook (same as handleMouseDown)
     const { seekPosition, pos } = transformMousePoint(point);
@@ -1929,6 +2185,7 @@ const AnnotationEditor: React.FC = () => {
       point.y > spectrogramHeight &&
       e.evt.buttons === 1 &&
       !isAnnotationMode &&
+      !isSettingBottomLine &&
       !isPanning &&
       !draggingBox &&
       !resizingBox
@@ -1989,6 +2246,14 @@ const AnnotationEditor: React.FC = () => {
 
       setBoundingBoxes(updatedBoxes);
       setHasUnsavedChanges(true);
+
+      // Clear conflict highlighting when box is moved
+      if (highlightConflicts) {
+        setHighlightConflicts(false);
+        setConflicts([]);
+        toast.dismiss(); // Close "Resolve Automatically" popup
+      }
+
       return;
     }
 
@@ -2038,6 +2303,14 @@ const AnnotationEditor: React.FC = () => {
       setBoundingBoxes(updatedBoxes);
       setSelectedBox(newBox);
       setHasUnsavedChanges(true);
+
+      // Clear conflict highlighting when box is resized
+      if (highlightConflicts) {
+        setHighlightConflicts(false);
+        setConflicts([]);
+        toast.dismiss(); // Close "Resolve Automatically" popup
+      }
+
       return;
     }
 
@@ -2163,6 +2436,10 @@ const AnnotationEditor: React.FC = () => {
     if (isSelecting) {
       setIsSelecting(false);
       setSelectionRect(null);
+      // Auto-deactivate ROI selection mode after completing selection
+      if (isRoiSelectionMode) {
+        setIsRoiSelectionMode(false);
+      }
       return;
     }
 
@@ -2187,21 +2464,61 @@ const AnnotationEditor: React.FC = () => {
         };
 
         // Use centralized conversion hook for time/frequency
-        const timeFrequency =
+        // const timeFrequency =
           convertNormalizedBoxToTimeFrequency(normalizedBox);
 
+        // Determine label based on defaultLabel setting
+        let assignedLabel = "None";
+        if (defaultLabel === "USE_LAST" && lastUsedLabel) {
+          assignedLabel = lastUsedLabel;
+        } else if (defaultLabel && defaultLabel !== "USE_LAST") {
+          assignedLabel = defaultLabel;
+        }
+
+        // Apply bottom line clipping if active
+        let clippedBox = { ...normalizedBox };
+        if (bottomLine.isActive && bottomLine.pixelY !== null) {
+          const bottomY = bottomLine.pixelY;
+
+          // If box extends below the bottom line, clip its height
+          if (clippedBox.y + clippedBox.height > bottomY) {
+            const newHeight = bottomY - clippedBox.y;
+            // Only clip if there's still visible height remaining
+            if (newHeight > 0) {
+              clippedBox.height = newHeight;
+            } else {
+              // Box is entirely below the line, don't create it
+              setDrawingBox(null);
+              notification.error(Messages.ANNOTATION.BELOW_BOTTOM_LINE);
+              return;
+            }
+          }
+        }
+
+        // Recalculate time/frequency for clipped box
+        const finalTimeFrequency = convertNormalizedBoxToTimeFrequency(clippedBox);
+
         const newBox: BoundingBox = {
-          ...normalizedBox,
-          label: "None", // Auto-assign "None" label
-          ...timeFrequency,
+          ...clippedBox,
+          label: assignedLabel,
+          ...finalTimeFrequency,
         };
+
+        // Track the last used label (excluding "None") for consistency with manual label assignment
+        if (assignedLabel && assignedLabel !== "None") {
+          setLastUsedLabel(assignedLabel);
+        }
 
         // Add the box directly without showing the label modal
         setBoundingBoxes([...boundingBoxes, newBox]);
         setHasUnsavedChanges(true);
-        toast.success(
-          'Annotation added with "None" label. Right-click to edit label.',
-        );
+
+        // Notify user if box was clipped
+        if (clippedBox.height !== normalizedBox.height) {
+          notification.success(Messages.ANNOTATION.ADDED_CLIPPED(assignedLabel));
+        } else {
+          notification.success(Messages.ANNOTATION.ADDED(assignedLabel));
+        }
       }
 
       setDrawingBox(null);
@@ -2253,6 +2570,11 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const handleLabelSubmit = (label: string) => {
+    // Track the last used label (excluding "None")
+    if (label && label !== "None") {
+      setLastUsedLabel(label);
+    }
+
     if (tempBox) {
       // Check if we're editing an existing box
       const existingIndex = boundingBoxes.findIndex(
@@ -2286,6 +2608,11 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const handleUpdateLabel = (index: number, newLabel: string) => {
+    // Track the last used label (excluding "None")
+    if (newLabel && newLabel !== "None") {
+      setLastUsedLabel(newLabel);
+    }
+
     setBoundingBoxes((prev) =>
       prev.map((box, i) => (i === index ? { ...box, label: newLabel } : box)),
     );
@@ -2331,6 +2658,205 @@ const AnnotationEditor: React.FC = () => {
       unifiedScrollRef.current.scrollTop = 0;
     }
     setZoomOffset({ x: 0, y: 0 });
+  };
+
+  // Conflict detection and resolution handlers
+  const handleDetectConflicts = () => {
+    const detectedConflicts = detectConflicts(boundingBoxes);
+    setConflicts(detectedConflicts);
+    setHighlightConflicts(true);
+
+    if (detectedConflicts.length === 0) {
+      toast.success("No conflicts detected! All bounding boxes have proper 10ms gaps.");
+    } else {
+      // Show toast with custom JSX for the "Resolve Conflicts" button
+      // Capture detectedConflicts in closure to avoid state timing issues
+      toast(
+        (t) => (
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <p className="font-medium text-gray-900">
+                {detectedConflicts.length} conflict{detectedConflicts.length > 1 ? "s" : ""} detected
+              </p>
+              <p className="text-sm text-gray-600">
+                Some bounding boxes don't have the required 10ms gap
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                handleResolveConflicts(detectedConflicts);
+                toast.dismiss(t.id);
+              }}
+              className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Resolve Automatically
+            </button>
+          </div>
+        ),
+        {
+          duration: 8000,
+          icon: "⚠️",
+        }
+      );
+    }
+  };
+
+  const handleResolveConflicts = (conflictsToResolve?: BoundingBoxConflict[]) => {
+    // Use provided conflicts or fall back to state
+    const activeConflicts = conflictsToResolve || conflicts;
+
+    if (activeConflicts.length === 0) {
+      toast.error("No conflicts to resolve");
+      return;
+    }
+
+    const resolvedBoxes = resolveConflicts(boundingBoxes, activeConflicts);
+
+    // CRITICAL FIX: Recalculate pixel coordinates (x, width) from time coordinates
+    // because resolveConflicts only modifies start_time and end_time
+    const resolvedBoxesWithPixelCoords = resolvedBoxes.map((box) => {
+      const newX = CoordinateUtils.timeToPixel(
+        box.start_time,
+        duration,
+        baseSpectrogramDimensions.width,
+        1, // No zoom for stored coordinates
+        false,
+      );
+      const endX = CoordinateUtils.timeToPixel(
+        box.end_time,
+        duration,
+        baseSpectrogramDimensions.width,
+        1, // No zoom for stored coordinates
+        false,
+      );
+      const newWidth = endX - newX;
+
+      return {
+        ...box,
+        x: newX,
+        width: newWidth,
+      };
+    });
+
+    setBoundingBoxes(resolvedBoxesWithPixelCoords);
+
+    // Add to history for undo
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(resolvedBoxesWithPixelCoords);
+    if (newHistory.length > MAX_HISTORY_SIZE) {
+      newHistory.shift();
+    }
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+
+    // Clear conflicts and highlighting
+    setConflicts([]);
+    setHighlightConflicts(false);
+
+    toast.success(`Resolved ${activeConflicts.length} conflict${activeConflicts.length > 1 ? "s" : ""}!`);
+  };
+
+  const handleToggleHighlightConflicts = () => {
+    // Always detect conflicts when clicked (not a toggle)
+    handleDetectConflicts();
+  };
+
+  // Navigation guard conflict handlers
+  const handleResolveAndContinue = async () => {
+    // Use provided conflicts or fall back to state
+    const activeConflicts = navigationConflicts;
+
+    if (activeConflicts.length === 0) {
+      toast.error("No conflicts to resolve");
+      proceedNavigation();
+      return;
+    }
+
+    try {
+      // Resolve conflicts and get the modified boxes
+      const resolvedBoxes = resolveConflicts(boundingBoxes, activeConflicts);
+
+      // CRITICAL FIX: Recalculate pixel coordinates (x, width) from time coordinates
+      const resolvedBoxesWithPixelCoords = resolvedBoxes.map((box) => {
+        const newX = CoordinateUtils.timeToPixel(
+          box.start_time,
+          duration,
+          baseSpectrogramDimensions.width,
+          1,
+          false,
+        );
+        const endX = CoordinateUtils.timeToPixel(
+          box.end_time,
+          duration,
+          baseSpectrogramDimensions.width,
+          1,
+          false,
+        );
+        return {
+          ...box,
+          x: newX,
+          width: endX - newX,
+        };
+      });
+
+      // Update local state
+      setBoundingBoxes(resolvedBoxesWithPixelCoords);
+
+      // Add to history for undo
+      const newHistory = history.slice(0, historyIndex + 1);
+      newHistory.push(resolvedBoxesWithPixelCoords);
+      if (newHistory.length > MAX_HISTORY_SIZE) {
+        newHistory.shift();
+      }
+      setHistory(newHistory);
+      setHistoryIndex(newHistory.length - 1);
+
+      // Clear conflicts and highlighting
+      setConflicts([]);
+      setHighlightConflicts(false);
+
+      // CRITICAL FIX: Save the resolved boxes to the backend before navigating
+      toast.loading(`Saving ${activeConflicts.length} resolved conflict${activeConflicts.length > 1 ? "s" : ""}...`);
+
+      const saved = await saveAnnotations(recording?.id, resolvedBoxesWithPixelCoords, false);
+
+      if (saved) {
+        toast.success(`Resolved and saved ${activeConflicts.length} conflict${activeConflicts.length > 1 ? "s" : ""}!`);
+        // Proceed with navigation after successfully saving
+        proceedNavigation();
+      } else {
+        toast.error("Failed to save resolved conflicts. Please try again.");
+        // Don't navigate if save failed
+        cancelNavigation();
+      }
+    } catch (error) {
+      console.error("Error resolving conflicts:", error);
+      toast.error("Failed to resolve conflicts. Please try again.");
+      cancelNavigation();
+    }
+  };
+
+  const handleStayAndFix = () => {
+    // Cancel navigation and stay on page
+    cancelNavigation();
+
+    // Highlight the conflicts for manual fixing
+    setConflicts(navigationConflicts);
+    setHighlightConflicts(true);
+
+    toast.error(
+      `${navigationConflicts.length} conflict${navigationConflicts.length > 1 ? "s" : ""} detected. Please fix manually before leaving.`
+    );
+  };
+
+  const handleDiscardAndContinue = () => {
+    // User chose to leave with unresolved conflicts (unsafe)
+    toast.error(
+      "Warning: Leaving with unresolved conflicts. Data may not be saved correctly."
+    );
+
+    // Proceed with navigation anyway
+    proceedNavigation();
   };
 
   // Throttled mouse wheel zoom handler with cursor-centered zooming
@@ -2484,6 +3010,11 @@ const AnnotationEditor: React.FC = () => {
     });
 
     if (updateCount > 0) {
+      // Track the last used label (excluding "None") for consistency with other label assignment methods
+      if (label && label !== "None") {
+        setLastUsedLabel(label);
+      }
+
       setBoundingBoxes(updatedBoxes);
       toast.success(
         `Label "${label}" assigned to ${updateCount} box${updateCount > 1 ? "es" : ""}`,
@@ -2503,21 +3034,27 @@ const AnnotationEditor: React.FC = () => {
     if (customLabelInput.trim()) {
       const updatedBoxes = [...boundingBoxes];
       let updateCount = 0;
+      const trimmedLabel = customLabelInput.trim();
 
       selectedBoxes.forEach((index) => {
         if (updatedBoxes[index]) {
           updatedBoxes[index] = {
             ...updatedBoxes[index],
-            label: customLabelInput.trim(),
+            label: trimmedLabel,
           };
           updateCount++;
         }
       });
 
       if (updateCount > 0) {
+        // Track the last used label (excluding "None") for consistency with other label assignment methods
+        if (trimmedLabel && trimmedLabel !== "None") {
+          setLastUsedLabel(trimmedLabel);
+        }
+
         setBoundingBoxes(updatedBoxes);
         toast.success(
-          `Label "${customLabelInput.trim()}" assigned to ${updateCount} box${updateCount > 1 ? "es" : ""}`,
+          `Label "${trimmedLabel}" assigned to ${updateCount} box${updateCount > 1 ? "es" : ""}`,
         );
         setHasUnsavedChanges(true);
       }
@@ -3221,42 +3758,44 @@ const AnnotationEditor: React.FC = () => {
                   left: `${Math.round(LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH)}px`, // Pixel-aligned offset for frequency scale</
                   cursor: isAnnotationMode
                     ? "crosshair"
-                    : isPanning
-                      ? "grabbing"
-                      : hoveredHandle
-                        ? (hoveredHandle.handle.includes("n") &&
-                            hoveredHandle.handle.includes("w")) ||
-                          (hoveredHandle.handle.includes("s") &&
-                            hoveredHandle.handle.includes("e"))
-                          ? "nwse-resize"
-                          : "nesw-resize"
-                        : draggingBox
-                          ? "grabbing"
-                          : resizingBox
+                    : isRoiSelectionMode
+                      ? "crosshair"
+                      : isPanning
+                        ? "grabbing"
+                        : hoveredHandle
+                          ? (hoveredHandle.handle.includes("n") &&
+                              hoveredHandle.handle.includes("w")) ||
+                            (hoveredHandle.handle.includes("s") &&
+                              hoveredHandle.handle.includes("e"))
+                            ? "nwse-resize"
+                            : "nesw-resize"
+                          : draggingBox
                             ? "grabbing"
-                            : isSelecting
-                              ? "crosshair"
-                              : boundingBoxes.some(
-                                    (box) =>
-                                      mousePosition.x >= box.x &&
-                                      mousePosition.x <= box.x + box.width &&
-                                      mousePosition.y >= box.y &&
-                                      mousePosition.y <= box.y + box.height,
-                                  )
-                                ? "move"
-                                : mousePosition.y >
-                                    Math.max(
-                                      spectrogramDimensions.height,
-                                      600,
-                                    ) *
-                                      0.8
-                                  ? "pointer"
-                                  : "default",
+                            : resizingBox
+                              ? "grabbing"
+                              : isSelecting
+                                ? "crosshair"
+                                : boundingBoxes.some(
+                                      (box) =>
+                                        mousePosition.x >= box.x &&
+                                        mousePosition.x <= box.x + box.width &&
+                                        mousePosition.y >= box.y &&
+                                        mousePosition.y <= box.y + box.height,
+                                    )
+                                  ? "move"
+                                  : mousePosition.y >
+                                      Math.max(
+                                        spectrogramDimensions.height,
+                                        600,
+                                      ) *
+                                        0.8
+                                    ? "pointer"
+                                    : "default",
                 }}
               >
                 {/* Static layer for selection rectangle - cached */}
                 <Layer listening={false} cache={false} clearBeforeDraw={true}>
-                  {/* Selection rectangle - scale to spectrogram area */}
+                  {/* Selection rectangle - apply horizontal zoom only */}
                   {selectionRect && (
                     <Rect
                       x={
@@ -3269,10 +3808,10 @@ const AnnotationEditor: React.FC = () => {
                         Math.min(
                           selectionRect.y,
                           selectionRect.y + selectionRect.height,
-                        ) * 0.7
+                        )
                       }
                       width={Math.abs(selectionRect.width) * zoomLevel}
-                      height={Math.abs(selectionRect.height) * 0.7}
+                      height={Math.abs(selectionRect.height)}
                       fill="rgba(59, 130, 246, 0.1)"
                       stroke="#3B82F6"
                       strokeWidth={1}
@@ -3341,6 +3880,15 @@ const AnnotationEditor: React.FC = () => {
                       selectedBox && boundingBoxes[globalIndex] === selectedBox;
                     const labelColor = transformedBox.color;
 
+                    // Check if this box is involved in any conflicts
+                    const isInConflict =
+                      highlightConflicts &&
+                      conflicts.some(
+                        (c) =>
+                          c.box1Index === globalIndex ||
+                          c.box2Index === globalIndex,
+                      );
+
                     // Use transformed coordinates for better performance
                     const scaledBox = {
                       x: transformedBox.screenX,
@@ -3357,7 +3905,15 @@ const AnnotationEditor: React.FC = () => {
                     let shadowColor = "transparent";
                     let dashArray: number[] | undefined = undefined;
 
-                    if (isSelected || isSingleSelected) {
+                    // Conflict highlighting takes precedence over selection
+                    if (isInConflict) {
+                      strokeWidth = 3;
+                      strokeColor = "#FF4500"; // Orange-red for conflicts
+                      fillColor = "rgba(255, 69, 0, 0.2)"; // Semi-transparent orange-red
+                      shadowBlur = 15;
+                      shadowColor = "rgba(255, 69, 0, 0.8)"; // Orange glow
+                      dashArray = [8, 4]; // Dashed line to indicate problem
+                    } else if (isSelected || isSingleSelected) {
                       strokeWidth = 4; // Thicker stroke for visibility
                       shadowBlur = 20; // Much stronger shadow for selected boxes
                       shadowColor = "rgba(255, 215, 0, 0.8)"; // Golden shadow for selection
@@ -3524,6 +4080,52 @@ const AnnotationEditor: React.FC = () => {
                     />
                   )}
 
+                  {/* Bottom line (frequency boundary) - only render within spectrogram area */}
+                  {bottomLine.isActive && bottomLine.pixelY !== null && (() => {
+                    const spectrogramHeight = baseSpectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
+                    // Only render if pixelY is within spectrogram bounds
+                    if (bottomLine.pixelY >= 0 && bottomLine.pixelY <= spectrogramHeight) {
+                      return (
+                        <>
+                          <Line
+                            points={[
+                              0,
+                              bottomLine.pixelY,
+                              CoordinateUtils.getZoomedContentWidth(
+                                baseSpectrogramDimensions.width,
+                                zoomLevel
+                              ),
+                              bottomLine.pixelY,
+                            ]}
+                            stroke="#3B82F6"
+                            strokeWidth={3}
+                            dash={[10, 5]}
+                            listening={false}
+                          />
+                          {/* Frequency label for bottom line */}
+                          <Group x={10} y={bottomLine.pixelY - 25}>
+                            <Rect
+                              width={120}
+                              height={20}
+                              fill="#3B82F6"
+                              cornerRadius={4}
+                            />
+                            <Text
+                              text={`Bottom: ${Math.round(bottomLine.frequency || 0)} Hz`}
+                              fontSize={12}
+                              fill="white"
+                              fontStyle="bold"
+                              padding={4}
+                              align="center"
+                              width={120}
+                            />
+                          </Group>
+                        </>
+                      );
+                    }
+                    return null;
+                  })()}
+
                   {/* Cursor line only for spectrogram area */}
                   {duration > 0 && (
                     <Line
@@ -3668,14 +4270,66 @@ const AnnotationEditor: React.FC = () => {
           {/* Annotation Mode */}
           <button
             onClick={toggleAnnotationMode}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setAnnotationModeContextMenu({ x: e.clientX, y: e.clientY });
+            }}
             className={`p-2 rounded-md transition-colors group ${
               isAnnotationMode
                 ? "bg-green-100 text-green-700 hover:bg-green-200"
                 : "text-gray-600 hover:bg-gray-100"
             }`}
-            title="Toggle annotation mode (.)"
+            title="Toggle annotation mode (.) | Right-click for default label options"
           >
             <PencilIcon className="h-5 w-5" />
+          </button>
+
+          {/* ROI Selection Mode */}
+          <button
+            onClick={toggleRoiSelectionMode}
+            className={`p-2 rounded-md transition-colors group ${
+              isRoiSelectionMode
+                ? "bg-purple-100 text-purple-700 hover:bg-purple-200"
+                : "text-gray-600 hover:bg-gray-100"
+            }`}
+            title="Toggle ROI selection mode - drag to select multiple annotations"
+          >
+            <CursorArrowRaysIcon className="h-5 w-5" />
+          </button>
+
+          {/* Bottom Line Mode */}
+          <button
+            onClick={() => {
+              if (bottomLine.isActive) {
+                // If bottom line exists, show modal to edit or delete
+                setShowBottomLineModal(true);
+              } else {
+                // If no bottom line, toggle setting mode
+                const newState = !isSettingBottomLine;
+                setIsSettingBottomLine(newState);
+                // Disable other modes when enabling bottom line mode
+                if (newState) {
+                  setIsAnnotationMode(false);
+                  setIsRoiSelectionMode(false);
+                }
+              }
+            }}
+            className={`p-2 rounded-md transition-colors group ${
+              isSettingBottomLine
+                ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                : bottomLine.isActive
+                ? "bg-blue-50 text-blue-600 hover:bg-blue-100"
+                : "text-gray-600 hover:bg-gray-100"
+            }`}
+            title={
+              bottomLine.isActive
+                ? "Edit or remove bottom line"
+                : isSettingBottomLine
+                ? "Click on spectrogram to set bottom line"
+                : "Create bottom line (frequency boundary)"
+            }
+          >
+            <MinusIcon className="h-5 w-5" />
           </button>
 
           {/* Keyboard Shortcuts Help */}
@@ -3685,6 +4339,42 @@ const AnnotationEditor: React.FC = () => {
             title="Keyboard shortcuts (?)"
           >
             <QuestionMarkCircleIcon className="h-5 w-5" />
+          </button>
+
+          {/* Divider */}
+          <div className="w-8 h-px bg-gray-300 my-2"></div>
+
+          {/* Highlight Conflicts */}
+          <button
+            onClick={handleToggleHighlightConflicts}
+            className="p-2 rounded-md transition-colors group relative text-gray-600 hover:bg-gray-100"
+            title="Detect and highlight time conflicts (boxes must have ≥10ms gap)"
+          >
+            <ExclamationTriangleIcon className="h-5 w-5" />
+            {/* Badge with conflict count */}
+            {conflicts.length > 0 && highlightConflicts && (
+              <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+                {conflicts.length}
+              </div>
+            )}
+          </button>
+
+          {/* Resolve Conflicts */}
+          <button
+            onClick={() => handleResolveConflicts()}
+            disabled={conflicts.length === 0}
+            className={`p-2 rounded-md transition-colors ${
+              conflicts.length > 0
+                ? "text-blue-600 hover:bg-blue-50 cursor-pointer"
+                : "text-gray-300 cursor-not-allowed"
+            }`}
+            title={
+              conflicts.length > 0
+                ? `Resolve ${conflicts.length} conflict${conflicts.length > 1 ? "s" : ""} automatically (works without selection)`
+                : "No conflicts to resolve. Click the warning icon first to detect conflicts."
+            }
+          >
+            <CheckCircleIcon className="h-5 w-5" />
           </button>
 
           {/* Show/Hide Sidebar */}
@@ -3713,8 +4403,8 @@ const AnnotationEditor: React.FC = () => {
             </svg>
             {/* Badge with count */}
             {boundingBoxes.length > 0 && (
-              <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                {boundingBoxes.length > 9 ? "9+" : boundingBoxes.length}
+              <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+                {boundingBoxes.length}
               </div>
             )}
           </button>
@@ -3735,8 +4425,84 @@ const AnnotationEditor: React.FC = () => {
                 <XMarkIcon className="h-5 w-5 text-gray-500" />
               </button>
             </div>
+
+            {/* Bottom Line Controls */}
+            {bottomLine.isActive && (
+              <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium text-blue-900">Bottom Line</h3>
+                  <button
+                    onClick={clearBottomLine}
+                    className="p-1 rounded-md hover:bg-blue-100 text-blue-700"
+                    title="Remove bottom line"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-blue-700 font-medium w-20">
+                      Frequency:
+                    </label>
+                    <input
+                      type="number"
+                      value={Math.round(bottomLine.frequency || 0)}
+                      onChange={(e) => {
+                        const freq = parseFloat(e.target.value);
+                        if (!isNaN(freq)) {
+                          const nyquistFreq = getNyquistFrequency();
+                          const constrainedFreq = Math.max(0, Math.min(freq, nyquistFreq));
+                          // Calculate actual spectrogram height (65% of total canvas height)
+                          const spectrogramHeight = spectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
+                          setBottomLineAtFrequency(
+                            constrainedFreq,
+                            spectrogramHeight,
+                            0,
+                            nyquistFreq
+                          );
+                        }
+                      }}
+                      className="flex-1 px-2 py-1 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Frequency (Hz)"
+                    />
+                    <span className="text-xs text-blue-600">Hz</span>
+                  </div>
+                  <p className="text-xs text-blue-600 italic">
+                    Bounding boxes cannot extend below this line
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Sorting toggle */}
+            <div className="mb-3 flex items-center justify-between bg-gray-50 p-2 rounded-lg">
+              <span className="text-xs font-medium text-gray-700">Sort by:</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSortMode("time")}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                    sortMode === "time"
+                      ? "bg-blue-600 text-white"
+                      : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-300"
+                  }`}
+                >
+                  Time
+                </button>
+                <button
+                  onClick={() => setSortMode("alphabetical")}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                    sortMode === "alphabetical"
+                      ? "bg-blue-600 text-white"
+                      : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-300"
+                  }`}
+                >
+                  A-Z
+                </button>
+              </div>
+            </div>
+
             <BoundingBoxList
-              boxes={boundingBoxes}
+              boxes={sortedBoundingBoxes}
               selectedBox={selectedBox}
               onSelect={setSelectedBox}
               onDelete={handleDeleteBox}
@@ -3757,9 +4523,39 @@ const AnnotationEditor: React.FC = () => {
         />
       )}
 
+      <ConflictWarningModal
+        isOpen={showConflictModal}
+        conflicts={navigationConflicts}
+        onResolveAndContinue={handleResolveAndContinue}
+        onStayAndFix={handleStayAndFix}
+        onDiscardAndContinue={handleDiscardAndContinue}
+      />
+
       <KeyboardShortcutsModal
         isOpen={showKeyboardShortcuts}
         onClose={() => setShowKeyboardShortcuts(false)}
+      />
+
+      <BottomLineModal
+        isOpen={showBottomLineModal}
+        onClose={() => setShowBottomLineModal(false)}
+        currentFrequency={bottomLine.frequency || 0}
+        maxFrequency={getNyquistFrequency()}
+        onSave={(frequency) => {
+          // Calculate actual spectrogram height (65% of total canvas height)
+          const spectrogramHeight = baseSpectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
+          setBottomLineAtFrequency(
+            frequency,
+            spectrogramHeight,
+            0,
+            getNyquistFrequency()
+          );
+          toast.success(`Bottom line updated to ${Math.round(frequency)} Hz`);
+        }}
+        onDelete={() => {
+          clearBottomLine();
+          toast.success("Bottom line removed");
+        }}
       />
 
       {/* Context Menu */}
@@ -3910,6 +4706,117 @@ const AnnotationEditor: React.FC = () => {
                 className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700"
               >
                 Apply Label
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Annotation Mode Context Menu */}
+      {annotationModeContextMenu && (
+        <ContextMenu
+          x={annotationModeContextMenu.x}
+          y={annotationModeContextMenu.y}
+          items={[
+            {
+              label: "No default label",
+              onClick: () => {
+                setDefaultLabel(null);
+                setAnnotationModeContextMenu(null);
+                toast.success("Default label set to None");
+              },
+              checked: defaultLabel === null,
+              shortcut: "Ctrl+1",
+            },
+            {
+              label: "Use last assigned label",
+              onClick: () => {
+                setDefaultLabel("USE_LAST");
+                setAnnotationModeContextMenu(null);
+                toast.success(
+                  "Will dynamically use the most recently assigned label" +
+                    (lastUsedLabel ? ` (currently: "${lastUsedLabel}")` : " (none assigned yet)"),
+                );
+              },
+              checked: defaultLabel === "USE_LAST",
+              shortcut: "Ctrl+2",
+            },
+            {
+              label: "Set custom default label...",
+              onClick: () => {
+                setAnnotationModeContextMenu(null);
+                setShowDefaultLabelInput(true);
+                setDefaultLabelInput(
+                  defaultLabel && defaultLabel !== "USE_LAST"
+                    ? defaultLabel
+                    : "",
+                );
+              },
+              checked: defaultLabel !== null && defaultLabel !== "USE_LAST",
+              shortcut: "Ctrl+3",
+            },
+          ]}
+          onClose={() => setAnnotationModeContextMenu(null)}
+        />
+      )}
+
+      {/* Default Label Input Modal */}
+      {showDefaultLabelInput && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <h3 className="text-lg font-medium mb-4">
+              Set Default Label for New Annotations
+            </h3>
+            <div className="mb-4">
+              <input
+                type="text"
+                value={defaultLabelInput}
+                onChange={(e) => setDefaultLabelInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    setDefaultLabel(defaultLabelInput || null);
+                    setShowDefaultLabelInput(false);
+                    toast.success(
+                      defaultLabelInput
+                        ? `Default label set to: "${defaultLabelInput}"`
+                        : "Default label cleared",
+                    );
+                  } else if (e.key === "Escape") {
+                    setShowDefaultLabelInput(false);
+                    setDefaultLabelInput("");
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter default label (or leave empty for None)"
+                autoFocus
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                This label will be automatically assigned to new bounding boxes.
+              </p>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => {
+                  setShowDefaultLabelInput(false);
+                  setDefaultLabelInput("");
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setDefaultLabel(defaultLabelInput || null);
+                  setShowDefaultLabelInput(false);
+                  toast.success(
+                    defaultLabelInput
+                      ? `Default label set to: "${defaultLabelInput}"`
+                      : "Default label cleared",
+                  );
+                }}
+                className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700"
+              >
+                Set Default
               </button>
             </div>
           </div>

@@ -14,13 +14,13 @@ const API_URL = process.env.REACT_APP_API_URL || "";
 
 console.log("API Configuration:", {
   API_URL,
-  baseURL: `${API_URL}/api/v1`,
+  baseURL: API_URL,
   env: process.env.NODE_ENV,
   reactAppApiUrl: process.env.REACT_APP_API_URL,
 });
 
 const api = axios.create({
-  baseURL: `${API_URL}/api/v1`,
+  baseURL: API_URL,
   headers: {
     "Content-Type": "application/json",
   },
@@ -158,10 +158,16 @@ api.interceptors.response.use(
 export const healthCheck = async (): Promise<boolean> => {
   try {
     console.log("Health Check: Testing backend connectivity...");
-    const response = await axios.get(`${API_URL}/docs`, { timeout: 5000 });
+    // Use a simple API endpoint that always works
+    const response = await axios.get(`${API_URL}/projects/`, { timeout: 5000 });
     console.log("Health Check: Backend is reachable", response.status);
     return true;
   } catch (error: any) {
+    // 401/403 means backend is up but requires auth - this is success for health check
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      console.log("Health Check: Backend is reachable (auth required)", error.response.status);
+      return true;
+    }
     console.error("Health Check: Backend is not reachable:", {
       message: error.message,
       code: error.code,
@@ -444,7 +450,8 @@ export const recordingService = {
 
   getRecordingUrl: (filePath: string): string => {
     const token = localStorage.getItem("token");
-    return `${API_URL}/files/recordings/${filePath}?token=${token}`;
+    const baseUrl = API_URL.replace(/\/api\/v1$/, '');
+    return `${baseUrl}/files/recordings/${filePath}?token=${token}`;
   },
 
   getSpectrogramStatus: async (
@@ -473,7 +480,7 @@ export const recordingService = {
       if (status.status === "completed" && status.available) {
         // Return direct API URL for completed spectrograms with cache-busting timestamp
         const timestamp = Date.now();
-        return `${API_URL}/api/v1/recordings/${recordingId}/spectrogram?v=${timestamp}`;
+        return `${API_URL}/recordings/${recordingId}/spectrogram?v=${timestamp}`;
       }
 
       return null; // Spectrogram not ready yet
@@ -506,8 +513,9 @@ export const recordingService = {
   downloadRecording: async (recordingId: number): Promise<Blob> => {
     const recording = await recordingService.getRecording(recordingId);
     const token = localStorage.getItem("token");
+    const baseUrl = API_URL.replace(/\/api\/v1$/, '');
     const response = await fetch(
-      `${API_URL}/files/recordings/${recording.file_path}?token=${token}`,
+      `${baseUrl}/files/recordings/${recording.file_path}?token=${token}`,
     );
     if (!response.ok) {
       throw new Error(`Failed to download recording: ${response.status}`);

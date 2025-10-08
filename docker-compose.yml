@@ -51,10 +51,10 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin123  # pragma: allowlist secret
       MINIO_BUCKET_NAME: bsmarker
-      SECRET_KEY: ${SECRET_KEY:-change-this-secret-key-in-production}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-jwt-secret-in-production}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-only-for-development-bsmarker-app-2024-secure-key}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-key-only-for-development-2024-secure}
       FIRST_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
-      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}  # pragma: allowlist secret
+      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin_password_2024}  # pragma: allowlist secret
       CORS_ORIGINS: '["http://localhost"]'
       LOG_LEVEL: INFO
     depends_on:
@@ -78,10 +78,10 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin123  # pragma: allowlist secret
       MINIO_BUCKET_NAME: bsmarker
-      SECRET_KEY: ${SECRET_KEY:-change-this-secret-key-in-production}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-jwt-secret-in-production}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-only-for-development-bsmarker-app-2024-secure-key}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-key-only-for-development-2024-secure}
       FIRST_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
-      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}  # pragma: allowlist secret
+      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin_password_2024}  # pragma: allowlist secret
       LOG_LEVEL: INFO
     depends_on:
       postgres:
@@ -104,10 +104,10 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin123  # pragma: allowlist secret
       MINIO_BUCKET_NAME: bsmarker
-      SECRET_KEY: ${SECRET_KEY:-change-this-secret-key-in-production}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-jwt-secret-in-production}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-only-for-development-bsmarker-app-2024-secure-key}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-key-only-for-development-2024-secure}
       FIRST_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
-      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}  # pragma: allowlist secret
+      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin_password_2024}  # pragma: allowlist secret
       LOG_LEVEL: INFO
     depends_on:
       postgres:
