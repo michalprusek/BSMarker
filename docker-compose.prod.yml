@@ -14,7 +14,7 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: [CMD-SHELL, "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -33,7 +33,7 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [CMD, redis-cli, ping]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -56,7 +56,7 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -96,7 +96,11 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/health')
       interval: 30s
       timeout: 10s
       retries: 3
@@ -117,7 +121,14 @@ services:
       dockerfile: Dockerfile.prod
     image: bsmarker/backend:${VERSION:-latest}
     restart: unless-stopped
-    command: ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info", "--queues=spectrogram,default", "--concurrency=2"]
+    command:
+      - celery
+      - -A
+      - app.core.celery_app
+      - worker
+      - --loglevel=info
+      - --queues=spectrogram,default
+      - --concurrency=2
     env_file:
       - .env.production
     environment:
@@ -141,7 +152,7 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping"]
+      test: [CMD, celery, -A, app.core.celery_app, inspect, ping]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -161,7 +172,13 @@ services:
       dockerfile: Dockerfile.prod
     image: bsmarker/backend:${VERSION:-latest}
     restart: unless-stopped
-    command: ["celery", "-A", "app.core.celery_app", "beat", "--loglevel=info", "--schedule=/tmp/celerybeat-schedule"]
+    command:
+      - celery
+      - -A
+      - app.core.celery_app
+      - beat
+      - --loglevel=info
+      - --schedule=/tmp/celerybeat-schedule
     env_file:
       - .env.production
     environment:
@@ -180,7 +197,12 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/tmp/celerybeat-schedule') else 1)"]
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import os; exit(0 if os.path.exists('/tmp/celerybeat-schedule') else 1)
       interval: 30s
       timeout: 10s
       retries: 3
@@ -195,7 +217,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
       args:
-        REACT_APP_API_URL: https://bsmarker.utia.cas.cz
+        REACT_APP_API_URL: https://bsmarker.utia.cas.cz/api/v1
     image: bsmarker/frontend:${VERSION:-latest}
     restart: unless-stopped
     depends_on:
@@ -203,7 +225,7 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: [CMD, curl, -f, http://localhost/health]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -221,8 +243,8 @@ services:
     image: bsmarker/nginx:${VERSION:-latest}
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - 80:80
+      - 443:443
     volumes:
       - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:rw
@@ -234,7 +256,7 @@ services:
       - internal
       - external
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: [CMD, curl, -f, http://localhost/health]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -255,7 +277,7 @@ services:
       - postgres_backup:/var/backups
     networks:
       - internal
-    entrypoint: ["/bin/sh", "-c"]
+    entrypoint: [/bin/sh, -c]
     command:
       - |
         while true; do

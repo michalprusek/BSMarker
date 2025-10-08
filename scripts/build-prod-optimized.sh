@@ -52,7 +52,7 @@ echo ""
 if [ -f .env.production ]; then
     echo -e "${GREEN}✓${NC} Loading production environment variables"
     set -a
-    source .env.production
+    source .env.production 2>/dev/null || true
     set +a
 else
     echo -e "${RED}✗${NC} .env.production not found!"
