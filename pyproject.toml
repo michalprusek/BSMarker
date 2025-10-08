@@ -1,0 +1,12 @@
+[tool.skjold]
+sources = ["pyup", "github"]
+report_only = true
+report_format = "cli"
+cache_dir = ".skjold_cache"
+cache_expires = 86400
+
+# BSMarker Project Configuration
+[project]
+name = "bsmarker"
+version = "1.0.0"
+description = "Bird Song Annotation Tool"

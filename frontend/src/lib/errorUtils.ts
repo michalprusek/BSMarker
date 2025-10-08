@@ -192,6 +192,7 @@ export const retryOperation = async <T>(
   context?: string,
 ): Promise<T> => {
   let lastError: any;
+  let currentDelay = delay;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -220,15 +221,17 @@ export const retryOperation = async <T>(
           throw error;
         }
 
+        const retryDelay = currentDelay;
         logger.warn(
-          `Operation failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms`,
+          `Operation failed (attempt ${attempt}/${maxRetries}), retrying in ${retryDelay}ms`,
           context || "Retry",
           error,
         );
 
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        // eslint-disable-next-line no-loop-func
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
         // Exponential backoff
-        delay *= 2;
+        currentDelay *= 2;
       }
     }
   }

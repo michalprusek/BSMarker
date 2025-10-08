@@ -303,9 +303,10 @@ export function groupOverlappingBoxes(boxes: BoundingBox[]): BoundingBox[][] {
     visited.add(index);
 
     // Find all boxes that overlap with this group
-    let changed = true;
-    while (changed) {
-      changed = false;
+    let groupChanged = true;
+    while (groupChanged) {
+      groupChanged = false;
+      // eslint-disable-next-line no-loop-func
       boxes.forEach((otherBox, otherIndex) => {
         if (visited.has(otherIndex)) return;
 
@@ -317,7 +318,7 @@ export function groupOverlappingBoxes(boxes: BoundingBox[]): BoundingBox[][] {
         if (overlapsWithGroup) {
           group.push(otherBox);
           visited.add(otherIndex);
-          changed = true;
+          groupChanged = true;
         }
       });
     }
@@ -414,7 +415,7 @@ export function generateBoxId(): string {
   return `box_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-export default {
+const annotationUtils = {
   isPointInBox,
   doBoxesOverlap,
   isBoxInsideBox,
@@ -436,3 +437,5 @@ export default {
   formatTimestamp,
   generateBoxId,
 };
+
+export default annotationUtils;

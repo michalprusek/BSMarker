@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+.mypy_cache/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment
+.env*
+!.env.example
+
+# Testing
+tests/
+htmlcov/
+.tox/
+
+# Logs
+logs/
+*.log
+
+# Misc
+.DS_Store
+*.tmp
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+README.md
+
+# Docker
+Dockerfile*
+!Dockerfile.prod
+.dockerignore
+
+# Migrations (only if you don't want to include them)
+# migrations/
