@@ -264,7 +264,7 @@ const AnnotationEditor: React.FC = () => {
     convertNormalizedBoxToTimeFrequency,
     getMaxSpectrogramY,
   } = useBoundingBoxTimeFrequency(
-    spectrogramDimensions,
+    baseSpectrogramDimensions,  // Use base dimensions for consistent time calculations
     duration,
     getNyquistFrequency,
   );
@@ -720,7 +720,7 @@ const AnnotationEditor: React.FC = () => {
           // Update the container dimensions
           const waveformHeight = Math.max(
             50,
-            spectrogramDimensions.height * 0.23,
+            baseSpectrogramDimensions.height * 0.23,
           );
           // Update waveform container height
           if (waveformRef.current) {
@@ -776,48 +776,86 @@ const AnnotationEditor: React.FC = () => {
     }
   }, [zoomLevel, baseSpectrogramDimensions.width]);
 
+  // Set initial base dimensions only once when spectrogram loads
+  useEffect(() => {
+    if (spectrogramUrl && unifiedScrollRef.current) {
+      const containerWidth = unifiedScrollRef.current.clientWidth;
+      const containerHeight = unifiedScrollRef.current.clientHeight;
+
+      // Set base dimensions only if not already set properly
+      if (!baseSpectrogramDimensions.width || baseSpectrogramDimensions.width === 800) {
+        setBaseSpectrogramDimensions({
+          width: containerWidth,
+          height: containerHeight,
+        });
+      }
+    }
+  }, [spectrogramUrl]); // Only depend on spectrogramUrl, not baseSpectrogramDimensions to avoid loop
+
+  // Handle window resize for viewport only (not content dimensions)
   useEffect(() => {
     let resizeTimeout: NodeJS.Timeout;
 
-    const updateDimensions = () => {
-      // Clear existing timeout
+    const updateViewportDimensions = () => {
       clearTimeout(resizeTimeout);
 
-      // Debounce resize updates to prevent excessive re-renders
       resizeTimeout = setTimeout(() => {
         if (unifiedScrollRef.current) {
           const containerWidth = unifiedScrollRef.current.clientWidth;
-          // Use full available height for the combined view
           const containerHeight = unifiedScrollRef.current.clientHeight;
 
-          // Only update spectrogramDimensions for container size (for scrolling)
-          // but keep baseSpectrogramDimensions fixed for actual content
+          // Only update viewport dimensions, never change base dimensions on resize
           setSpectrogramDimensions({
             width: containerWidth,
             height: containerHeight,
           });
-
-          // Set base dimensions only once when spectrogram loads
-          if (!baseSpectrogramDimensions.width || baseSpectrogramDimensions.width === 800) {
-            setBaseSpectrogramDimensions({
-              width: containerWidth,
-              height: containerHeight,
-            });
-          }
         }
-      }, 100); // 100ms debounce for dimension updates
+      }, 100);
     };
 
-    // Only set initial dimensions, don't listen to resize
-    updateDimensions();
-    // Remove resize listener to prevent dimensions from changing
-    // window.addEventListener("resize", updateDimensions);
+    // Set initial viewport dimensions
+    updateViewportDimensions();
+
+    // Listen to resize for viewport updates only
+    window.addEventListener("resize", updateViewportDimensions);
 
     return () => {
       clearTimeout(resizeTimeout);
-      // window.removeEventListener("resize", updateDimensions);
+      window.removeEventListener("resize", updateViewportDimensions);
     };
-  }, [spectrogramUrl, baseSpectrogramDimensions]);
+  }, []); // Empty deps - only set up resize listener once
+
+  // Synchronize time coordinates when duration and dimensions become available
+  // This ensures mirrors align with bounding boxes regardless of load order
+  useEffect(() => {
+    if (
+      duration > 0 &&
+      baseSpectrogramDimensions.width > 0 &&
+      boundingBoxes.length > 0
+    ) {
+      // Check if any boxes need time coordinate update
+      const needsUpdate = boundingBoxes.some(
+        (box) => !box.start_time && !box.end_time
+      );
+
+      if (needsUpdate) {
+        // Create a stable reference to avoid re-renders
+        setBoundingBoxes((currentBoxes) =>
+          currentBoxes.map((box) => {
+            // Only update if time coordinates are missing
+            if (!box.start_time && !box.end_time) {
+              const timeFrequency = convertBoxToTimeFrequency(box);
+              return {
+                ...box,
+                ...timeFrequency,
+              };
+            }
+            return box;
+          })
+        );
+      }
+    }
+  }, [duration, baseSpectrogramDimensions.width, convertBoxToTimeFrequency]); // Use base dimensions for consistency
 
   const loadSpectrogram = async (recordingId: number) => {
     setIsLoadingSpectrogram(true);
@@ -1047,13 +1085,28 @@ const AnnotationEditor: React.FC = () => {
         const latestAnnotation = annotationsData[annotationsData.length - 1];
         const rawBoxes = latestAnnotation.bounding_boxes || [];
         // Round coordinates when loading to ensure consistency
-        const boxes = rawBoxes.map((box) => ({
-          ...box,
-          x: Math.round(box.x || 0),
-          y: Math.round(box.y || 0),
-          width: Math.round(box.width || 0),
-          height: Math.round(box.height || 0),
-        }));
+        // AND recalculate time coordinates to sync with current viewport
+        const boxes = rawBoxes.map((box) => {
+          const roundedBox = {
+            ...box,
+            x: Math.round(box.x || 0),
+            y: Math.round(box.y || 0),
+            width: Math.round(box.width || 0),
+            height: Math.round(box.height || 0),
+          };
+
+          // Recalculate time coordinates from pixel coordinates
+          // This ensures mirrors align correctly regardless of monitor resolution
+          if (duration > 0 && baseSpectrogramDimensions.width > 0) {
+            const timeFrequency = convertBoxToTimeFrequency(roundedBox);
+            return {
+              ...roundedBox,
+              ...timeFrequency,
+            };
+          }
+
+          return roundedBox;
+        });
         setBoundingBoxes(boxes);
         setLastSavedState([...boxes]);
         setAnnotationId(latestAnnotation.id || null);
@@ -1104,12 +1157,36 @@ const AnnotationEditor: React.FC = () => {
       wavesurferRef.current = null;
     }
 
+    // Get actual container dimensions if available, otherwise use defaults
+    let containerWidth = baseSpectrogramDimensions.width;
+    let containerHeight = baseSpectrogramDimensions.height;
+
+    // If we have the actual container, measure it directly
+    if (unifiedScrollRef.current) {
+      const actualWidth = unifiedScrollRef.current.clientWidth;
+      const actualHeight = unifiedScrollRef.current.clientHeight;
+
+      // Use actual dimensions if they're valid
+      if (actualWidth > 0 && actualHeight > 0) {
+        containerWidth = actualWidth;
+        containerHeight = actualHeight;
+
+        // Update base dimensions if they're still defaults
+        if (baseSpectrogramDimensions.width === 800) {
+          setBaseSpectrogramDimensions({
+            width: actualWidth,
+            height: actualHeight,
+          });
+        }
+      }
+    }
+
     // Ensure container has proper dimensions
-    const waveformHeight = Math.max(50, spectrogramDimensions.height * 0.23);
+    const waveformHeight = Math.max(50, containerHeight * 0.23);
 
     // Calculate minPxPerSec to maintain consistent scale
     // This should match the spectrogram's scale calculation
-    const spectrogramContentWidth = baseSpectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+    const spectrogramContentWidth = containerWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
     const defaultMinPxPerSec = spectrogramContentWidth / 10; // Assuming 10 seconds default view
 
     const wavesurfer = WaveSurfer.create({
@@ -1165,7 +1242,19 @@ const AnnotationEditor: React.FC = () => {
 
     wavesurfer.on("ready", () => {
       setDuration(wavesurfer.getDuration());
-      // Waveform will be automatically rendered, no need for manual redraw
+
+      // Apply correct zoom immediately after waveform loads
+      // This fixes the initial display issue where waveform appears shrunken
+      if (containerWidth > 0) {
+        const actualContentWidth = containerWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH;
+        const basePxPerSec = actualContentWidth / wavesurfer.getDuration();
+        const zoomedPxPerSec = basePxPerSec * zoomLevel;
+
+        // Apply zoom to fix initial display
+        if ((wavesurfer as any).zoom) {
+          (wavesurfer as any).zoom(zoomedPxPerSec);
+        }
+      }
     });
 
     wavesurfer.on("audioprocess", () => {
@@ -1355,8 +1444,8 @@ const AnnotationEditor: React.FC = () => {
     // NOTE: coordinates here are in world space (unzoomed), so use zoom level 1
     const constrained = CoordinateUtils.constrainBoundingBox(
       box,
-      spectrogramDimensions.width,
-      spectrogramDimensions.height,
+      baseSpectrogramDimensions.width,  // Use base dimensions for consistency
+      baseSpectrogramDimensions.height,
       true, // Account for frequency scale
       1, // World coordinates are unzoomed, so zoom level is 1
     );
@@ -1572,7 +1661,7 @@ const AnnotationEditor: React.FC = () => {
 
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
-    const containerHeight = Math.max(spectrogramDimensions.height, 600);
+    const containerHeight = Math.max(baseSpectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.6;
 
     // Use centralized coordinate transformation hook
@@ -1813,7 +1902,7 @@ const AnnotationEditor: React.FC = () => {
   const handleMouseMove = (e: any) => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
-    const containerHeight = Math.max(spectrogramDimensions.height, 600);
+    const containerHeight = Math.max(baseSpectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * 0.6;
 
     // Use centralized coordinate transformation hook (same as handleMouseDown)
@@ -2748,7 +2837,7 @@ const AnnotationEditor: React.FC = () => {
                 ref={canvasContainerRef}
                 className="relative"
                 style={{
-                  width: `${CoordinateUtils.getZoomedContainerWidth(spectrogramDimensions.width, zoomLevel)}px`,
+                  width: `${CoordinateUtils.getZoomedContainerWidth(baseSpectrogramDimensions.width, zoomLevel)}px`,
                   height: "100%",
                 }}
               >
@@ -2870,14 +2959,14 @@ const AnnotationEditor: React.FC = () => {
                   <div
                     className="relative"
                     style={{
-                      width: `${CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)}px`,
+                      width: `${CoordinateUtils.getZoomedContentWidth(baseSpectrogramDimensions.width, zoomLevel)}px`,
                       height: "100%",
                       marginLeft: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`,
                     }}
                   >
                     <svg
                       width={CoordinateUtils.getZoomedContentWidth(
-                        spectrogramDimensions.width,
+                        baseSpectrogramDimensions.width,
                         zoomLevel,
                       )}
                       height="100%"
@@ -2892,12 +2981,12 @@ const AnnotationEditor: React.FC = () => {
                           const ticks = [];
                           const totalWidth =
                             CoordinateUtils.getZoomedContentWidth(
-                              spectrogramDimensions.width,
+                              baseSpectrogramDimensions.width,
                               zoomLevel,
                             );
                           const containerHeight = Math.max(
                             48,
-                            spectrogramDimensions.height * 0.08,
+                            baseSpectrogramDimensions.height * 0.08,
                           );
 
                           // Use consistent interval calculation
@@ -2974,7 +3063,7 @@ const AnnotationEditor: React.FC = () => {
                   <div
                     className="absolute"
                     style={{
-                      width: `${CoordinateUtils.getZoomedContentWidth(spectrogramDimensions.width, zoomLevel)}px`, // Sync width with zoom
+                      width: `${CoordinateUtils.getZoomedContentWidth(baseSpectrogramDimensions.width, zoomLevel)}px`, // Use base dimensions for fixed size
                       height: "100%",
                       position: "absolute",
                       top: 0,
@@ -2995,6 +3084,7 @@ const AnnotationEditor: React.FC = () => {
 
                     {/* Bounding box projections on waveform - overlay on top of waveform */}
                     <svg
+                      key={`waveform-mirrors-${baseSpectrogramDimensions.width}-${baseSpectrogramDimensions.height}`}
                       className="absolute top-0 left-0 pointer-events-none"
                       style={{
                         width: "100%",
@@ -3006,13 +3096,13 @@ const AnnotationEditor: React.FC = () => {
                       {boundingBoxes.map((box, index) => {
                         const isSelected = selectedBoxes.has(index);
                         const labelColor = getLabelColor(box.label || "None");
-                        // Calculate pixel positions for waveform boxes - use full width like spectrogram
+                        // Calculate pixel positions for waveform boxes - use base dimensions for consistent positioning
                         const startX =
                           duration > 0
                             ? CoordinateUtils.timeToPixel(
                                 box.start_time || 0,
                                 duration,
-                                spectrogramDimensions.width, // Use full width, function will subtract FREQUENCY_SCALE_WIDTH
+                                baseSpectrogramDimensions.width, // Use base dimensions for consistent coordinates
                                 zoomLevel,
                                 false,
                               )
@@ -3022,14 +3112,14 @@ const AnnotationEditor: React.FC = () => {
                             ? CoordinateUtils.timeToPixel(
                                 box.end_time || 0,
                                 duration,
-                                spectrogramDimensions.width, // Use full width, function will subtract FREQUENCY_SCALE_WIDTH
+                                baseSpectrogramDimensions.width, // Use base dimensions for consistent coordinates
                                 zoomLevel,
                                 false,
                               )
                             : 0;
                         const waveformHeight =
-                          spectrogramDimensions.height *
-                          LAYOUT_CONSTANTS.WAVEFORM_HEIGHT_RATIO; // Use layout constant for waveform height
+                          baseSpectrogramDimensions.height *
+                          LAYOUT_CONSTANTS.WAVEFORM_HEIGHT_RATIO; // Use base dimensions for consistent height
 
                         return (
                           <g key={index}>
@@ -3111,10 +3201,10 @@ const AnnotationEditor: React.FC = () => {
               {/* Optimized Canvas for annotations and cursor - moved inside scroll container */}
               <Stage
                 width={CoordinateUtils.getZoomedContentWidth(
-                  spectrogramDimensions.width,
+                  baseSpectrogramDimensions.width,
                   zoomLevel,
                 )} // Full zoomed width for proper event handling
-                height={spectrogramDimensions.height} // Full height to include waveform
+                height={baseSpectrogramDimensions.height} // Full height to include waveform
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
