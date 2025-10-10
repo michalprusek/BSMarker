@@ -19,6 +19,7 @@ class RecordingInDBBase(RecordingBase):
     duration: Optional[float] = None
     sample_rate: Optional[int] = None
     project_id: int
+    is_finished: bool = False
     created_at: datetime
     annotation_count: int = 0
 

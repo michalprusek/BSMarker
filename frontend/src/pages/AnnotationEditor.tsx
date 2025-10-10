@@ -26,6 +26,7 @@ import {
   MinusIcon,
   ExclamationTriangleIcon,
   CheckCircleIcon,
+  AdjustmentsHorizontalIcon,
 } from "@heroicons/react/24/solid";
 import toast from "react-hot-toast";
 import WaveSurfer from "wavesurfer.js";
@@ -41,6 +42,7 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import KeyboardShortcutsModal from "../components/KeyboardShortcutsModal";
 import BottomLineModal from "../components/BottomLineModal";
 import ConflictWarningModal from "../components/ConflictWarningModal";
+import ContrastModal from "../components/ContrastModal";
 import { CoordinateUtils, LAYOUT_CONSTANTS } from "../utils/coordinates";
 import {
   AXIS_STYLES,
@@ -228,6 +230,9 @@ const AnnotationEditor: React.FC = () => {
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] =
     useState<boolean>(false);
   const [showBottomLineModal, setShowBottomLineModal] = useState<boolean>(false);
+  const [showContrastModal, setShowContrastModal] = useState<boolean>(false);
+  const [contrast, setContrast] = useState<number>(1.0);
+  const [isDraggingBottomLine, setIsDraggingBottomLine] = useState<boolean>(false);
   const [conflicts, setConflicts] = useState<BoundingBoxConflict[]>([]);
   const [highlightConflicts, setHighlightConflicts] = useState<boolean>(false);
   const rewindIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -3334,6 +3339,32 @@ const AnnotationEditor: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Finished checkbox */}
+              {recording && (
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={recording.is_finished || false}
+                    onChange={async () => {
+                      try {
+                        const updatedRecording = await recordingService.toggleFinished(recording.id);
+                        setRecording(updatedRecording);
+                        toast.success(
+                          updatedRecording.is_finished
+                            ? "Recording marked as finished"
+                            : "Recording unmarked as finished"
+                        );
+                      } catch (error) {
+                        console.error("Failed to toggle finished status:", error);
+                        toast.error("Failed to update finished status");
+                      }
+                    }}
+                    className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded"
+                  />
+                  <span className="text-sm text-gray-700 font-medium">Finished</span>
+                </label>
+              )}
             </div>
           </div>
         </div>
@@ -3427,6 +3458,7 @@ const AnnotationEditor: React.FC = () => {
                         willChange: "transform",
                         backfaceVisibility: "hidden",
                         perspective: 1000,
+                        filter: `contrast(${contrast})`,
                       }}
                     />
                   ) : (
@@ -4103,7 +4135,54 @@ const AnnotationEditor: React.FC = () => {
                             listening={false}
                           />
                           {/* Frequency label for bottom line */}
-                          <Group x={10} y={bottomLine.pixelY - 25}>
+                          <Group
+                            x={10}
+                            y={bottomLine.pixelY - 25}
+                            draggable={true}
+                            onDragStart={() => {
+                              setIsDraggingBottomLine(true);
+                            }}
+                            onDragMove={(e) => {
+                              const stage = e.target.getStage();
+                              if (!stage) return;
+
+                              const group = e.target;
+                              const newY = group.y() + 25; // Offset because label is above the line
+
+                              // Constrain to spectrogram bounds
+                              const spectrogramHeight = baseSpectrogramDimensions.height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
+                              const constrainedY = Math.max(0, Math.min(newY, spectrogramHeight));
+
+                              // Calculate frequency from pixel position
+                              const nyquistFreq = getNyquistFrequency();
+                              const frequency = CoordinateUtils.pixelToFrequency(
+                                constrainedY,
+                                nyquistFreq,
+                                spectrogramHeight
+                              );
+
+                              // Update bottom line position
+                              setBottomLineAtPixel(constrainedY, frequency);
+
+                              // Reset group position (since we're updating via setBottomLineAtPixel)
+                              group.position({ x: 10, y: constrainedY - 25 });
+                            }}
+                            onDragEnd={() => {
+                              setIsDraggingBottomLine(false);
+                            }}
+                            onMouseEnter={(e) => {
+                              const container = e.target.getStage()?.container();
+                              if (container) {
+                                container.style.cursor = 'grab';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              const container = e.target.getStage()?.container();
+                              if (container && !isDraggingBottomLine) {
+                                container.style.cursor = 'default';
+                              }
+                            }}
+                          >
                             <Rect
                               width={120}
                               height={20}
@@ -4263,6 +4342,18 @@ const AnnotationEditor: React.FC = () => {
           <div className="text-xs text-gray-500 px-1 text-center">
             {Math.round(zoomLevel * 100)}%
           </div>
+
+          {/* Divider */}
+          <div className="w-8 h-px bg-gray-300 my-2"></div>
+
+          {/* Contrast Adjustment */}
+          <button
+            onClick={() => setShowContrastModal(true)}
+            className="p-2 rounded-md hover:bg-gray-100 group"
+            title="Adjust Contrast"
+          >
+            <AdjustmentsHorizontalIcon className="h-5 w-5 text-gray-600" />
+          </button>
 
           {/* Divider */}
           <div className="w-8 h-px bg-gray-300 my-2"></div>
@@ -4556,6 +4647,13 @@ const AnnotationEditor: React.FC = () => {
           clearBottomLine();
           toast.success("Bottom line removed");
         }}
+      />
+
+      <ContrastModal
+        isOpen={showContrastModal}
+        onClose={() => setShowContrastModal(false)}
+        currentContrast={contrast}
+        onContrastChange={setContrast}
       />
 
       {/* Context Menu */}

@@ -1,9 +1,10 @@
 from typing import TYPE_CHECKING
 
-from app.db.base_class import Base
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
+from app.db.base_class import Base
 
 if TYPE_CHECKING:
     from app.models.annotation import Annotation
@@ -21,6 +22,7 @@ class Recording(Base):
     duration = Column(Float)
     sample_rate = Column(Integer)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    is_finished = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     project = relationship("Project", back_populates="recordings")

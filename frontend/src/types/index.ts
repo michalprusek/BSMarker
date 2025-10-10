@@ -26,6 +26,7 @@ export interface Recording {
   duration?: number;
   sample_rate?: number;
   project_id: number;
+  is_finished?: boolean;
   created_at: string;
   annotation_count?: number;
 }

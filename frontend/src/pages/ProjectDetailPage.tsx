@@ -690,13 +690,12 @@ const ProjectDetailPage: React.FC = () => {
                           <p className="text-sm font-medium text-gray-900">
                             {recording.original_filename}
                           </p>
-                          {recording.annotation_count &&
-                            recording.annotation_count > 0 && (
-                              <span className="inline-flex items-center rounded-full px-2 text-xs font-semibold leading-5 bg-green-100 text-green-800">
-                                <CheckIcon className="h-3 w-3 mr-1" />
-                                Annotated
-                              </span>
-                            )}
+                          {(recording.annotation_count ?? 0) > 0 && (
+                            <span className="inline-flex items-center rounded-full px-2 text-xs font-semibold leading-5 bg-green-100 text-green-800">
+                              <CheckIcon className="h-3 w-3 mr-1" />
+                              Annotated
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm text-gray-500">
                           <span>
