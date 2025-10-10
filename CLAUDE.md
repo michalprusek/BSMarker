@@ -638,7 +638,7 @@ docker-compose -f docker-compose.prod.yml up -d
 
 **Backend** (`.env`):
 ```bash
-DATABASE_URL=postgresql://user:password@postgres:5432/dbname
+DATABASE_URL=postgresql://user:password@postgres:5432/dbname  # pragma: allowlist secret
 SECRET_KEY=<random-secret>
 REDIS_URL=redis://redis:6379/0
 MINIO_ENDPOINT=minio:9000
@@ -735,6 +735,36 @@ docker exec bsmarker_redis_1 redis-cli INFO memory
 docker exec bsmarker_redis_1 redis-cli LLEN celery
 ```
 
+## API Endpoints
+
+### Recording Endpoints
+
+- `GET /api/v1/recordings/{project_id}/recordings` - List recordings with pagination
+  - Query params: `search`, `min_duration`, `max_duration`, `annotation_status` (`all`, `annotated`, `unannotated`, `finished`), `sort_by`, `sort_order`
+  - Returns: `PaginatedResponse` with `finished_count` and `annotated_count` in metadata
+- `POST /api/v1/recordings/{project_id}/upload` - Upload audio file
+- `GET /api/v1/recordings/{id}` - Get recording details
+- `DELETE /api/v1/recordings/{id}` - Delete recording
+- **`PATCH /api/v1/recordings/{id}/finished`** ⭐ **NEW** - Toggle finished status
+  - Body: `{"is_finished": true/false}`
+  - Response: Updated recording object
+  - Use case: Mark recording as completed/reviewed
+
+### Project Endpoints
+
+- `GET /api/v1/projects` - List all projects
+- `POST /api/v1/projects` - Create project
+- `GET /api/v1/projects/{id}` - Get project details
+- `PUT /api/v1/projects/{id}` - Update project
+- `DELETE /api/v1/projects/{id}` - Delete project
+
+### Annotation Endpoints
+
+- `GET /api/v1/annotations/{recording_id}` - Get annotations for recording
+- `POST /api/v1/annotations/{recording_id}` - Create annotation
+- `PUT /api/v1/annotations/{id}` - Update annotation
+- `DELETE /api/v1/annotations/{id}` - Delete annotation
+
 ## Common Patterns
 
 ### Loading States
@@ -756,6 +786,15 @@ Use React Hook Form:
 const { register, handleSubmit, formState: { errors } } = useForm();
 ```
 
+### Status Badges
+Use `StatusBadge` component for consistent UI:
+```typescript
+import StatusBadge from '../components/shared/StatusBadge';
+
+{recording.is_finished && <StatusBadge status="finished" />}
+{recording.annotation_count > 0 && <StatusBadge status="annotated" />}
+```
+
 ### Pagination
 Backend returns `PaginatedResponse`:
 ```python
@@ -765,7 +804,9 @@ PaginatedResponse(
         total=count,
         page=page,
         page_size=limit,
-        total_pages=total_pages
+        total_pages=total_pages,
+        finished_count=finished_count,  # NEW
+        annotated_count=annotated_count  # NEW
     )
 )
 ```
@@ -791,6 +832,14 @@ PaginatedResponse(
 
 ## Recent Changes
 
+- **2025-10-10**: Added "Finished" status feature for recording workflow tracking
+  - New `is_finished` boolean field on Recording model with database migration
+  - PATCH `/recordings/{id}/finished` endpoint for toggling status
+  - Enhanced pagination metadata with `finished_count` and `annotated_count`
+  - Yellow "Finished" badge in UI (VirtualizedRecordingList, AnnotationEditor)
+  - New reusable `StatusBadge` component for consistent status display
+  - Filter support for "finished" annotation status
+  - Comprehensive backend tests for finished status functionality
 - **2025-01-08**: Changed spectrogram colormap to inverted grayscale (white background, black peaks)
 - **2025-01-07**: Added spectrogram-utils library for coordinate transformations (SSOT)
 - **2025-01-06**: Implemented zoom-to-cursor for spectrogram and waveform
@@ -798,5 +847,5 @@ PaginatedResponse(
 
 ---
 
-**Last Updated**: 2025-01-08
-**Version**: 1.0.0
+**Last Updated**: 2025-10-10
+**Version**: 1.1.0

@@ -49,7 +49,7 @@ const ProjectDetailPageOptimized: React.FC = () => {
   const [sortBy, setSortBy] = useState("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [annotationStatus, setAnnotationStatus] = useState<
-    "all" | "annotated" | "unannotated"
+    "all" | "annotated" | "unannotated" | "finished"
   >("all");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -576,24 +576,26 @@ const ProjectDetailPageOptimized: React.FC = () => {
 
   // Calculate stats
   const stats = useMemo(() => {
-    const annotatedCount = recordings.filter(
-      (r) => r.annotation_count && r.annotation_count > 0,
-    ).length;
-    // Use total_duration from pagination if available, otherwise calculate from current page
-    const totalDuration =
-      pagination.total_duration ||
-      recordings.reduce((sum, r) => sum + (r.duration || 0), 0);
+    // Use counts from pagination metadata (backend calculates these for all recordings)
+    const finishedCount = pagination.finished_count ?? 0;
+    const annotatedCount = pagination.annotated_count ?? 0;
+    const totalDuration = pagination.total_duration ?? 0;
 
     return {
       totalRecordings: pagination.total,
+      finishedRecordings: finishedCount,
       annotatedRecordings: annotatedCount,
       totalDuration: Math.round(totalDuration / 60), // in minutes
+      finishedProgress:
+        pagination.total > 0
+          ? Math.round((finishedCount / pagination.total) * 100)
+          : 0,
       annotationProgress:
         pagination.total > 0
           ? Math.round((annotatedCount / pagination.total) * 100)
           : 0,
     };
-  }, [recordings, pagination.total, pagination.total_duration]);
+  }, [pagination]);
 
   if (loading && recordings.length === 0) {
     return (
@@ -623,11 +625,17 @@ const ProjectDetailPageOptimized: React.FC = () => {
           )}
 
           {/* Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mt-4">
             <div className="bg-gray-50 rounded p-3">
               <p className="text-sm text-gray-600">Total Recordings</p>
               <p className="text-2xl font-semibold text-gray-900">
                 {stats.totalRecordings}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded p-3">
+              <p className="text-sm text-gray-600">Finished</p>
+              <p className="text-2xl font-semibold text-yellow-600">
+                {stats.finishedRecordings}
               </p>
             </div>
             <div className="bg-gray-50 rounded p-3">
@@ -644,14 +652,33 @@ const ProjectDetailPageOptimized: React.FC = () => {
             </div>
             <div className="bg-gray-50 rounded p-3">
               <p className="text-sm text-gray-600">Progress</p>
-              <div className="mt-2">
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-green-600 h-2 rounded-full"
-                    style={{ width: `${stats.annotationProgress}%` }}
-                  />
+              <div className="mt-2 space-y-2">
+                {/* Finished progress */}
+                <div>
+                  <div className="flex justify-between text-xs text-gray-600 mb-1">
+                    <span>Finished</span>
+                    <span>{stats.finishedProgress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-yellow-600 h-2 rounded-full"
+                      style={{ width: `${stats.finishedProgress}%` }}
+                    />
+                  </div>
                 </div>
-                <p className="text-sm mt-1">{stats.annotationProgress}%</p>
+                {/* Annotated progress */}
+                <div>
+                  <div className="flex justify-between text-xs text-gray-600 mb-1">
+                    <span>Annotated</span>
+                    <span>{stats.annotationProgress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-green-600 h-2 rounded-full"
+                      style={{ width: `${stats.annotationProgress}%` }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -737,6 +764,7 @@ const ProjectDetailPageOptimized: React.FC = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All</option>
+                <option value="finished">Finished</option>
                 <option value="annotated">Annotated</option>
                 <option value="unannotated">Unannotated</option>
               </select>

@@ -536,6 +536,11 @@ export const recordingService = {
     const blob = await response.blob();
     return URL.createObjectURL(blob);
   },
+
+  toggleFinished: async (recordingId: number): Promise<Recording> => {
+    const response = await api.patch<Recording>(`/recordings/${recordingId}/finished`);
+    return response.data;
+  },
 };
 
 export const annotationService = {

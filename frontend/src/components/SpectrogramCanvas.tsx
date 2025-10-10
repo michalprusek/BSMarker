@@ -8,6 +8,7 @@ interface SpectrogramCanvasProps {
   zoomLevel: number;
   zoomOffset: { x: number; y: number };
   interpolationType?: "nearest" | "bilinear" | "bicubic";
+  contrast?: number;
   onImageLoad?: () => void;
   onImageError?: (error: string) => void;
 }
@@ -19,6 +20,7 @@ const SpectrogramCanvas: React.FC<SpectrogramCanvasProps> = ({
   zoomLevel,
   zoomOffset,
   interpolationType = "bicubic",
+  contrast = 1.0,
   onImageLoad,
   onImageError,
 }) => {
@@ -223,6 +225,7 @@ const SpectrogramCanvas: React.FC<SpectrogramCanvasProps> = ({
         imageRendering: interpolationType === "nearest" ? "pixelated" : "auto",
         transform: "translateZ(0)", // Force GPU acceleration
         willChange: "transform",
+        filter: `contrast(${contrast})`,
       }}
     />
   );
