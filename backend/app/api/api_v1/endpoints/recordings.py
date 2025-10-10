@@ -9,6 +9,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, List, Optional
 
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import Response, StreamingResponse
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session
+
 from app.api import deps
 from app.core.config import settings
 from app.core.rate_limiter import RATE_LIMITS, limiter
@@ -22,10 +27,6 @@ from app.schemas.recording import Recording as RecordingSchema
 from app.services.audio_service import audio_service
 from app.services.cache_service import cache_service
 from app.services.minio_client import minio_client
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import Response, StreamingResponse
-from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
 
 # Set cache directory for numba/librosa to avoid permission issues in Docker
 os.environ["NUMBA_CACHE_DIR"] = "/tmp"
@@ -224,7 +225,7 @@ def read_recordings(
     min_duration: Optional[float] = Query(None, description="Minimum duration in seconds"),
     max_duration: Optional[float] = Query(None, description="Maximum duration in seconds"),
     annotation_status: Optional[str] = Query(
-        None, description="Filter by annotation status: annotated, unannotated"
+        None, description="Filter by annotation status: annotated, unannotated, finished"
     ),
     sort_by: Optional[str] = Query(
         "created_at", description="Sort field: created_at, filename, duration"
@@ -283,6 +284,8 @@ def read_recordings(
         query = query.having(func.count(Annotation.id) > 0)
     elif annotation_status == "unannotated":
         query = query.having(func.count(Annotation.id) == 0)
+    elif annotation_status == "finished":
+        query = query.filter(Recording.is_finished == True)
 
     # Apply sorting
     if sort_by == "filename":
@@ -328,8 +331,48 @@ def read_recordings(
             total_duration_query = total_duration_query.outerjoin(Annotation).filter(
                 Annotation.id.is_(None)
             )
+        elif annotation_status == "finished":
+            total_duration_query = total_duration_query.filter(Recording.is_finished == True)
 
     total_duration = total_duration_query.scalar() or 0.0
+
+    # Calculate finished count (total recordings with is_finished=True)
+    # Apply same filters as duration but NOT annotation_status
+    finished_count_query = db.query(func.count(Recording.id)).filter(
+        Recording.project_id == project_id, Recording.is_finished == True
+    )
+    if search:
+        finished_count_query = finished_count_query.filter(
+            Recording.original_filename.ilike(f"%{search}%")
+        )
+    if min_duration is not None:
+        finished_count_query = finished_count_query.filter(Recording.duration >= min_duration)
+    if max_duration is not None:
+        finished_count_query = finished_count_query.filter(Recording.duration <= max_duration)
+
+    finished_count = finished_count_query.scalar() or 0
+
+    # Calculate annotated count (total recordings with annotations)
+    # Apply same filters as duration but NOT annotation_status
+    annotated_count_query = (
+        db.query(func.count(Recording.id))
+        .outerjoin(Annotation, Recording.id == Annotation.recording_id)
+        .filter(Recording.project_id == project_id)
+        .group_by(Recording.id)
+        .having(func.count(Annotation.id) > 0)
+    )
+    if search:
+        annotated_count_query = annotated_count_query.filter(
+            Recording.original_filename.ilike(f"%{search}%")
+        )
+    if min_duration is not None:
+        annotated_count_query = annotated_count_query.filter(Recording.duration >= min_duration)
+    if max_duration is not None:
+        annotated_count_query = annotated_count_query.filter(Recording.duration <= max_duration)
+
+    # Count the results of the subquery
+    annotated_subquery = annotated_count_query.subquery()
+    annotated_count = db.query(func.count()).select_from(annotated_subquery).scalar() or 0
 
     # Execute query and build response
     results = query.offset(skip).limit(limit).all()
@@ -345,6 +388,7 @@ def read_recordings(
             "duration": recording.duration,
             "sample_rate": recording.sample_rate,
             "project_id": recording.project_id,
+            "is_finished": recording.is_finished,
             "created_at": recording.created_at,
             "annotation_count": annotation_count or 0,
         }
@@ -362,6 +406,8 @@ def read_recordings(
         has_next=current_page < total_pages,
         has_prev=current_page > 1,
         total_duration=total_duration,
+        finished_count=finished_count,
+        annotated_count=annotated_count,
     )
 
     response = PaginatedResponse(items=recordings_with_counts, pagination=pagination_metadata)
@@ -729,3 +775,48 @@ def backfill_missing_durations(
             result["additional_errors"] = len(errors) - 10
 
     return result
+
+
+@router.patch("/{recording_id}/finished", response_model=RecordingSchema)
+def toggle_recording_finished(
+    recording_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_active_user),
+) -> Any:
+    """Toggle the 'finished' status of a recording."""
+    # Get recording
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=404, detail="Recording not found")
+
+    # Get project for permission check
+    project = db.query(Project).filter(Project.id == recording.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Check permissions
+    if not current_user.is_admin and project.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    # Toggle finished status
+    recording.is_finished = not recording.is_finished
+    db.commit()
+    db.refresh(recording)
+
+    # Add annotation count to response
+    annotation_count = (
+        db.query(func.count(Annotation.id)).filter(Annotation.recording_id == recording.id).scalar()
+        or 0
+    )
+
+    recording_dict = RecordingSchema.model_validate(recording).model_dump()
+    recording_dict["annotation_count"] = annotation_count
+
+    # Invalidate cache
+    cache_service.invalidate_project_recordings(recording.project_id)
+
+    logger.info(
+        f"Recording {recording_id} finished status toggled to {recording.is_finished} by {current_user.email}"
+    )
+
+    return recording_dict

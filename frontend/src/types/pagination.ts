@@ -6,6 +6,8 @@ export interface PaginationMetadata {
   has_next: boolean;
   has_prev: boolean;
   total_duration?: number; // Total duration in seconds for recordings
+  finished_count?: number; // Total number of finished recordings
+  annotated_count?: number; // Total number of annotated recordings
 }
 
 export interface PaginatedResponse<T> {
