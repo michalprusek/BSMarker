@@ -71,13 +71,18 @@ const RecordingItem = React.memo<{
                 <p className="text-sm font-medium text-gray-900 truncate">
                   {recording.original_filename}
                 </p>
-                {recording.annotation_count &&
-                  recording.annotation_count > 0 && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                      <CheckIcon className="w-3 h-3 mr-1" />
-                      Annotated
-                    </span>
-                  )}
+                {recording.is_finished && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                    <CheckIcon className="w-3 h-3 mr-1" />
+                    Finished
+                  </span>
+                )}
+                {(recording.annotation_count ?? 0) > 0 && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                    <CheckIcon className="w-3 h-3 mr-1" />
+                    Annotated
+                  </span>
+                )}
               </div>
               <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
                 <span className="flex items-center">

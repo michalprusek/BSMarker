@@ -140,13 +140,13 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
             </g>
           ))}
           <text
-            x={12}
+            x={16}
             y={(height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO) / 2}
             textAnchor="middle"
             fontSize={AXIS_STYLES.AXIS_LABEL.fontSize}
             fill={AXIS_STYLES.AXIS_LABEL.fill}
             fontWeight={AXIS_STYLES.AXIS_LABEL.fontWeight}
-            transform={`rotate(-90, 12, ${(height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO) / 2})`}
+            transform={`rotate(-90, 16, ${(height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO) / 2})`}
           >
             Frequency (Hz)
           </text>
