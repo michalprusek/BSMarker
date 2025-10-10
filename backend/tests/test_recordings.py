@@ -1,15 +1,12 @@
 """Tests for recordings API endpoints, especially duration extraction and backfill functionality."""
 
 import io
-import json
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
-from app.models.project import Project
-from app.models.recording import Recording
-from app.services.audio_service import AudioMetadata
 from fastapi import status
+
+from app.models.recording import Recording
 
 
 class TestRecordingUpload:
@@ -157,12 +154,11 @@ class TestRecordingUpload:
         audio_file = io.BytesIO(audio_content)
 
         # Mock librosa and other dependencies
-        with patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa, patch(
-            "app.api.api_v1.endpoints.recordings.minio_client"
-        ) as mock_minio, patch(
-            "app.api.api_v1.endpoints.recordings.secure_temp_file"
-        ) as mock_temp, patch(
-            "builtins.open", create=True
+        with (
+            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
+            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
+            patch("app.api.api_v1.endpoints.recordings.secure_temp_file") as mock_temp,
+            patch("builtins.open", create=True),
         ):
 
             mock_librosa.load.return_value = (np.random.random(44100), 44100)
@@ -214,9 +210,10 @@ class TestBackfillDurations:
         test_db.commit()
 
         # Mock MinIO and librosa operations
-        with patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio, patch(
-            "app.api.api_v1.endpoints.recordings.librosa"
-        ) as mock_librosa:
+        with (
+            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
+            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
+        ):
 
             # Mock MinIO file download
             fake_audio_content = b"fake mp3 content"
@@ -231,9 +228,10 @@ class TestBackfillDurations:
             mock_librosa.get_duration.return_value = mock_duration
 
             # Mock tempfile operations
-            with patch("tempfile.NamedTemporaryFile") as mock_temp, patch(
-                "os.unlink"
-            ) as mock_unlink:
+            with (
+                patch("tempfile.NamedTemporaryFile") as mock_temp,
+                patch("os.unlink") as mock_unlink,
+            ):
 
                 mock_file = MagicMock()
                 mock_file.name = "/tmp/backfill_audio.mp3"
@@ -300,9 +298,10 @@ class TestBackfillDurations:
         test_db.add(fail_recording)
         test_db.commit()
 
-        with patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio, patch(
-            "app.api.api_v1.endpoints.recordings.librosa"
-        ) as mock_librosa:
+        with (
+            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
+            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
+        ):
 
             # Mock MinIO to succeed for first file, fail for second
             def mock_get_file(bucket_name, object_name):
@@ -365,9 +364,10 @@ class TestBackfillDurations:
         test_db.add(recording)
         test_db.commit()
 
-        with patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio, patch(
-            "app.api.api_v1.endpoints.recordings.librosa"
-        ) as mock_librosa:
+        with (
+            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
+            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
+        ):
 
             # Mock successful MinIO download
             mock_minio.get_file.return_value = iter([b"corrupted audio content"])
@@ -375,9 +375,10 @@ class TestBackfillDurations:
             # Mock librosa failure
             mock_librosa.load.side_effect = Exception("Corrupted audio file")
 
-            with patch("tempfile.NamedTemporaryFile") as mock_temp, patch(
-                "os.unlink"
-            ) as mock_unlink:
+            with (
+                patch("tempfile.NamedTemporaryFile") as mock_temp,
+                patch("os.unlink") as mock_unlink,
+            ):
 
                 mock_file = MagicMock()
                 mock_file.name = "/tmp/corrupted.mp3"
@@ -531,12 +532,11 @@ class TestRecordingIntegration:
         audio_content = b"fake corrupted mp3"
         audio_file = io.BytesIO(audio_content)
 
-        with patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa, patch(
-            "app.api.api_v1.endpoints.recordings.minio_client"
-        ) as mock_minio, patch(
-            "app.api.api_v1.endpoints.recordings.secure_temp_file"
-        ) as mock_temp, patch(
-            "builtins.open", create=True
+        with (
+            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
+            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
+            patch("app.api.api_v1.endpoints.recordings.secure_temp_file") as mock_temp,
+            patch("builtins.open", create=True),
         ):
 
             # Mock failed duration extraction during upload
@@ -557,9 +557,12 @@ class TestRecordingIntegration:
         recording_id = upload_data["id"]
 
         # Step 2: Run backfill to fix the duration
-        with patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio, patch(
-            "app.api.api_v1.endpoints.recordings.librosa"
-        ) as mock_librosa, patch("tempfile.NamedTemporaryFile") as mock_temp, patch("os.unlink"):
+        with (
+            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
+            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
+            patch("tempfile.NamedTemporaryFile") as mock_temp,
+            patch("os.unlink"),
+        ):
 
             # Mock successful duration extraction during backfill
             mock_minio.get_file.return_value = iter([b"fake audio content"])
@@ -583,3 +586,194 @@ class TestRecordingIntegration:
         recording = test_db.query(Recording).filter(Recording.id == recording_id).first()
         assert recording.duration == 2.0
         assert recording.sample_rate == 44100
+
+
+class TestFinishedStatus:
+    """Test finished status functionality."""
+
+    def test_toggle_finished_status_to_true(self, client, test_db, test_recording, auth_headers):
+        """Test toggling finished status from False to True."""
+        recording_id = test_recording.id
+
+        # Verify initial state
+        assert test_recording.is_finished is False
+
+        # Toggle to True
+        response = client.patch(
+            f"/api/v1/recordings/{recording_id}/finished",
+            json={"is_finished": True},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        assert data["id"] == recording_id
+        assert data["is_finished"] is True
+
+        # Verify in database
+        test_db.refresh(test_recording)
+        assert test_recording.is_finished is True
+
+    def test_toggle_finished_status_to_false(self, client, test_db, test_recording, auth_headers):
+        """Test toggling finished status from True to False."""
+        recording_id = test_recording.id
+
+        # Set to True first
+        test_recording.is_finished = True
+        test_db.commit()
+
+        # Toggle to False
+        response = client.patch(
+            f"/api/v1/recordings/{recording_id}/finished",
+            json={"is_finished": False},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        assert data["id"] == recording_id
+        assert data["is_finished"] is False
+
+        # Verify in database
+        test_db.refresh(test_recording)
+        assert test_recording.is_finished is False
+
+    def test_toggle_finished_status_unauthorized(self, client, test_recording):
+        """Test toggling finished status without authentication."""
+        recording_id = test_recording.id
+
+        response = client.patch(
+            f"/api/v1/recordings/{recording_id}/finished",
+            json={"is_finished": True},
+        )
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_toggle_finished_nonexistent_recording(self, client, auth_headers):
+        """Test toggling finished status for non-existent recording."""
+        response = client.patch(
+            "/api/v1/recordings/999999/finished",
+            json={"is_finished": True},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_filter_recordings_by_finished_status(
+        self, client, test_db, test_project, auth_headers
+    ):
+        """Test filtering recordings by finished status."""
+        # Create recordings with different finished states
+        finished_recording = Recording(
+            filename="finished.mp3",
+            original_filename="finished.mp3",
+            file_path="recordings/finished.mp3",
+            duration=3.0,
+            is_finished=True,
+            project_id=test_project.id,
+        )
+
+        unfinished_recording = Recording(
+            filename="unfinished.mp3",
+            original_filename="unfinished.mp3",
+            file_path="recordings/unfinished.mp3",
+            duration=3.0,
+            is_finished=False,
+            project_id=test_project.id,
+        )
+
+        test_db.add(finished_recording)
+        test_db.add(unfinished_recording)
+        test_db.commit()
+
+        # Filter for finished recordings
+        response = client.get(
+            f"/api/v1/recordings/{test_project.id}/recordings?annotation_status=finished",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        # Check that only finished recordings are returned
+        finished_ids = [r["id"] for r in data["items"]]
+        assert finished_recording.id in finished_ids
+        assert unfinished_recording.id not in finished_ids
+
+    def test_finished_count_in_pagination_metadata(
+        self, client, test_db, test_project, auth_headers
+    ):
+        """Test that pagination metadata includes finished_count."""
+        # Create recordings with different finished states
+        for i in range(3):
+            recording = Recording(
+                filename=f"finished_{i}.mp3",
+                original_filename=f"finished_{i}.mp3",
+                file_path=f"recordings/finished_{i}.mp3",
+                duration=2.0,
+                is_finished=True,
+                project_id=test_project.id,
+            )
+            test_db.add(recording)
+
+        for i in range(2):
+            recording = Recording(
+                filename=f"unfinished_{i}.mp3",
+                original_filename=f"unfinished_{i}.mp3",
+                file_path=f"recordings/unfinished_{i}.mp3",
+                duration=2.0,
+                is_finished=False,
+                project_id=test_project.id,
+            )
+            test_db.add(recording)
+
+        test_db.commit()
+
+        # Get recordings list
+        response = client.get(
+            f"/api/v1/recordings/{test_project.id}/recordings",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        # Check pagination metadata
+        assert "pagination" in data
+        assert "finished_count" in data["pagination"]
+        assert data["pagination"]["finished_count"] >= 3  # At least our 3 finished recordings
+
+    def test_default_finished_status_is_false(self, client, test_db, test_project, auth_headers):
+        """Test that new recordings default to is_finished=False."""
+        audio_content = b"fake mp3 content"
+        audio_file = io.BytesIO(audio_content)
+
+        with (
+            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
+            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
+            patch("app.api.api_v1.endpoints.recordings.secure_temp_file") as mock_temp,
+            patch("builtins.open", create=True),
+        ):
+            mock_librosa.load.return_value = (np.random.random(44100), 44100)
+            mock_librosa.get_duration.return_value = 1.0
+            mock_minio.put_file.return_value = True
+            mock_temp.return_value.__enter__.return_value = "/tmp/test.mp3"
+
+            response = client.post(
+                f"/api/v1/recordings/{test_project.id}/upload",
+                files={"file": ("new_recording.mp3", audio_file, "audio/mpeg")},
+                headers=auth_headers,
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        # Check that is_finished defaults to False
+        assert "is_finished" in data
+        assert data["is_finished"] is False
+
+        # Verify in database
+        recording = test_db.query(Recording).filter(Recording.id == data["id"]).first()
+        assert recording.is_finished is False
