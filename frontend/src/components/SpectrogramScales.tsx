@@ -110,9 +110,9 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
           {frequencyTicks.map((tick, index) => (
             <g key={index}>
               <line
-                x1={32}
+                x1={68}
                 y1={tick.position}
-                x2={tick.major ? 30 : 35}
+                x2={tick.major ? 66 : 71}
                 y2={tick.position}
                 stroke={
                   tick.major
@@ -127,7 +127,7 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
               />
               {tick.major && (
                 <text
-                  x={28}
+                  x={64}
                   y={tick.position + 4}
                   textAnchor="end"
                   fontSize={AXIS_STYLES.TICK_LABEL.fontSize}
@@ -140,13 +140,13 @@ const SpectrogramScales: React.FC<SpectrogramScalesProps> = ({
             </g>
           ))}
           <text
-            x={4}
+            x={16}
             y={(height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO) / 2}
             textAnchor="middle"
             fontSize={AXIS_STYLES.AXIS_LABEL.fontSize}
             fill={AXIS_STYLES.AXIS_LABEL.fill}
             fontWeight={AXIS_STYLES.AXIS_LABEL.fontWeight}
-            transform={`rotate(-90, 4, ${(height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO) / 2})`}
+            transform={`rotate(-90, 16, ${(height * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO) / 2})`}
           >
             Frequency (Hz)
           </text>
