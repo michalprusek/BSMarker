@@ -10,13 +10,13 @@ interface StatusBadgeProps {
 const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = '' }) => {
   const config = {
     finished: {
-      bg: 'bg-yellow-100',
-      text: 'text-yellow-800',
+      bg: 'bg-green-100',
+      text: 'text-green-800',
       label: 'Finished',
     },
     annotated: {
-      bg: 'bg-green-100',
-      text: 'text-green-800',
+      bg: 'bg-yellow-100',
+      text: 'text-yellow-800',
       label: 'Annotated',
     },
   };
