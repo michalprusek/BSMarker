@@ -5,7 +5,7 @@
 
 // Layout constants - must match the actual layout in AnnotationEditor.tsx
 export const LAYOUT_CONSTANTS = {
-  FREQUENCY_SCALE_WIDTH: 40, // Width of the frequency scale on the left (logical pixels)
+  FREQUENCY_SCALE_WIDTH: 76, // Width of the frequency scale on the left (logical pixels)
   SPECTROGRAM_HEIGHT_RATIO: 0.65, // 65% of total height for spectrogram (increased from 60%)
   TIMELINE_TOP_RATIO: 0.65, // Timeline starts at 65% (right after spectrogram)
   TIMELINE_HEIGHT_RATIO: 0.08, // 8% for timeline
