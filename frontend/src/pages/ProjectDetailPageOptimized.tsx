@@ -634,13 +634,13 @@ const ProjectDetailPageOptimized: React.FC = () => {
             </div>
             <div className="bg-gray-50 rounded p-3">
               <p className="text-sm text-gray-600">Finished</p>
-              <p className="text-2xl font-semibold text-yellow-600">
+              <p className="text-2xl font-semibold text-green-600">
                 {stats.finishedRecordings}
               </p>
             </div>
             <div className="bg-gray-50 rounded p-3">
               <p className="text-sm text-gray-600">Annotated</p>
-              <p className="text-2xl font-semibold text-green-600">
+              <p className="text-2xl font-semibold text-yellow-600">
                 {stats.annotatedRecordings}
               </p>
             </div>
@@ -661,7 +661,7 @@ const ProjectDetailPageOptimized: React.FC = () => {
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
-                      className="bg-yellow-600 h-2 rounded-full"
+                      className="bg-green-600 h-2 rounded-full"
                       style={{ width: `${stats.finishedProgress}%` }}
                     />
                   </div>
@@ -674,7 +674,7 @@ const ProjectDetailPageOptimized: React.FC = () => {
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
-                      className="bg-green-600 h-2 rounded-full"
+                      className="bg-yellow-600 h-2 rounded-full"
                       style={{ width: `${stats.annotationProgress}%` }}
                     />
                   </div>
