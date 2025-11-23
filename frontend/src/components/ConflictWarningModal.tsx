@@ -8,8 +8,8 @@
 import React from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import {
-  BoundingBoxConflict,
-  formatConflictDescription,
+  UnifiedConflict,
+  formatUnifiedConflictDescription,
 } from "../utils/conflictDetection";
 import BaseModal, { ModalBody, ModalFooter } from "./shared/BaseModal";
 
@@ -20,9 +20,9 @@ interface ConflictWarningModalProps {
   isOpen: boolean;
 
   /**
-   * Array of detected conflicts
+   * Array of detected conflicts (gap and nesting)
    */
-  conflicts: BoundingBoxConflict[];
+  conflicts: UnifiedConflict[];
 
   /**
    * Callback to auto-resolve conflicts and continue navigation
@@ -74,8 +74,8 @@ export const ConflictWarningModal: React.FC<ConflictWarningModalProps> = ({
           <ExclamationTriangleIcon className="h-6 w-6 text-orange-600 flex-shrink-0" />
           <p className="text-sm text-orange-800">
             Bounding boxes must have at least{" "}
-            <strong>10 milliseconds gap</strong> between them. Please resolve
-            conflicts before saving or leaving.
+            <strong>10 milliseconds gap</strong> between them and cannot be nested.
+            Please resolve conflicts before saving or leaving.
           </p>
         </div>
 
@@ -93,12 +93,19 @@ export const ConflictWarningModal: React.FC<ConflictWarningModalProps> = ({
                 Conflict #{index + 1}
               </div>
               <div className="text-xs text-gray-500">
-                {formatConflictDescription(conflict)}
+                {formatUnifiedConflictDescription(conflict)}
               </div>
-              <div className="text-xs text-orange-600 mt-1">
-                Gap: {(conflict.overlapAmount * 1000).toFixed(1)}ms (needs{" "}
-                {(10 - conflict.overlapAmount * 1000).toFixed(1)}ms more)
-              </div>
+              {conflict.type === 'gap' && conflict.overlapAmount !== undefined && (
+                <div className="text-xs text-orange-600 mt-1">
+                  Gap: {(conflict.overlapAmount * 1000).toFixed(1)}ms (needs{" "}
+                  {(10 - conflict.overlapAmount * 1000).toFixed(1)}ms more)
+                </div>
+              )}
+              {conflict.type === 'nesting' && (
+                <div className="text-xs text-purple-600 mt-1">
+                  Nested box will be removed
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -106,9 +113,9 @@ export const ConflictWarningModal: React.FC<ConflictWarningModalProps> = ({
         {/* Resolution Info */}
         <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <p className="text-sm text-blue-800">
-            <strong>Auto-Resolve</strong> will automatically adjust the
-            bounding boxes to create a 12ms gap (exceeding the minimum 10ms requirement)
-            by shrinking each box by 6ms.
+            <strong>Auto-Resolve</strong> will automatically remove nested boxes
+            and adjust overlapping boxes to create a 12ms gap (exceeding the minimum
+            10ms requirement).
           </p>
         </div>
       </ModalBody>
