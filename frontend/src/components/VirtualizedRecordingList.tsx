@@ -78,6 +78,15 @@ const RecordingItem = React.memo<{
                 {(recording.annotation_count ?? 0) > 0 && (
                   <StatusBadge status="annotated" />
                 )}
+                {recording.spectrogram_status === 'pending' && (
+                  <StatusBadge status="spectrogram-pending" />
+                )}
+                {recording.spectrogram_status === 'processing' && (
+                  <StatusBadge status="spectrogram-processing" />
+                )}
+                {recording.spectrogram_status === 'failed' && (
+                  <StatusBadge status="spectrogram-failed" />
+                )}
               </div>
               <div className="mt-1 flex items-center space-x-4 text-sm text-gray-500">
                 <span className="flex items-center">

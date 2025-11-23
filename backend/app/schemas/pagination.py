@@ -22,6 +22,10 @@ class PaginationMetadata(BaseModel):
     total_duration: Optional[float] = None  # Total duration in seconds for recordings
     finished_count: Optional[int] = None  # Total number of finished recordings
     annotated_count: Optional[int] = None  # Total number of annotated recordings
+    spectrogram_ready_count: Optional[int] = None  # Spectrograms with status 'completed'
+    spectrogram_generating_count: Optional[int] = None  # Spectrograms with status 'processing'
+    spectrogram_queued_count: Optional[int] = None  # Spectrograms with status 'pending'
+    spectrogram_failed_count: Optional[int] = None  # Spectrograms with status 'failed'
 
 
 class PaginatedResponse(BaseModel, Generic[T]):

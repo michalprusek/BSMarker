@@ -58,8 +58,22 @@ def secure_temp_file(suffix="", prefix="bsmarker_"):
             try:
                 if temp_path.exists():
                     temp_path.unlink()
-            except Exception:
-                pass  # Ignore cleanup errors
+            except PermissionError as e:
+                logger.error(
+                    f"Permission denied deleting temp file {temp_path}: {e}",
+                    extra={"temp_file": str(temp_path)},
+                )
+            except OSError as e:
+                logger.error(
+                    f"OS error deleting temp file {temp_path}: {e}",
+                    extra={"temp_file": str(temp_path), "errno": e.errno},
+                )
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error deleting temp file {temp_path}: {e}",
+                    extra={"temp_file": str(temp_path)},
+                    exc_info=True,
+                )
 
 
 def validate_file_extension(filename: str) -> str:
@@ -256,12 +270,17 @@ def read_recordings(
         logger.info(f"Cache hit for project {project_id} recordings")
         return PaginatedResponse(**cached_data)
 
-    # Build query with annotation count
+    # Build query with annotation count and spectrogram status
     query = (
-        db.query(Recording, func.count(Annotation.id).label("annotation_count"))
+        db.query(
+            Recording,
+            func.count(Annotation.id).label("annotation_count"),
+            Spectrogram.status.label("spectrogram_status"),
+        )
         .outerjoin(Annotation, Recording.id == Annotation.recording_id)
+        .outerjoin(Spectrogram, Recording.id == Spectrogram.recording_id)
         .filter(Recording.project_id == project_id)
-        .group_by(Recording.id)
+        .group_by(Recording.id, Spectrogram.status)
     )
 
     # Apply search filter
@@ -374,12 +393,41 @@ def read_recordings(
     annotated_subquery = annotated_count_query.subquery()
     annotated_count = db.query(func.count()).select_from(annotated_subquery).scalar() or 0
 
+    # Calculate spectrogram status counts (apply same filters as duration but NOT annotation_status)
+    spectrogram_base_query = (
+        db.query(Recording.id)
+        .outerjoin(Spectrogram, Recording.id == Spectrogram.recording_id)
+        .filter(Recording.project_id == project_id)
+    )
+    if search:
+        spectrogram_base_query = spectrogram_base_query.filter(
+            Recording.original_filename.ilike(f"%{search}%")
+        )
+    if min_duration is not None:
+        spectrogram_base_query = spectrogram_base_query.filter(Recording.duration >= min_duration)
+    if max_duration is not None:
+        spectrogram_base_query = spectrogram_base_query.filter(Recording.duration <= max_duration)
+
+    # Count each spectrogram status
+    spectrogram_ready_count = spectrogram_base_query.filter(
+        Spectrogram.status == SpectrogramStatus.COMPLETED
+    ).count()
+    spectrogram_generating_count = spectrogram_base_query.filter(
+        Spectrogram.status == SpectrogramStatus.PROCESSING
+    ).count()
+    spectrogram_queued_count = spectrogram_base_query.filter(
+        Spectrogram.status == SpectrogramStatus.PENDING
+    ).count()
+    spectrogram_failed_count = spectrogram_base_query.filter(
+        Spectrogram.status == SpectrogramStatus.FAILED
+    ).count()
+
     # Execute query and build response
     results = query.offset(skip).limit(limit).all()
 
-    # Convert to schema format with annotation count
+    # Convert to schema format with annotation count and spectrogram status
     recordings_with_counts = []
-    for recording, annotation_count in results:
+    for recording, annotation_count, spectrogram_status in results:
         recording_dict = {
             "id": recording.id,
             "filename": recording.filename,
@@ -391,6 +439,7 @@ def read_recordings(
             "is_finished": recording.is_finished,
             "created_at": recording.created_at,
             "annotation_count": annotation_count or 0,
+            "spectrogram_status": spectrogram_status.value if spectrogram_status else None,
         }
         recordings_with_counts.append(RecordingSchema.model_validate(recording_dict))
 
@@ -408,6 +457,10 @@ def read_recordings(
         total_duration=total_duration,
         finished_count=finished_count,
         annotated_count=annotated_count,
+        spectrogram_ready_count=spectrogram_ready_count,
+        spectrogram_generating_count=spectrogram_generating_count,
+        spectrogram_queued_count=spectrogram_queued_count,
+        spectrogram_failed_count=spectrogram_failed_count,
     )
 
     response = PaginatedResponse(items=recordings_with_counts, pagination=pagination_metadata)
@@ -502,19 +555,37 @@ def bulk_delete_recordings(
     )
 
     deleted_count = 0
+    failed_deletions = []
+
     for recording in recordings:
         try:
             minio_client.delete_file(
                 bucket_name=settings.MINIO_BUCKET_RECORDINGS, object_name=recording.file_path
             )
-        except:
-            pass  # Continue even if file deletion fails
-
-        db.delete(recording)
-        deleted_count += 1
+            db.delete(recording)
+            deleted_count += 1
+        except Exception as e:
+            logger.error(
+                f"Failed to delete file for recording {recording.id}: {str(e)}",
+                extra={"recording_id": recording.id, "file_path": recording.file_path},
+            )
+            failed_deletions.append(
+                {"id": recording.id, "filename": recording.original_filename, "error": str(e)[:100]}
+            )
 
     db.commit()
-    return {"message": f"Deleted {deleted_count} recordings successfully"}
+
+    response = {
+        "message": f"Deleted {deleted_count} recordings successfully",
+        "deleted_count": deleted_count,
+        "total_requested": len(recording_ids),
+    }
+
+    if failed_deletions:
+        response["failed_deletions"] = failed_deletions
+        response["warning"] = f"{len(failed_deletions)} recordings failed to delete"
+
+    return response
 
 
 @router.get("/{recording_id}/audio")

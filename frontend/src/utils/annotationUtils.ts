@@ -415,6 +415,108 @@ export function generateBoxId(): string {
   return `box_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
+/**
+ * Calculate temporal distance between two bounding boxes
+ * Returns distance in milliseconds, or null if boxes overlap
+ */
+export function calculateTemporalDistance(
+  box1: BoundingBox,
+  box2: BoundingBox,
+): number | null {
+  // Extract time values
+  const box1Start = box1.start_time;
+  const box1End = box1.end_time;
+  const box2Start = box2.start_time;
+  const box2End = box2.end_time;
+
+  // Validate all time values are valid numbers
+  if (
+    typeof box1Start !== 'number' ||
+    typeof box1End !== 'number' ||
+    typeof box2Start !== 'number' ||
+    typeof box2End !== 'number' ||
+    !isFinite(box1Start) ||
+    !isFinite(box1End) ||
+    !isFinite(box2Start) ||
+    !isFinite(box2End)
+  ) {
+    console.error('Invalid box times in calculateTemporalDistance', {
+      box1: { start: box1Start, end: box1End },
+      box2: { start: box2Start, end: box2End }
+    });
+    return null;
+  }
+
+  // Validate box time ordering
+  if (box1End < box1Start || box2End < box2Start) {
+    console.warn('Box has end_time before start_time', {
+      box1: { start: box1Start, end: box1End },
+      box2: { start: box2Start, end: box2End }
+    });
+    return null;
+  }
+
+  // Check for temporal overlap
+  if (!(box1End <= box2Start || box2End <= box1Start)) {
+    return null;
+  }
+
+  // Calculate gap between boxes (in seconds, then convert to ms)
+  let distanceSeconds: number;
+  if (box1End <= box2Start) {
+    // box1 is before box2
+    distanceSeconds = box2Start - box1End;
+  } else {
+    // box2 is before box1
+    distanceSeconds = box1Start - box2End;
+  }
+
+  return distanceSeconds * 1000; // Convert to milliseconds
+}
+
+/**
+ * Find the nearest box to a target box from a list of candidates
+ * Uses combined metric: temporal distance (primary) and spatial distance (tiebreaker)
+ * Temporal distance is more relevant for audio annotation workflows
+ */
+export function findNearestBox(
+  targetBox: BoundingBox,
+  candidateBoxes: BoundingBox[],
+): BoundingBox | null {
+  if (candidateBoxes.length === 0) return null;
+
+  let nearestBox: BoundingBox | null = null;
+  let minTemporalDistance = Infinity;
+  let minSpatialDistance = Infinity;
+
+  candidateBoxes.forEach((box) => {
+    // Calculate temporal distance (gap in time)
+    const temporalDist = calculateTemporalDistance(targetBox, box);
+
+    // If boxes overlap in time, temporal distance is 0
+    const temporalDistValue = temporalDist === null ? 0 : Math.abs(temporalDist);
+
+    // Calculate spatial distance between centers (for tiebreaker)
+    const targetCenter = getBoxCenter(targetBox);
+    const boxCenter = getBoxCenter(box);
+    const spatialDist = getDistance(targetCenter, boxCenter);
+
+    // Priority 1: Temporal distance (closer in time is more relevant)
+    // Priority 2: Spatial distance (tiebreaker if same temporal distance)
+    if (
+      temporalDistValue < minTemporalDistance ||
+      (temporalDistValue === minTemporalDistance &&
+        spatialDist < minSpatialDistance)
+    ) {
+      minTemporalDistance = temporalDistValue;
+      minSpatialDistance = spatialDist;
+      nearestBox = box;
+    }
+  });
+
+  return nearestBox;
+}
+
 const annotationUtils = {
   isPointInBox,
   doBoxesOverlap,
@@ -436,6 +538,8 @@ const annotationUtils = {
   snapBoxToGrid,
   formatTimestamp,
   generateBoxId,
+  calculateTemporalDistance,
+  findNearestBox,
 };
 
 export default annotationUtils;
