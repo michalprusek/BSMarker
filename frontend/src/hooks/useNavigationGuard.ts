@@ -7,6 +7,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useBlocker } from "react-router-dom";
+import toast from "react-hot-toast";
 import { BoundingBox } from "../types";
 import {
   detectConflicts,

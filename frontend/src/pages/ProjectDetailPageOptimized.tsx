@@ -5,7 +5,6 @@ import { PaginatedResponse, PaginationMetadata } from "../types/pagination";
 import {
   projectService,
   recordingService,
-  annotationService,
 } from "../services/api";
 import toast from "react-hot-toast";
 import { VirtualizedRecordingList } from "../components/VirtualizedRecordingList";
@@ -224,50 +223,63 @@ const ProjectDetailPageOptimized: React.FC = () => {
     }
   }, [selectedRecordings, projectId, fetchProjectData]);
 
+  // Helper to check if filters are active
+  const hasActiveFilters = useCallback(() => {
+    return !!(
+      debouncedSearchTerm ||
+      minDuration ||
+      maxDuration ||
+      annotationStatus !== "all"
+    );
+  }, [debouncedSearchTerm, minDuration, maxDuration, annotationStatus]);
+
+  // Helper to build filter params
+  const getFilterParams = useCallback(() => {
+    const filters: any = {};
+    if (debouncedSearchTerm) filters.search = debouncedSearchTerm;
+    if (minDuration) filters.min_duration = parseFloat(minDuration);
+    if (maxDuration) filters.max_duration = parseFloat(maxDuration);
+    if (annotationStatus !== "all")
+      filters.annotation_status = annotationStatus;
+    return filters;
+  }, [debouncedSearchTerm, minDuration, maxDuration, annotationStatus]);
+
   // Handle download annotations
   const handleDownloadAnnotations = useCallback(async () => {
     if (!projectId) return;
 
+    // Warn user if filters are active
+    if (hasActiveFilters()) {
+      const filterDescription = [];
+      if (debouncedSearchTerm)
+        filterDescription.push(`Search: "${debouncedSearchTerm}"`);
+      if (minDuration) filterDescription.push(`Min duration: ${minDuration}s`);
+      if (maxDuration) filterDescription.push(`Max duration: ${maxDuration}s`);
+      if (annotationStatus !== "all")
+        filterDescription.push(`Status: ${annotationStatus}`);
+
+      const confirmed = window.confirm(
+        `Active filters will be applied to the export:\n\n${filterDescription.join("\n")}\n\nOnly recordings matching these filters will be exported.\n\nDo you want to continue?`,
+      );
+      if (!confirmed) return;
+    }
+
     setIsDownloading(true);
     try {
-      const JSZip = (await import("jszip")).default;
-      const zip = new JSZip();
-
-      // Fetch all annotations for the project
-      const allRecordings = recordings.filter(
-        (r) => r.annotation_count && r.annotation_count > 0,
+      // Use the new bulk export endpoint
+      const blob = await projectService.exportAnnotations(
+        parseInt(projectId),
+        getFilterParams(),
       );
 
-      for (const recording of allRecordings) {
-        try {
-          const annotations = await annotationService.getAnnotations(
-            recording.id,
-          );
-          if (annotations.length > 0) {
-            const annotationData = {
-              recording_id: recording.id,
-              filename: recording.original_filename,
-              annotations: annotations,
-            };
-            zip.file(
-              `${recording.original_filename}_annotations.json`,
-              JSON.stringify(annotationData, null, 2),
-            );
-          }
-        } catch (error) {
-          console.error(
-            `Failed to fetch annotations for recording ${recording.id}:`,
-            error,
-          );
-        }
-      }
-
-      const content = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(content);
+      // Download the ZIP file
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `project_${projectId}_annotations.zip`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
       toast.success("Annotations downloaded successfully");
@@ -277,166 +289,47 @@ const ProjectDetailPageOptimized: React.FC = () => {
     } finally {
       setIsDownloading(false);
     }
-  }, [projectId, recordings]);
+  }, [
+    projectId,
+    hasActiveFilters,
+    getFilterParams,
+    debouncedSearchTerm,
+    minDuration,
+    maxDuration,
+    annotationStatus,
+  ]);
 
   // Comprehensive download with all components
   const handleDownloadAll = useCallback(async () => {
-    if (!projectId || recordings.length === 0) return;
+    if (!projectId) return;
+
+    // Warn user if filters are active
+    if (hasActiveFilters()) {
+      const filterDescription = [];
+      if (debouncedSearchTerm)
+        filterDescription.push(`Search: "${debouncedSearchTerm}"`);
+      if (minDuration) filterDescription.push(`Min duration: ${minDuration}s`);
+      if (maxDuration) filterDescription.push(`Max duration: ${maxDuration}s`);
+      if (annotationStatus !== "all")
+        filterDescription.push(`Status: ${annotationStatus}`);
+
+      const confirmed = window.confirm(
+        `Active filters will be applied to the export:\n\n${filterDescription.join("\n")}\n\nOnly recordings matching these filters will be exported.\n\nDo you want to continue?`,
+      );
+      if (!confirmed) return;
+    }
 
     setIsDownloadingFull(true);
 
     try {
-      const JSZip = (await import("jszip")).default;
-      const zip = new JSZip();
+      // Use the new bulk export endpoint for full export
+      const blob = await projectService.exportFull(
+        parseInt(projectId),
+        getFilterParams(),
+      );
 
-      // Create folders
-      const recordingsFolder = zip.folder("recordings");
-      const spectrogramsFolder = zip.folder("spectrograms");
-      const annotationsFolder = zip.folder("annotations");
-      const visualizationsFolder = zip.folder("visualizations");
-
-      // Process each recording
-      for (const recording of recordings) {
-        try {
-          // 1. Download original recording audio file
-          try {
-            const audioBlob = await recordingService.downloadRecording(
-              recording.id,
-            );
-            if (recordingsFolder) {
-              recordingsFolder.file(
-                `${recording.original_filename}`,
-                audioBlob,
-              );
-            }
-          } catch (audioError) {
-            console.warn(
-              `Audio not available for ${recording.original_filename}`,
-            );
-          }
-
-          // 2. Download spectrogram
-          try {
-            const spectrogramBlob = await recordingService.getSpectrogramBlob(
-              recording.id,
-            );
-            if (spectrogramBlob && spectrogramsFolder) {
-              spectrogramsFolder.file(
-                `${recording.original_filename.replace(/\.[^/.]+$/, "")}_spectrogram.png`,
-                spectrogramBlob,
-              );
-            }
-          } catch (spectrogramError) {
-            console.warn(
-              `Spectrogram not available for ${recording.original_filename}`,
-            );
-          }
-
-          // 3. Get annotations
-          const annotations = await annotationService.getAnnotations(
-            recording.id,
-          );
-
-          // Save annotations as JSON
-          if (annotationsFolder && annotations && annotations.length > 0) {
-            // Use the LATEST annotation (last in array)
-            const latestAnnotation = annotations[annotations.length - 1];
-            const annotationData = {
-              recording: {
-                id: recording.id,
-                filename: recording.original_filename,
-                duration: recording.duration,
-                sample_rate: recording.sample_rate,
-              },
-              annotations: latestAnnotation.bounding_boxes.map((box: any) => ({
-                label: box.label || "None",
-                start_time: box.start_time,
-                end_time: box.end_time,
-                min_frequency: box.min_frequency,
-                max_frequency: box.max_frequency,
-                x: box.x,
-                y: box.y,
-                width: box.width,
-                height: box.height,
-              })),
-            };
-
-            const jsonStr = JSON.stringify(annotationData, null, 2);
-            annotationsFolder.file(
-              `${recording.original_filename.replace(/\.[^/.]+$/, "")}_annotations.json`,
-              jsonStr,
-            );
-
-            // 4. Generate visualization with bounding boxes
-            try {
-              // First get the spectrogram as a blob
-              const spectrogramBlob = await recordingService.getSpectrogramBlob(
-                recording.id,
-              );
-
-              if (
-                spectrogramBlob &&
-                visualizationsFolder &&
-                latestAnnotation.bounding_boxes.length > 0
-              ) {
-                // Create object URL from blob for visualization
-                const spectrogramUrl = URL.createObjectURL(spectrogramBlob);
-
-                try {
-                  const visualizationBlob = await generateVisualization(
-                    spectrogramUrl,
-                    latestAnnotation.bounding_boxes,
-                    recording,
-                  );
-                  visualizationsFolder.file(
-                    `${recording.original_filename.replace(/\.[^/.]+$/, "")}_annotated.png`,
-                    visualizationBlob,
-                  );
-                } catch (err) {
-                  console.error(
-                    "Failed to generate visualization for",
-                    recording.original_filename,
-                    err,
-                  );
-                } finally {
-                  // Clean up the object URL
-                  URL.revokeObjectURL(spectrogramUrl);
-                }
-              }
-            } catch (err) {
-              console.warn("Could not get spectrogram for visualization:", err);
-            }
-          }
-        } catch (err) {
-          console.error(
-            `Failed to process recording ${recording.original_filename}:`,
-            err,
-          );
-          toast.error(`Failed to process ${recording.original_filename}`);
-        }
-      }
-
-      // 5. Generate project summary metadata
-      const summary = {
-        project: {
-          id: project?.id,
-          name: project?.name,
-          description: project?.description,
-          created_at: project?.created_at,
-        },
-        recordings_count: recordings.length,
-        total_duration: recordings.reduce(
-          (sum, r) => sum + (r.duration || 0),
-          0,
-        ),
-        export_date: new Date().toISOString(),
-      };
-
-      zip.file("project_summary.json", JSON.stringify(summary, null, 2));
-
-      // Generate and download zip
-      const content = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(content);
+      // Download the ZIP file
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `${project?.name.replace(/[^a-z0-9]/gi, "_")}_full_export_${new Date().toISOString().split("T")[0]}.zip`;
@@ -452,145 +345,16 @@ const ProjectDetailPageOptimized: React.FC = () => {
     } finally {
       setIsDownloadingFull(false);
     }
-  }, [projectId, project, recordings]);
-
-  // Visualization generation helper function
-  const generateVisualization = async (
-    spectrogramUrl: string,
-    boundingBoxes: any[],
-    recording: Recording,
-  ): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      // Remove crossOrigin since we're using blob URLs
-      // img.crossOrigin = "anonymous";
-
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-
-        if (!ctx) {
-          reject(new Error("Failed to get canvas context"));
-          return;
-        }
-
-        // Draw spectrogram
-        ctx.drawImage(img, 0, 0);
-
-        // Define colors for different labels
-        const labelColors: Record<string, string> = {
-          None: "rgba(107, 114, 128, 0.5)",
-          A: "rgba(239, 68, 68, 0.5)",
-          B: "rgba(245, 158, 11, 0.5)",
-          C: "rgba(16, 185, 129, 0.5)",
-          D: "rgba(59, 130, 246, 0.5)",
-          E: "rgba(139, 92, 246, 0.5)",
-        };
-
-        // Draw bounding boxes
-        boundingBoxes.forEach((box) => {
-          let xStart, boxWidth, yTop, boxHeight;
-
-          // Calculate positions based on coordinate system
-          if (
-            recording.duration &&
-            box.start_time !== undefined &&
-            box.end_time !== undefined
-          ) {
-            // Time-based coordinates
-            xStart = (box.start_time / recording.duration) * img.width;
-            const xEnd = (box.end_time / recording.duration) * img.width;
-            boxWidth = Math.max(1, xEnd - xStart);
-
-            // Calculate y position based on frequency
-            const maxFreq = (recording.sample_rate || 44100) / 2;
-
-            if (
-              box.max_frequency !== undefined &&
-              box.min_frequency !== undefined
-            ) {
-              // Frequency-based coordinates (Y-axis is inverted in spectrograms)
-              yTop = img.height - (box.max_frequency / maxFreq) * img.height;
-              const yBottom =
-                img.height - (box.min_frequency / maxFreq) * img.height;
-              boxHeight = Math.max(1, yBottom - yTop);
-            } else if (box.y !== undefined && box.height !== undefined) {
-              // Fallback to pixel coordinates with scaling
-              const scaleY = img.height / 400;
-              yTop = box.y * scaleY;
-              boxHeight = Math.max(1, box.height * scaleY);
-            } else {
-              yTop = 0;
-              boxHeight = img.height;
-            }
-          } else if (
-            box.x !== undefined &&
-            box.width !== undefined &&
-            box.y !== undefined &&
-            box.height !== undefined
-          ) {
-            // Pure pixel coordinates with scaling
-            const scaleX = img.width / 800;
-            const scaleY = img.height / 400;
-            xStart = box.x * scaleX;
-            boxWidth = Math.max(1, box.width * scaleX);
-            yTop = box.y * scaleY;
-            boxHeight = Math.max(1, box.height * scaleY);
-          } else {
-            return; // Skip boxes with insufficient data
-          }
-
-          // Get color for label
-          const color = labelColors[box.label] || "rgba(59, 130, 246, 0.5)";
-
-          // Draw box
-          try {
-            ctx.strokeStyle = color.replace("0.5", "1");
-            ctx.lineWidth = 2;
-            ctx.strokeRect(xStart, yTop, boxWidth, boxHeight);
-
-            // Fill with semi-transparent color
-            ctx.fillStyle = color;
-            ctx.fillRect(xStart, yTop, boxWidth, boxHeight);
-
-            // Draw label
-            if (box.label && box.label !== "None") {
-              ctx.font = "bold 14px Arial";
-              ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-              const labelWidth = ctx.measureText(box.label).width + 8;
-              ctx.fillRect(xStart, yTop, labelWidth, 20);
-              ctx.fillStyle = "white";
-              ctx.fillText(box.label, xStart + 4, yTop + 14);
-            }
-          } catch (err) {
-            console.error("Error drawing box:", err);
-          }
-        });
-
-        // Convert canvas to blob
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              resolve(blob);
-            } else {
-              reject(new Error("Failed to convert canvas to blob"));
-            }
-          },
-          "image/png",
-          1.0,
-        );
-      };
-
-      img.onerror = (error) => {
-        console.error("Image load error:", error);
-        reject(new Error("Failed to load spectrogram image"));
-      };
-
-      img.src = spectrogramUrl;
-    });
-  };
+  }, [
+    projectId,
+    project,
+    hasActiveFilters,
+    getFilterParams,
+    debouncedSearchTerm,
+    minDuration,
+    maxDuration,
+    annotationStatus,
+  ]);
 
   // Calculate stats
   const stats = useMemo(() => {

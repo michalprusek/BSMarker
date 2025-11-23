@@ -317,6 +317,46 @@ export const projectService = {
   deleteProject: async (projectId: number): Promise<void> => {
     await api.delete(`/projects/${projectId}`);
   },
+
+  exportAnnotations: async (
+    projectId: number,
+    filters?: {
+      search?: string;
+      min_duration?: number;
+      max_duration?: number;
+      annotation_status?: string;
+    },
+  ): Promise<Blob> => {
+    const response = await api.get(
+      `/projects/${projectId}/annotations/export`,
+      {
+        params: { include: "annotations", ...filters },
+        responseType: "blob",
+        timeout: 300000, // 5 minute timeout for large exports
+      },
+    );
+    return response.data;
+  },
+
+  exportFull: async (
+    projectId: number,
+    filters?: {
+      search?: string;
+      min_duration?: number;
+      max_duration?: number;
+      annotation_status?: string;
+    },
+  ): Promise<Blob> => {
+    const response = await api.get(
+      `/projects/${projectId}/annotations/export`,
+      {
+        params: { include: "full", ...filters },
+        responseType: "blob",
+        timeout: 600000, // 10 minute timeout for full exports with audio
+      },
+    );
+    return response.data;
+  },
 };
 
 export const recordingService = {
