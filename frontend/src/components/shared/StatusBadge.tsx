@@ -1,6 +1,11 @@
 import React from 'react';
 
-export type BadgeStatus = 'finished' | 'annotated';
+export type BadgeStatus =
+  | 'finished'
+  | 'annotated'
+  | 'spectrogram-pending'
+  | 'spectrogram-processing'
+  | 'spectrogram-failed';
 
 interface StatusBadgeProps {
   status: BadgeStatus;
@@ -10,14 +15,29 @@ interface StatusBadgeProps {
 const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = '' }) => {
   const config = {
     finished: {
-      bg: 'bg-yellow-100',
-      text: 'text-yellow-800',
+      bg: 'bg-green-100',
+      text: 'text-green-800',
       label: 'Finished',
     },
     annotated: {
-      bg: 'bg-green-100',
-      text: 'text-green-800',
+      bg: 'bg-yellow-100',
+      text: 'text-yellow-800',
       label: 'Annotated',
+    },
+    'spectrogram-pending': {
+      bg: 'bg-blue-100',
+      text: 'text-blue-800',
+      label: 'Queued',
+    },
+    'spectrogram-processing': {
+      bg: 'bg-purple-100',
+      text: 'text-purple-800',
+      label: 'Generating...',
+    },
+    'spectrogram-failed': {
+      bg: 'bg-red-100',
+      text: 'text-red-800',
+      label: 'Failed',
     },
   };
 

@@ -11,6 +11,9 @@ import { BoundingBox } from "../types";
 import {
   detectConflicts,
   BoundingBoxConflict,
+  // New unified conflict system
+  detectAllConflicts,
+  UnifiedConflict,
 } from "../utils/conflictDetection";
 
 interface UseNavigationGuardOptions {
@@ -27,7 +30,7 @@ interface UseNavigationGuardOptions {
   /**
    * Callback when navigation is attempted with conflicts
    */
-  onNavigationBlocked?: (conflicts: BoundingBoxConflict[]) => void;
+  onNavigationBlocked?: (conflicts: UnifiedConflict[]) => void;
 }
 
 interface UseNavigationGuardReturn {
@@ -37,9 +40,9 @@ interface UseNavigationGuardReturn {
   showConflictModal: boolean;
 
   /**
-   * Detected conflicts
+   * Detected conflicts (includes both nesting and gap conflicts)
    */
-  conflicts: BoundingBoxConflict[];
+  conflicts: UnifiedConflict[];
 
   /**
    * Allow navigation to proceed
@@ -75,13 +78,13 @@ export function useNavigationGuard({
   onNavigationBlocked,
 }: UseNavigationGuardOptions): UseNavigationGuardReturn {
   const [showConflictModal, setShowConflictModal] = useState(false);
-  const [detectedConflicts, setDetectedConflicts] = useState<BoundingBoxConflict[]>([]);
+  const [detectedConflicts, setDetectedConflicts] = useState<UnifiedConflict[]>([]);
 
-  // Block navigation when conflicts exist
+  // Block navigation when conflicts exist (includes nesting + gap conflicts)
   const shouldBlock = useCallback(() => {
     if (!enabled) return false;
 
-    const conflicts = detectConflicts(boundingBoxes);
+    const conflicts = detectAllConflicts(boundingBoxes);
     return conflicts.length > 0;
   }, [boundingBoxes, enabled]);
 
@@ -99,8 +102,8 @@ export function useNavigationGuard({
   // Handle blocker state changes
   useEffect(() => {
     if (blocker.state === "blocked") {
-      // Detect conflicts again to show in modal
-      const conflicts = detectConflicts(boundingBoxes);
+      // Detect conflicts again to show in modal (includes nesting + gap)
+      const conflicts = detectAllConflicts(boundingBoxes);
       setDetectedConflicts(conflicts);
       setShowConflictModal(true);
 
@@ -114,13 +117,37 @@ export function useNavigationGuard({
   const proceedNavigation = useCallback(() => {
     setShowConflictModal(false);
     setDetectedConflicts([]);
-    blocker.proceed?.();
+
+    if (typeof blocker.proceed !== 'function') {
+      console.error('blocker.proceed is not a function', blocker);
+      toast.error('Navigation error. Please refresh the page.');
+      return;
+    }
+
+    try {
+      blocker.proceed();
+    } catch (error) {
+      console.error('Error proceeding navigation:', error);
+      toast.error('Failed to navigate. Please try again.');
+    }
   }, [blocker]);
 
   const cancelNavigation = useCallback(() => {
     setShowConflictModal(false);
     setDetectedConflicts([]);
-    blocker.reset?.();
+
+    if (typeof blocker.reset !== 'function') {
+      console.error('blocker.reset is not a function', blocker);
+      // User is already on the page, so just close modal
+      return;
+    }
+
+    try {
+      blocker.reset();
+    } catch (error) {
+      console.error('Error resetting blocker:', error);
+      // Not critical - user stays on page anyway
+    }
   }, [blocker]);
 
   // Add browser unload warning to prevent accidental tab/window closing
@@ -128,11 +155,18 @@ export function useNavigationGuard({
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!enabled) return;
 
-      const conflicts = detectConflicts(boundingBoxes);
-      if (conflicts.length > 0) {
-        // Prevent default and show browser's built-in warning
+      try {
+        const conflicts = detectAllConflicts(boundingBoxes);
+        if (conflicts.length > 0) {
+          // Prevent default and show browser's built-in warning
+          e.preventDefault();
+          // Chrome requires returnValue to be set
+          e.returnValue = '';
+        }
+      } catch (error) {
+        console.error('Error detecting conflicts in beforeunload:', error);
+        // Safer to prevent unload on error (protect user's work)
         e.preventDefault();
-        // Chrome requires returnValue to be set
         e.returnValue = '';
       }
     };

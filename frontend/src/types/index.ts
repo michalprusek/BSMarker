@@ -18,6 +18,8 @@ export interface Project {
   updated_at?: string;
 }
 
+export type SpectrogramStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
 export interface Recording {
   id: number;
   filename: string;
@@ -29,6 +31,7 @@ export interface Recording {
   is_finished?: boolean;
   created_at: string;
   annotation_count?: number;
+  spectrogram_status?: SpectrogramStatus | null;
 }
 
 export interface Spectrogram {
