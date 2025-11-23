@@ -45,6 +45,12 @@ import ConflictWarningModal from "../components/ConflictWarningModal";
 import ContrastModal from "../components/ContrastModal";
 import { CoordinateUtils, LAYOUT_CONSTANTS } from "../utils/coordinates";
 import {
+  calculateTemporalDistance,
+  findNearestBox,
+  isPointInBox,
+  getBoxCenter,
+} from "../utils/annotationUtils";
+import {
   AXIS_STYLES,
   formatTimeLabel,
   getTimeTickInterval,
@@ -59,9 +65,26 @@ import {
   detectConflicts,
   resolveConflicts,
   BoundingBoxConflict,
+  // New unified conflict system
+  detectAllConflicts,
+  resolveAllConflicts,
+  formatUnifiedConflictDescription,
+  UnifiedConflict,
 } from "../utils/conflictDetection";
 // import { useSpectrogramZoom } from '../hooks/useSpectrogramZoom'; // Unused - replaced with custom throttled zoom
 import { throttle } from "lodash";
+
+/**
+ * Type definition for distance measurement visualization
+ * Used when Alt key is pressed and hovering over boxes
+ * Uses bracket notation (Figma-style) to show temporal distance
+ */
+interface DistanceMeasurement {
+  distanceMs: number;
+  leftBracket: { x: number; yTop: number; yBottom: number };
+  rightBracket: { x: number; yTop: number; yBottom: number };
+  horizontalLineY: number;
+}
 
 const { PLAYBACK_SPEEDS, MAX_HISTORY_SIZE } = ANNOTATION_CONSTANTS;
 
@@ -233,8 +256,13 @@ const AnnotationEditor: React.FC = () => {
   const [showContrastModal, setShowContrastModal] = useState<boolean>(false);
   const [contrast, setContrast] = useState<number>(1.0);
   const [isDraggingBottomLine, setIsDraggingBottomLine] = useState<boolean>(false);
-  const [conflicts, setConflicts] = useState<BoundingBoxConflict[]>([]);
+  const [conflicts, setConflicts] = useState<UnifiedConflict[]>([]);
   const [highlightConflicts, setHighlightConflicts] = useState<boolean>(false);
+
+  // Distance measurement state (Alt key feature)
+  const [isAltKeyPressed, setIsAltKeyPressed] = useState<boolean>(false);
+  const [hoveredBoxIndex, setHoveredBoxIndex] = useState<number | null>(null);
+
   const rewindIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const wasPlayingRef = useRef<boolean>(false);
 
@@ -377,6 +405,83 @@ const AnnotationEditor: React.FC = () => {
     [visibleBoundingBoxes, boundingBoxes, zoomLevel, getLabelColorMemoized],
   );
 
+  // Calculate distance measurement when Alt is pressed and hovering over a box
+  const distanceMeasurement = useMemo<DistanceMeasurement | null>(() => {
+    // Early exit if conditions not met
+    if (
+      !isAltKeyPressed ||
+      isAnnotationMode ||
+      hoveredBoxIndex === null ||
+      selectedBoxes.size === 0
+    ) {
+      return null;
+    }
+
+    const hoveredBox = boundingBoxes[hoveredBoxIndex];
+    if (!hoveredBox) return null;
+
+    // Get selected boxes as array, excluding the hovered box itself
+    const selectedBoxArray = Array.from(selectedBoxes)
+      .filter((idx) => idx !== hoveredBoxIndex)
+      .map((idx) => boundingBoxes[idx])
+      .filter(Boolean);
+
+    // If no other selected boxes (hoveredBox is the only selected one), don't show measurement
+    if (selectedBoxArray.length === 0) return null;
+
+    // Find nearest selected box (prioritizes temporal distance)
+    const nearestBox = findNearestBox(hoveredBox, selectedBoxArray);
+    if (!nearestBox) return null;
+
+    // Calculate temporal distance
+    const distanceMs = calculateTemporalDistance(nearestBox, hoveredBox);
+
+    // If boxes overlap (null distance), don't show measurement
+    if (distanceMs === null) return null;
+
+    // Determine temporal order (which box comes first in time)
+    const box1ComesFirst = nearestBox.end_time <= hoveredBox.start_time;
+    const leftBox = box1ComesFirst ? nearestBox : hoveredBox;
+    const rightBox = box1ComesFirst ? hoveredBox : nearestBox;
+
+    // Calculate bracket positions at temporal edges
+    // Left bracket: at the right edge of the left box
+    const leftBracketX = leftBox.x + leftBox.width;
+    // Right bracket: at the left edge of the right box
+    const rightBracketX = rightBox.x;
+
+    // Vertical lines extend from the top of the higher box to the bottom of the lower box
+    // This ensures the lines visually connect both boxes completely
+    const minY = Math.min(leftBox.y, rightBox.y);
+    const maxY = Math.max(leftBox.y + leftBox.height, rightBox.y + rightBox.height);
+    const bracketTop = minY;
+    const bracketBottom = maxY;
+
+    // Horizontal line at the middle of the extended range
+    const horizontalLineY = (bracketTop + bracketBottom) / 2;
+
+    return {
+      distanceMs, // Already positive, no need for Math.abs()
+      leftBracket: {
+        x: leftBracketX,
+        yTop: bracketTop,
+        yBottom: bracketBottom,
+      },
+      rightBracket: {
+        x: rightBracketX,
+        yTop: bracketTop,
+        yBottom: bracketBottom,
+      },
+      horizontalLineY,
+    };
+  }, [
+    isAltKeyPressed,
+    isAnnotationMode,
+    hoveredBoxIndex,
+    selectedBoxes,
+    boundingBoxes,
+  ]);
+
   // FPS monitoring for development
   useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;
@@ -511,7 +616,7 @@ const AnnotationEditor: React.FC = () => {
       }
 
       // Check for conflicts
-      const detectedConflicts = detectConflicts(boundingBoxes);
+      const detectedConflicts = detectAllConflicts(boundingBoxes);
       const hasConflicts = detectedConflicts.length > 0;
 
       if ((hasUnsavedChanges || hasConflicts) && !isAutoSaving && !isSaving) {
@@ -645,6 +750,11 @@ const AnnotationEditor: React.FC = () => {
         if (e.key !== "Escape") {
           return;
         }
+      }
+
+      // Track Alt key for distance measurement feature
+      if (e.key === "Alt" && !isAltKeyPressed) {
+        setIsAltKeyPressed(true);
       }
 
       // Handle '.' key for annotation mode toggle
@@ -801,6 +911,11 @@ const AnnotationEditor: React.FC = () => {
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
+      // Track Alt key release for distance measurement feature
+      if (e.key === "Alt" && isAltKeyPressed) {
+        setIsAltKeyPressed(false);
+        setHoveredBoxIndex(null); // Clear hover state when Alt is released
+      }
       // Arrow keys no longer need keyup handling since they're used for panning
     };
 
@@ -1720,7 +1835,7 @@ const AnnotationEditor: React.FC = () => {
 
   const pauseAndNavigate = (path: string) => {
     // Check for conflicts before navigating
-    const detectedConflicts = detectConflicts(boundingBoxes);
+    const detectedConflicts = detectAllConflicts(boundingBoxes);
     if (detectedConflicts.length > 0) {
       toast.error(
         `Cannot navigate: ${detectedConflicts.length} conflict${detectedConflicts.length > 1 ? "s" : ""} detected. Please resolve them first.`,
@@ -1742,7 +1857,7 @@ const AnnotationEditor: React.FC = () => {
   const navigateToRecording = async (index: number) => {
     if (index >= 0 && index < projectRecordings.length) {
       // Check for conflicts before navigating
-      const detectedConflicts = detectConflicts(boundingBoxes);
+      const detectedConflicts = detectAllConflicts(boundingBoxes);
       if (detectedConflicts.length > 0) {
         toast.error(
           `Cannot navigate: ${detectedConflicts.length} conflict${detectedConflicts.length > 1 ? "s" : ""} detected. Please resolve them first.`,
@@ -1823,7 +1938,17 @@ const AnnotationEditor: React.FC = () => {
         return constrainBox(pastedBox);
       });
 
-      setBoundingBoxes([...boundingBoxes, ...newBoxes]);
+      const updatedBoxes = [...boundingBoxes, ...newBoxes];
+      setBoundingBoxes(updatedBoxes);
+
+      // Auto-select the newly pasted boxes
+      const startIndex = boundingBoxes.length;
+      const newIndices = new Set(
+        Array.from({ length: newBoxes.length }, (_, i) => startIndex + i)
+      );
+      setSelectedBoxes(newIndices);
+      setSelectedBox(null);
+
       setHasUnsavedChanges(true);
       toast.success(`${newBoxes.length} bounding boxes pasted`);
     } else {
@@ -1839,7 +1964,13 @@ const AnnotationEditor: React.FC = () => {
       };
 
       const newBox = constrainBox(pastedBox);
-      setBoundingBoxes([...boundingBoxes, newBox]);
+      const updatedBoxes = [...boundingBoxes, newBox];
+      setBoundingBoxes(updatedBoxes);
+
+      // Auto-select the newly pasted box
+      setSelectedBox(newBox);
+      setSelectedBoxes(new Set([boundingBoxes.length]));
+
       setHasUnsavedChanges(true);
       toast.success("Bounding box pasted");
     }
@@ -2386,6 +2517,27 @@ const AnnotationEditor: React.FC = () => {
         setHoveredHandle(null);
       }
     }
+
+    // Distance measurement: Track hovered box when Alt is pressed
+    if (isAltKeyPressed && !isAnnotationMode && selectedBoxes.size > 0) {
+      let newHoveredIndex: number | null = null;
+
+      // Find which box the mouse is hovering over (reverse order for z-index)
+      for (let i = boundingBoxes.length - 1; i >= 0; i--) {
+        const box = boundingBoxes[i];
+        if (isPointInBox(pos, box)) {
+          newHoveredIndex = i;
+          break;
+        }
+      }
+
+      setHoveredBoxIndex(newHoveredIndex);
+    } else {
+      // Clear hovered box if Alt is not pressed
+      if (hoveredBoxIndex !== null) {
+        setHoveredBoxIndex(null);
+      }
+    }
   };
 
   const handleMouseUp = () => {
@@ -2667,13 +2819,17 @@ const AnnotationEditor: React.FC = () => {
 
   // Conflict detection and resolution handlers
   const handleDetectConflicts = () => {
-    const detectedConflicts = detectConflicts(boundingBoxes);
+    const detectedConflicts = detectAllConflicts(boundingBoxes);
     setConflicts(detectedConflicts);
     setHighlightConflicts(true);
 
     if (detectedConflicts.length === 0) {
-      toast.success("No conflicts detected! All bounding boxes have proper 10ms gaps.");
+      toast.success("No conflicts detected! All bounding boxes have proper spacing and no nesting.");
     } else {
+      // Count nesting and gap conflicts
+      const nestingConflicts = detectedConflicts.filter(c => c.type === 'nesting');
+      const gapConflicts = detectedConflicts.filter(c => c.type === 'gap');
+
       // Show toast with custom JSX for the "Resolve Conflicts" button
       // Capture detectedConflicts in closure to avoid state timing issues
       toast(
@@ -2684,7 +2840,9 @@ const AnnotationEditor: React.FC = () => {
                 {detectedConflicts.length} conflict{detectedConflicts.length > 1 ? "s" : ""} detected
               </p>
               <p className="text-sm text-gray-600">
-                Some bounding boxes don't have the required 10ms gap
+                {nestingConflicts.length > 0 && `${nestingConflicts.length} nested box${nestingConflicts.length > 1 ? 'es' : ''}`}
+                {nestingConflicts.length > 0 && gapConflicts.length > 0 && ', '}
+                {gapConflicts.length > 0 && `${gapConflicts.length} gap issue${gapConflicts.length > 1 ? 's' : ''}`}
               </p>
             </div>
             <button
@@ -2706,7 +2864,7 @@ const AnnotationEditor: React.FC = () => {
     }
   };
 
-  const handleResolveConflicts = (conflictsToResolve?: BoundingBoxConflict[]) => {
+  const handleResolveConflicts = (conflictsToResolve?: UnifiedConflict[]) => {
     // Use provided conflicts or fall back to state
     const activeConflicts = conflictsToResolve || conflicts;
 
@@ -2715,10 +2873,14 @@ const AnnotationEditor: React.FC = () => {
       return;
     }
 
-    const resolvedBoxes = resolveConflicts(boundingBoxes, activeConflicts);
+    // Count nesting and gap conflicts for feedback
+    const nestingConflicts = activeConflicts.filter(c => c.type === 'nesting');
+    const gapConflicts = activeConflicts.filter(c => c.type === 'gap');
+
+    const resolvedBoxes = resolveAllConflicts(boundingBoxes, activeConflicts);
 
     // CRITICAL FIX: Recalculate pixel coordinates (x, width) from time coordinates
-    // because resolveConflicts only modifies start_time and end_time
+    // because resolveAllConflicts only modifies start_time and end_time
     const resolvedBoxesWithPixelCoords = resolvedBoxes.map((box) => {
       const newX = CoordinateUtils.timeToPixel(
         box.start_time,
@@ -2758,7 +2920,16 @@ const AnnotationEditor: React.FC = () => {
     setConflicts([]);
     setHighlightConflicts(false);
 
-    toast.success(`Resolved ${activeConflicts.length} conflict${activeConflicts.length > 1 ? "s" : ""}!`);
+    // Detailed success message
+    const messages = [];
+    if (nestingConflicts.length > 0) {
+      messages.push(`Removed ${nestingConflicts.length} nested box${nestingConflicts.length > 1 ? 'es' : ''}`);
+    }
+    if (gapConflicts.length > 0) {
+      messages.push(`Adjusted ${gapConflicts.length} gap${gapConflicts.length > 1 ? 's' : ''}`);
+    }
+
+    toast.success(messages.join(', ') + '!');
   };
 
   const handleToggleHighlightConflicts = () => {
@@ -2778,8 +2949,8 @@ const AnnotationEditor: React.FC = () => {
     }
 
     try {
-      // Resolve conflicts and get the modified boxes
-      const resolvedBoxes = resolveConflicts(boundingBoxes, activeConflicts);
+      // Resolve conflicts and get the modified boxes (includes nesting + gap resolution)
+      const resolvedBoxes = resolveAllConflicts(boundingBoxes, activeConflicts);
 
       // CRITICAL FIX: Recalculate pixel coordinates (x, width) from time coordinates
       const resolvedBoxesWithPixelCoords = resolvedBoxes.map((box) => {
@@ -3258,12 +3429,47 @@ const AnnotationEditor: React.FC = () => {
             </div>
 
             {recording && (
-              <div className="text-sm text-gray-700 max-w-[300px] truncate">
-                <span
-                  className="font-medium"
-                  title={recording.original_filename}
+              <div className="flex items-center space-x-3">
+                <div className="text-sm text-gray-700 max-w-[300px] truncate">
+                  <span
+                    className="font-medium"
+                    title={recording.original_filename}
+                  >
+                    {recording.original_filename}
+                  </span>
+                </div>
+
+                {/* Modern toggle switch for Finished status */}
+                <button
+                  onClick={async () => {
+                    try {
+                      const updatedRecording = await recordingService.toggleFinished(recording.id);
+                      setRecording(updatedRecording);
+                      toast.success(
+                        updatedRecording.is_finished
+                          ? "Recording marked as finished"
+                          : "Recording unmarked as finished"
+                      );
+                    } catch (error) {
+                      console.error("Failed to toggle finished status:", error);
+                      toast.error("Failed to update finished status");
+                    }
+                  }}
+                  className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 ${
+                    recording.is_finished ? 'bg-green-500' : 'bg-gray-300'
+                  }`}
+                  title={recording.is_finished ? "Mark as unfinished" : "Mark as finished"}
                 >
-                  {recording.original_filename}
+                  <span
+                    className={`inline-block w-4 h-4 transform transition-transform duration-200 ease-in-out bg-white rounded-full shadow-lg ${
+                      recording.is_finished ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className={`text-xs font-medium transition-colors ${
+                  recording.is_finished ? 'text-green-700' : 'text-gray-500'
+                }`}>
+                  Finished
                 </span>
               </div>
             )}
@@ -3339,32 +3545,6 @@ const AnnotationEditor: React.FC = () => {
                   </div>
                 )}
               </div>
-
-              {/* Finished checkbox */}
-              {recording && (
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={recording.is_finished || false}
-                    onChange={async () => {
-                      try {
-                        const updatedRecording = await recordingService.toggleFinished(recording.id);
-                        setRecording(updatedRecording);
-                        toast.success(
-                          updatedRecording.is_finished
-                            ? "Recording marked as finished"
-                            : "Recording unmarked as finished"
-                        );
-                      } catch (error) {
-                        console.error("Failed to toggle finished status:", error);
-                        toast.error("Failed to update finished status");
-                      }
-                    }}
-                    className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm text-gray-700 font-medium">Finished</span>
-                </label>
-              )}
             </div>
           </div>
         </div>
@@ -3854,55 +4034,6 @@ const AnnotationEditor: React.FC = () => {
 
                 {/* Dynamic layer for bounding boxes - optimized */}
                 <Layer listening={true} clearBeforeDraw={true}>
-                  {/* Mirror highlights for selected boxes - render first so they appear behind */}
-                  {transformedBoxes.map((transformedBox, index) => {
-                    const globalIndex = transformedBox.originalIndex;
-                    const isSelected = selectedBoxes.has(globalIndex);
-
-                    if (!isSelected) return null;
-
-                    // Render a highlight rectangle for selected boxes
-                    const scaledBox = {
-                      x: transformedBox.screenX,
-                      y: transformedBox.screenY,
-                      width: transformedBox.screenWidth,
-                      height: transformedBox.screenHeight,
-                    };
-
-                    return (
-                      <Group key={`highlight-${globalIndex}`}>
-                        {/* Outer glow effect */}
-                        <Rect
-                          x={scaledBox.x - 6}
-                          y={scaledBox.y - 6}
-                          width={scaledBox.width + 12}
-                          height={scaledBox.height + 12}
-                          fill="transparent"
-                          stroke="#FFD700"
-                          strokeWidth={3}
-                          opacity={0.6}
-                          shadowBlur={15}
-                          shadowColor="#FFD700"
-                          cornerRadius={4}
-                          listening={false}
-                        />
-                        {/* Inner highlight */}
-                        <Rect
-                          x={scaledBox.x - 3}
-                          y={scaledBox.y - 3}
-                          width={scaledBox.width + 6}
-                          height={scaledBox.height + 6}
-                          fill="rgba(255, 215, 0, 0.15)"
-                          stroke="#FFD700"
-                          strokeWidth={2}
-                          dash={[12, 6]}
-                          cornerRadius={2}
-                          listening={false}
-                        />
-                      </Group>
-                    );
-                  })}
-
                   {/* Optimized Bounding boxes - only render visible boxes */}
                   {transformedBoxes.map((transformedBox, index) => {
                     // const originalIndex = visibleBoundingBoxes.indexOf(transformedBox); // Unused
@@ -3946,10 +4077,10 @@ const AnnotationEditor: React.FC = () => {
                       shadowColor = "rgba(255, 69, 0, 0.8)"; // Orange glow
                       dashArray = [8, 4]; // Dashed line to indicate problem
                     } else if (isSelected || isSingleSelected) {
-                      strokeWidth = 4; // Thicker stroke for visibility
-                      shadowBlur = 20; // Much stronger shadow for selected boxes
-                      shadowColor = "rgba(255, 215, 0, 0.8)"; // Golden shadow for selection
-                      dashArray = undefined; // Solid line for cleaner look
+                      strokeWidth = 1.5; // Thin stroke for precision work
+                      shadowBlur = 0; // No shadow - clean dashed stroke only
+                      shadowColor = "transparent";
+                      dashArray = [8, 4]; // Dashed line to indicate selection
                       // Use much brighter version of the same label color for selection
                       fillColor = "rgba(255, 215, 0, 0.25)"; // Golden fill for selected boxes
                       // Make stroke bright golden for maximum contrast
@@ -4035,11 +4166,11 @@ const AnnotationEditor: React.FC = () => {
                         {(isSingleSelected || isSelected) &&
                           !isAnnotationMode && (
                             <>
-                              {/* Corner handles */}
+                              {/* Corner handles - smaller for precision */}
                               <Circle
                                 x={scaledBox.x}
                                 y={scaledBox.y}
-                                radius={6}
+                                radius={4}
                                 fill="#FFD700"
                                 stroke="white"
                                 strokeWidth={2}
@@ -4048,7 +4179,7 @@ const AnnotationEditor: React.FC = () => {
                               <Circle
                                 x={scaledBox.x + scaledBox.width}
                                 y={scaledBox.y}
-                                radius={6}
+                                radius={4}
                                 fill="#FFD700"
                                 stroke="white"
                                 strokeWidth={2}
@@ -4057,7 +4188,7 @@ const AnnotationEditor: React.FC = () => {
                               <Circle
                                 x={scaledBox.x}
                                 y={scaledBox.y + scaledBox.height}
-                                radius={6}
+                                radius={4}
                                 fill="#FFD700"
                                 stroke="white"
                                 strokeWidth={2}
@@ -4066,7 +4197,7 @@ const AnnotationEditor: React.FC = () => {
                               <Circle
                                 x={scaledBox.x + scaledBox.width}
                                 y={scaledBox.y + scaledBox.height}
-                                radius={6}
+                                radius={4}
                                 fill="#FFD700"
                                 stroke="white"
                                 strokeWidth={2}
@@ -4204,6 +4335,88 @@ const AnnotationEditor: React.FC = () => {
                     }
                     return null;
                   })()}
+
+                  {/* Distance measurement overlay (Alt + Hover feature) - Vertical dashed lines */}
+                  {distanceMeasurement && (
+                    <Group listening={false}>
+                      {/* Left vertical dashed line */}
+                      <Line
+                        points={[
+                          distanceMeasurement.leftBracket.x * zoomLevel,
+                          distanceMeasurement.leftBracket.yTop,
+                          distanceMeasurement.leftBracket.x * zoomLevel,
+                          distanceMeasurement.leftBracket.yBottom,
+                        ]}
+                        stroke="#8B5CF6"
+                        strokeWidth={2}
+                        dash={[8, 4]}
+                        lineCap="round"
+                        listening={false}
+                      />
+
+                      {/* Right vertical dashed line */}
+                      <Line
+                        points={[
+                          distanceMeasurement.rightBracket.x * zoomLevel,
+                          distanceMeasurement.rightBracket.yTop,
+                          distanceMeasurement.rightBracket.x * zoomLevel,
+                          distanceMeasurement.rightBracket.yBottom,
+                        ]}
+                        stroke="#8B5CF6"
+                        strokeWidth={2}
+                        dash={[8, 4]}
+                        lineCap="round"
+                        listening={false}
+                      />
+
+                      {/* Horizontal connector line at y-axis center */}
+                      <Line
+                        points={[
+                          distanceMeasurement.leftBracket.x * zoomLevel,
+                          distanceMeasurement.horizontalLineY,
+                          distanceMeasurement.rightBracket.x * zoomLevel,
+                          distanceMeasurement.horizontalLineY,
+                        ]}
+                        stroke="#8B5CF6"
+                        strokeWidth={2}
+                        listening={false}
+                      />
+
+                      {/* Distance label */}
+                      <Group
+                        x={
+                          ((distanceMeasurement.leftBracket.x +
+                            distanceMeasurement.rightBracket.x) /
+                            2) *
+                          zoomLevel
+                        }
+                        y={distanceMeasurement.horizontalLineY - 12}
+                        listening={false}
+                      >
+                        <Rect
+                          x={-40}
+                          y={-12}
+                          width={80}
+                          height={24}
+                          fill="rgba(139, 92, 246, 0.95)"
+                          cornerRadius={4}
+                          listening={false}
+                        />
+                        <Text
+                          text={`${Math.round(distanceMeasurement.distanceMs)} ms`}
+                          fontSize={13}
+                          fill="white"
+                          fontStyle="bold"
+                          align="center"
+                          verticalAlign="middle"
+                          width={80}
+                          x={-40}
+                          y={-7}
+                          listening={false}
+                        />
+                      </Group>
+                    </Group>
+                  )}
 
                   {/* Cursor line only for spectrogram area */}
                   {duration > 0 && (

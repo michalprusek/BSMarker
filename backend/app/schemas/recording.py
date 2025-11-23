@@ -22,6 +22,9 @@ class RecordingInDBBase(RecordingBase):
     is_finished: bool = False
     created_at: datetime
     annotation_count: int = 0
+    spectrogram_status: Optional[str] = (
+        None  # pending | processing | failed | completed (None if no spectrogram)
+    )
 
     class Config:
         from_attributes = True

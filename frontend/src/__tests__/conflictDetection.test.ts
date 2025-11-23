@@ -4,6 +4,13 @@ import {
   formatConflictDescription,
   MIN_TIME_GAP,
   BoundingBoxConflict,
+  // New unified conflict system
+  detectNestingConflicts,
+  detectGapConflicts,
+  detectAllConflicts,
+  resolveAllConflicts,
+  formatUnifiedConflictDescription,
+  UnifiedConflict,
 } from "../utils/conflictDetection";
 import { BoundingBox } from "../types";
 
@@ -18,9 +25,8 @@ describe("conflictDetection", () => {
           width: 100,
           height: 50,
           start_time: 0,
-          end_time: 1,
+          end_time: 0.995,  // Changed: now ends at 0.995
           label: "Bird 1",
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -30,10 +36,9 @@ describe("conflictDetection", () => {
           y: 0,
           width: 100,
           height: 50,
-          start_time: 0.995, // 5ms gap < 10ms MIN_TIME_GAP
+          start_time: 1.0,  // Changed: now starts at 1.0 (5ms gap)
           end_time: 2,
           label: "Bird 2",
-          color: "#00FF00",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -57,7 +62,6 @@ describe("conflictDetection", () => {
           start_time: 0,
           end_time: 1,
           label: "Bird 1",
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -70,7 +74,6 @@ describe("conflictDetection", () => {
           start_time: 1.011, // 11ms gap > 10ms MIN_TIME_GAP
           end_time: 2,
           label: "Bird 2",
-          color: "#00FF00",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -91,7 +94,6 @@ describe("conflictDetection", () => {
           start_time: 0,
           end_time: 1,
           label: "Bird 1",
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -104,7 +106,6 @@ describe("conflictDetection", () => {
           start_time: 1 + MIN_TIME_GAP, // Exactly MIN_TIME_GAP
           end_time: 2,
           label: "Bird 2",
-          color: "#00FF00",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -125,7 +126,6 @@ describe("conflictDetection", () => {
           start_time: 0,
           end_time: 1,
           label: "Bird 1",
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -138,7 +138,6 @@ describe("conflictDetection", () => {
           start_time: 0.995, // Conflicts with box 1
           end_time: 2,
           label: "Bird 2",
-          color: "#00FF00",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -151,7 +150,6 @@ describe("conflictDetection", () => {
           start_time: 1.997, // Conflicts with box 2
           end_time: 3,
           label: "Bird 3",
-          color: "#0000FF",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -177,7 +175,6 @@ describe("conflictDetection", () => {
           start_time: 0,
           end_time: 1,
           label: "Bird 1",
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -195,10 +192,9 @@ describe("conflictDetection", () => {
           y: 0,
           width: 100,
           height: 50,
-          start_time: 2,
-          end_time: 3,
+          start_time: 2.5,  // Changed: starts at 2.5 to avoid conflict
+          end_time: 3.5,    // Changed: ends at 3.5
           label: "Bird 2",
-          color: "#00FF00",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -211,7 +207,6 @@ describe("conflictDetection", () => {
           start_time: 0,
           end_time: 1,
           label: "Bird 1",
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -222,9 +217,8 @@ describe("conflictDetection", () => {
           width: 100,
           height: 50,
           start_time: 1.005, // Conflicts with Bird 1
-          end_time: 2,
+          end_time: 2.0,
           label: "Bird 3",
-          color: "#0000FF",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -252,7 +246,6 @@ describe("conflictDetection", () => {
           start_time: 0,
           end_time: 1,
           label: "Bird 1",
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -265,7 +258,6 @@ describe("conflictDetection", () => {
           start_time: 0.995,
           end_time: 2,
           label: "Bird 2",
-          color: "#00FF00",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -298,7 +290,6 @@ describe("conflictDetection", () => {
           start_time: 0,
           end_time: 1,
           label: "Bird 1",
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -311,7 +302,6 @@ describe("conflictDetection", () => {
           start_time: 0.995,
           end_time: 2,
           label: "Bird 2",
-          color: "#00FF00",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -324,7 +314,6 @@ describe("conflictDetection", () => {
           start_time: 1.997,
           end_time: 3,
           label: "Bird 3",
-          color: "#0000FF",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -349,7 +338,6 @@ describe("conflictDetection", () => {
           start_time: 0,
           end_time: 1,
           label: "Bird 1",
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -362,7 +350,6 @@ describe("conflictDetection", () => {
           start_time: 2,
           end_time: 3,
           label: "Bird 2",
-          color: "#00FF00",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -387,7 +374,6 @@ describe("conflictDetection", () => {
           start_time: 0,
           end_time: 1,
           label: "Bird 1",
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -400,7 +386,6 @@ describe("conflictDetection", () => {
           start_time: 0.995,
           end_time: 2,
           label: "Bird 2",
-          color: "#00FF00",
           min_frequency: 1500,
           max_frequency: 2500,
         },
@@ -438,7 +423,6 @@ describe("conflictDetection", () => {
           start_time: 0,
           end_time: 1,
           label: "Bird A",
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -451,7 +435,6 @@ describe("conflictDetection", () => {
           start_time: 0.995,
           end_time: 2,
           label: "Bird B",
-          color: "#00FF00",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -474,7 +457,6 @@ describe("conflictDetection", () => {
           height: 50,
           start_time: 0,
           end_time: 1,
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -486,7 +468,6 @@ describe("conflictDetection", () => {
           height: 50,
           start_time: 0.997,
           end_time: 2,
-          color: "#00FF00",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -510,7 +491,6 @@ describe("conflictDetection", () => {
           start_time: 0,
           end_time: 1,
           label: "Test",
-          color: "#FF0000",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -523,7 +503,6 @@ describe("conflictDetection", () => {
           start_time: 0.9923,
           end_time: 2,
           label: "Test2",
-          color: "#00FF00",
           min_frequency: 1000,
           max_frequency: 2000,
         },
@@ -538,6 +517,483 @@ describe("conflictDetection", () => {
   describe("MIN_TIME_GAP constant", () => {
     it("should be set to 10 milliseconds", () => {
       expect(MIN_TIME_GAP).toBe(0.010);
+    });
+  });
+
+  // ============================================
+  // NEW TESTS: Unified Conflict System
+  // ============================================
+
+  describe("detectNestingConflicts", () => {
+    it("should detect nested box (shorter box inside longer box)", () => {
+      const boxes: BoundingBox[] = [
+        {
+          id: 1,
+          x: 0,
+          y: 0,
+          width: 300,
+          height: 50,
+          start_time: 0.0,
+          end_time: 3.0,
+          label: "Long Bird",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        {
+          id: 2,
+          x: 100,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 1.0,
+          end_time: 2.0,
+          label: "Short Bird",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+      ];
+
+      const conflicts = detectNestingConflicts(boxes);
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0].type).toBe('nesting');
+      expect(conflicts[0].nestedBoxIndex).toBe(1); // Short Bird is nested
+      expect(conflicts[0].containerBoxIndex).toBe(0); // Long Bird is container
+      expect(conflicts[0].nestingReason).toBe('shorter');
+    });
+
+    it("should detect nested box with same length (remove lower frequency)", () => {
+      const boxes: BoundingBox[] = [
+        {
+          id: 1,
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 1.0,
+          end_time: 2.0,
+          label: "High Freq Bird",
+          min_frequency: 500,  // Lower value = higher on spectrogram
+          max_frequency: 2000,
+        },
+        {
+          id: 2,
+          x: 0,
+          y: 50,
+          width: 100,
+          height: 50,
+          start_time: 1.0,
+          end_time: 2.0,
+          label: "Low Freq Bird",
+          min_frequency: 1500,  // Higher value = lower on spectrogram
+          max_frequency: 3000,
+        },
+      ];
+
+      const conflicts = detectNestingConflicts(boxes);
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0].type).toBe('nesting');
+      expect(conflicts[0].nestedBoxIndex).toBe(1); // Low Freq Bird is nested (lower)
+      expect(conflicts[0].containerBoxIndex).toBe(0); // High Freq Bird stays
+      expect(conflicts[0].nestingReason).toBe('lower');
+    });
+
+    it("should detect chain nesting (A ⊂ B ⊂ C)", () => {
+      const boxes: BoundingBox[] = [
+        {
+          id: 1,
+          x: 0,
+          y: 0,
+          width: 500,
+          height: 50,
+          start_time: 0.0,
+          end_time: 5.0,
+          label: "Outer",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        {
+          id: 2,
+          x: 100,
+          y: 0,
+          width: 300,
+          height: 50,
+          start_time: 1.0,
+          end_time: 4.0,
+          label: "Middle",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        {
+          id: 3,
+          x: 200,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 2.0,
+          end_time: 3.0,
+          label: "Inner",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+      ];
+
+      const conflicts = detectNestingConflicts(boxes);
+      expect(conflicts.length).toBeGreaterThanOrEqual(2); // Both Inner and Middle should be detected as nested
+
+      const nestedIndices = conflicts.map(c => c.nestedBoxIndex);
+      expect(nestedIndices).toContain(2); // Inner is nested
+      expect(nestedIndices).toContain(1); // Middle is nested
+    });
+
+    it("should not detect partial overlap as nesting", () => {
+      const boxes: BoundingBox[] = [
+        {
+          id: 1,
+          x: 0,
+          y: 0,
+          width: 150,
+          height: 50,
+          start_time: 0.0,
+          end_time: 1.5,
+          label: "Bird 1",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        {
+          id: 2,
+          x: 100,
+          y: 0,
+          width: 150,
+          height: 50,
+          start_time: 1.0,
+          end_time: 2.5,
+          label: "Bird 2",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+      ];
+
+      const conflicts = detectNestingConflicts(boxes);
+      expect(conflicts).toHaveLength(0); // Partial overlap, not nesting
+    });
+
+    it("should handle empty array", () => {
+      const conflicts = detectNestingConflicts([]);
+      expect(conflicts).toHaveLength(0);
+    });
+
+    it("should handle single box", () => {
+      const boxes: BoundingBox[] = [
+        {
+          id: 1,
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 0,
+          end_time: 1,
+          label: "Solo Bird",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+      ];
+
+      const conflicts = detectNestingConflicts(boxes);
+      expect(conflicts).toHaveLength(0);
+    });
+  });
+
+  describe("detectGapConflicts", () => {
+    it("should detect gap conflicts (same as old detectConflicts)", () => {
+      const boxes: BoundingBox[] = [
+        {
+          id: 1,
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 0,
+          end_time: 0.995,  // Changed: ends at 0.995
+          label: "Bird 1",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        {
+          id: 2,
+          x: 95,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 1.0,  // Changed: starts at 1.0 (5ms gap)
+          end_time: 2,
+          label: "Bird 2",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+      ];
+
+      const conflicts = detectGapConflicts(boxes);
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0].type).toBe('gap');
+      expect(conflicts[0].overlapAmount).toBeCloseTo(0.005, 3);
+    });
+  });
+
+  describe("detectAllConflicts", () => {
+    it("should detect both nesting and gap conflicts", () => {
+      const boxes: BoundingBox[] = [
+        {
+          id: 1,
+          x: 0,
+          y: 0,
+          width: 300,
+          height: 50,
+          start_time: 0.0,
+          end_time: 2.995,  // Changed: ends at 2.995
+          label: "Long Bird",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        {
+          id: 2,
+          x: 100,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 1.0,
+          end_time: 2.0,
+          label: "Nested Bird",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        {
+          id: 3,
+          x: 290,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 3.0,  // Changed: starts at 3.0 (5ms gap with first bird)
+          end_time: 4.0,
+          label: "Gap Bird",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+      ];
+
+      const conflicts = detectAllConflicts(boxes);
+
+      const nestingConflicts = conflicts.filter(c => c.type === 'nesting');
+      const gapConflicts = conflicts.filter(c => c.type === 'gap');
+
+      expect(nestingConflicts.length).toBe(1);
+      expect(gapConflicts.length).toBe(1);
+    });
+  });
+
+  describe("resolveAllConflicts", () => {
+    it("should remove nested boxes and resolve gap conflicts", () => {
+      const boxes: BoundingBox[] = [
+        {
+          id: 1,
+          x: 0,
+          y: 0,
+          width: 300,
+          height: 50,
+          start_time: 0.0,
+          end_time: 3.0,
+          label: "Long Bird",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        {
+          id: 2,
+          x: 100,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 1.0,
+          end_time: 2.0,
+          label: "Nested Bird",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+      ];
+
+      const conflicts = detectAllConflicts(boxes);
+      const resolved = resolveAllConflicts(boxes, conflicts);
+
+      // Nested bird should be removed
+      expect(resolved).toHaveLength(1);
+      expect(resolved[0].label).toBe("Long Bird");
+
+      // No conflicts should remain
+      const remainingConflicts = detectAllConflicts(resolved);
+      expect(remainingConflicts).toHaveLength(0);
+    });
+
+    it("should handle gap conflicts after removing nested boxes", () => {
+      const boxes: BoundingBox[] = [
+        {
+          id: 1,
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 0.0,
+          end_time: 1.0,
+          label: "Bird 1",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        {
+          id: 2,
+          x: 50,
+          y: 0,
+          width: 50,
+          height: 50,
+          start_time: 0.5,
+          end_time: 0.7,
+          label: "Nested (will be removed)",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        {
+          id: 3,
+          x: 95,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 0.995,
+          end_time: 2.0,
+          label: "Bird 3",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+      ];
+
+      const conflicts = detectAllConflicts(boxes);
+      const resolved = resolveAllConflicts(boxes, conflicts);
+
+      // Should have 2 boxes (nested removed)
+      expect(resolved).toHaveLength(2);
+
+      // Gap conflict should be resolved (10ms gap)
+      const gap = resolved[1].start_time - resolved[0].end_time;
+      expect(gap).toBeGreaterThanOrEqual(MIN_TIME_GAP);
+    });
+
+    it("should preserve box metadata during resolution", () => {
+      const boxes: BoundingBox[] = [
+        {
+          id: 1,
+          x: 0,
+          y: 0,
+          width: 200,
+          height: 50,
+          start_time: 0.0,
+          end_time: 2.0,
+          label: "Container",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        {
+          id: 2,
+          x: 50,
+          y: 0,
+          width: 50,
+          height: 50,
+          start_time: 0.5,
+          end_time: 1.0,
+          label: "Nested",
+          min_frequency: 1500,
+          max_frequency: 2500,
+        },
+      ];
+
+      const conflicts = detectAllConflicts(boxes);
+      const resolved = resolveAllConflicts(boxes, conflicts);
+
+      // Container should remain with all metadata
+      expect(resolved[0].id).toBe(1);
+      expect(resolved[0].label).toBe("Container");
+      expect(resolved[0].min_frequency).toBe(1000);
+      expect(resolved[0].max_frequency).toBe(2000);
+    });
+  });
+
+  describe("formatUnifiedConflictDescription", () => {
+    it("should format gap conflicts", () => {
+      const conflict: UnifiedConflict = {
+        type: 'gap',
+        box1Index: 0,
+        box2Index: 1,
+        box1: {
+          id: 1,
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 0,
+          end_time: 1,
+          label: "Bird A",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        box2: {
+          id: 2,
+          x: 95,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 0.995,
+          end_time: 2,
+          label: "Bird B",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        overlapAmount: 0.005,
+      };
+
+      const description = formatUnifiedConflictDescription(conflict);
+      expect(description).toBe("Bird A and Bird B (gap shortage: 5.0ms)");
+    });
+
+    it("should format nesting conflicts", () => {
+      const conflict: UnifiedConflict = {
+        type: 'nesting',
+        box1Index: 0,
+        box2Index: 1,
+        box1: {
+          id: 1,
+          x: 0,
+          y: 0,
+          width: 300,
+          height: 50,
+          start_time: 0,
+          end_time: 3,
+          label: "Container",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        box2: {
+          id: 2,
+          x: 100,
+          y: 0,
+          width: 100,
+          height: 50,
+          start_time: 1,
+          end_time: 2,
+          label: "Nested",
+          min_frequency: 1000,
+          max_frequency: 2000,
+        },
+        nestedBoxIndex: 1,
+        containerBoxIndex: 0,
+        nestingReason: 'shorter',
+      };
+
+      const description = formatUnifiedConflictDescription(conflict);
+      expect(description).toBe("Nested nested in Container (will be removed - shorter)");
     });
   });
 });
