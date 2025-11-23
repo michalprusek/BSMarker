@@ -301,7 +301,9 @@ async def export_project_annotations(
                         }
 
                         json_filename = f"annotations/{base_filename}_annotations.json"
-                        zip_file.writestr(json_filename, json.dumps(annotation_data, indent=2))
+                        zip_file.writestr(
+                            json_filename, json.dumps(annotation_data, indent=2, default=str)
+                        )
                         export_stats["exported_annotations"] += 1
 
                     # If full export, include audio and spectrograms
