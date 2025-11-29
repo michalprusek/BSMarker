@@ -193,6 +193,9 @@ const AnnotationEditor: React.FC = () => {
     selectedIndices?: Set<number>;
     initialPositions?: Map<number, { x: number; y: number }>;
   } | null>(null);
+  // Performance optimization: Use ref for mouse position to avoid re-renders
+  // Only update state when needed for cursor changes (throttled)
+  const mousePositionRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [mousePosition, setMousePosition] = useState<{ x: number; y: number }>({
     x: 0,
     y: 0,
@@ -265,6 +268,13 @@ const AnnotationEditor: React.FC = () => {
 
   const rewindIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const wasPlayingRef = useRef<boolean>(false);
+
+  // Performance: RAF for drag operations to limit update frequency
+  const dragRAFRef = useRef<number | null>(null);
+  const pendingDragUpdateRef = useRef<{
+    boxes: BoundingBox[];
+    selectedBox?: BoundingBox | null;
+  } | null>(null);
 
   const waveformRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
@@ -350,17 +360,23 @@ const AnnotationEditor: React.FC = () => {
     enabled: true,
   });
 
-  // Memoized sorted bounding boxes
+  // Memoized sorted bounding boxes with original indices preserved
   const sortedBoundingBoxes = useMemo(() => {
+    // First, add original index to each box
+    const boxesWithIndex = boundingBoxes.map((box, index) => ({
+      ...box,
+      _originalIndex: index,
+    }));
+
     if (sortMode === "alphabetical") {
-      return [...boundingBoxes].sort((a, b) => {
+      return boxesWithIndex.sort((a, b) => {
         const labelA = (a.label || "None").toLowerCase();
         const labelB = (b.label || "None").toLowerCase();
         return labelA.localeCompare(labelB);
       });
     } else {
       // Sort by time (start_time)
-      return [...boundingBoxes].sort((a, b) => {
+      return boxesWithIndex.sort((a, b) => {
         return (a.start_time || 0) - (b.start_time || 0);
       });
     }
@@ -378,6 +394,15 @@ const AnnotationEditor: React.FC = () => {
     };
   }, [labelColorMap]);
 
+  // PERF: Create index lookup map for O(1) instead of O(n) findIndex/indexOf
+  const boxIndexMap = useMemo(() => {
+    const map = new Map<BoundingBox, number>();
+    boundingBoxes.forEach((box, index) => {
+      map.set(box, index);
+    });
+    return map;
+  }, [boundingBoxes]);
+
   // Memoize coordinate transformations - horizontal zoom only
   const transformedBoxes = useMemo(
     () =>
@@ -386,15 +411,8 @@ const AnnotationEditor: React.FC = () => {
           box,
           zoomLevel,
         );
-        // Find the original index in the full boundingBoxes array
-        const originalIndex = boundingBoxes.findIndex(
-          (b) =>
-            b.id === box.id &&
-            b.x === box.x &&
-            b.y === box.y &&
-            b.width === box.width &&
-            b.height === box.height,
-        );
+        // PERF: Use O(1) map lookup instead of O(n) findIndex
+        const originalIndex = boxIndexMap.get(box) ?? -1;
         return {
           ...box,
           ...screenCoords,
@@ -402,7 +420,7 @@ const AnnotationEditor: React.FC = () => {
           originalIndex, // Store the original index for later use
         };
       }),
-    [visibleBoundingBoxes, boundingBoxes, zoomLevel, getLabelColorMemoized],
+    [visibleBoundingBoxes, boxIndexMap, zoomLevel, getLabelColorMemoized],
   );
 
   // Calculate distance measurement when Alt is pressed and hovering over a box
@@ -2291,6 +2309,70 @@ const AnnotationEditor: React.FC = () => {
     }
   };
 
+  // Throttled mouse position update for cursor styling (performance optimization)
+  const throttledSetMousePosition = useMemo(
+    () =>
+      throttle((pos: { x: number; y: number }) => {
+        setMousePosition(pos);
+      }, 50), // 20 FPS is enough for cursor updates
+    [],
+  );
+
+  // Memoized cursor calculation - avoids expensive computation on every render
+  const stageCursor = useMemo(() => {
+    if (isAnnotationMode) return "crosshair";
+    if (isRoiSelectionMode) return "crosshair";
+    if (isPanning) return "grabbing";
+    if (hoveredHandle) {
+      const isNWSE =
+        (hoveredHandle.handle.includes("n") && hoveredHandle.handle.includes("w")) ||
+        (hoveredHandle.handle.includes("s") && hoveredHandle.handle.includes("e"));
+      return isNWSE ? "nwse-resize" : "nesw-resize";
+    }
+    if (draggingBox) return "grabbing";
+    if (resizingBox) return "grabbing";
+    if (isSelecting) return "crosshair";
+
+    // Check if mouse is over a bounding box
+    const isOverBox = boundingBoxes.some(
+      (box) =>
+        mousePosition.x >= box.x &&
+        mousePosition.x <= box.x + box.width &&
+        mousePosition.y >= box.y &&
+        mousePosition.y <= box.y + box.height,
+    );
+    if (isOverBox) return "move";
+
+    // Check if mouse is in waveform area
+    const containerHeight = Math.max(spectrogramDimensions.height, 600);
+    if (mousePosition.y > containerHeight * 0.8) return "pointer";
+
+    return "default";
+  }, [
+    isAnnotationMode,
+    isRoiSelectionMode,
+    isPanning,
+    hoveredHandle,
+    draggingBox,
+    resizingBox,
+    isSelecting,
+    boundingBoxes,
+    mousePosition,
+    spectrogramDimensions.height,
+  ]);
+
+  // Cleanup throttled function and RAF on unmount
+  useEffect(() => {
+    return () => {
+      throttledSetMousePosition.cancel?.();
+      // Cancel any pending RAF updates
+      if (dragRAFRef.current) {
+        cancelAnimationFrame(dragRAFRef.current);
+        dragRAFRef.current = null;
+      }
+    };
+  }, [throttledSetMousePosition]);
+
   const handleMouseMove = (e: any) => {
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
@@ -2299,7 +2381,14 @@ const AnnotationEditor: React.FC = () => {
 
     // Use centralized coordinate transformation hook (same as handleMouseDown)
     const { seekPosition, pos } = transformMousePoint(point);
-    setMousePosition(pos);
+
+    // Performance optimization: Store in ref for immediate access, throttle state updates
+    mousePositionRef.current = pos;
+
+    // Only update state (for cursor) when not doing intensive operations
+    if (!draggingBox && !resizingBox && !isDrawing && !isSelecting) {
+      throttledSetMousePosition(pos);
+    }
 
     // Don't update timeline cursor on mouse move - only on click
     // This prevents the cursor from following the mouse without clicking
@@ -2336,13 +2425,15 @@ const AnnotationEditor: React.FC = () => {
     }
 
     // Handle dragging entire box (with multi-selection support)
+    // Performance: Use RAF to limit state updates to once per frame
     if (draggingBox) {
       const deltaX =
         pos.x - draggingBox.dragOffset.x - draggingBox.initialBox.x;
       const deltaY =
-        pos.y - draggingBox.dragOffset.y - draggingBox.initialBox.y; // Vertical drag works with no zoom
+        pos.y - draggingBox.dragOffset.y - draggingBox.initialBox.y;
 
       const updatedBoxes = [...boundingBoxes];
+      let newSelectedBox: BoundingBox | null = null;
 
       // If we have multiple selected boxes, move them all
       if (
@@ -2359,8 +2450,6 @@ const AnnotationEditor: React.FC = () => {
               x: initialPos.x + deltaX,
               y: initialPos.y + deltaY,
             };
-
-            // Apply boundary constraints
             updatedBoxes[index] = constrainBox(unconstrained);
           }
         });
@@ -2374,26 +2463,43 @@ const AnnotationEditor: React.FC = () => {
           x: newX,
           y: newY,
         };
-
-        // Apply boundary constraints
         updatedBoxes[draggingBox.index] = constrainBox(unconstrained);
-        setSelectedBox(updatedBoxes[draggingBox.index]);
+        newSelectedBox = updatedBoxes[draggingBox.index];
       }
 
-      setBoundingBoxes(updatedBoxes);
-      setHasUnsavedChanges(true);
+      // Store pending update
+      pendingDragUpdateRef.current = {
+        boxes: updatedBoxes,
+        selectedBox: newSelectedBox,
+      };
 
-      // Clear conflict highlighting when box is moved
-      if (highlightConflicts) {
-        setHighlightConflicts(false);
-        setConflicts([]);
-        toast.dismiss(); // Close "Resolve Automatically" popup
+      // Schedule RAF update if not already scheduled
+      if (!dragRAFRef.current) {
+        dragRAFRef.current = requestAnimationFrame(() => {
+          const pending = pendingDragUpdateRef.current;
+          if (pending) {
+            setBoundingBoxes(pending.boxes);
+            if (pending.selectedBox !== undefined) {
+              setSelectedBox(pending.selectedBox);
+            }
+            setHasUnsavedChanges(true);
+
+            // Clear conflict highlighting when box is moved
+            if (highlightConflicts) {
+              setHighlightConflicts(false);
+              setConflicts([]);
+              toast.dismiss();
+            }
+          }
+          pendingDragUpdateRef.current = null;
+          dragRAFRef.current = null;
+        });
       }
 
       return;
     }
 
-    // Handle resizing
+    // Handle resizing - Performance: Use RAF to limit state updates
     if (resizingBox && dragStartPos) {
       const box = boundingBoxes[resizingBox.index];
       const newBox = { ...box };
@@ -2403,7 +2509,7 @@ const AnnotationEditor: React.FC = () => {
       const maxY = getMaxSpectrogramY();
       const constrainedY = Math.min(pos.y, maxY);
 
-      // Additional constraint for x position to ensure it doesn't exceed max boundaries during resize
+      // Additional constraint for x position
       const maxWorldX = getMaxWorldX();
       const constrainedX = Math.min(pos.x, maxWorldX);
 
@@ -2436,15 +2542,33 @@ const AnnotationEditor: React.FC = () => {
 
       const updatedBoxes = [...boundingBoxes];
       updatedBoxes[resizingBox.index] = newBox;
-      setBoundingBoxes(updatedBoxes);
-      setSelectedBox(newBox);
-      setHasUnsavedChanges(true);
 
-      // Clear conflict highlighting when box is resized
-      if (highlightConflicts) {
-        setHighlightConflicts(false);
-        setConflicts([]);
-        toast.dismiss(); // Close "Resolve Automatically" popup
+      // Store pending update for RAF
+      pendingDragUpdateRef.current = {
+        boxes: updatedBoxes,
+        selectedBox: newBox,
+      };
+
+      // Schedule RAF update if not already scheduled
+      if (!dragRAFRef.current) {
+        dragRAFRef.current = requestAnimationFrame(() => {
+          const pending = pendingDragUpdateRef.current;
+          if (pending) {
+            setBoundingBoxes(pending.boxes);
+            if (pending.selectedBox) {
+              setSelectedBox(pending.selectedBox);
+            }
+            setHasUnsavedChanges(true);
+
+            if (highlightConflicts) {
+              setHighlightConflicts(false);
+              setConflicts([]);
+              toast.dismiss();
+            }
+          }
+          pendingDragUpdateRef.current = null;
+          dragRAFRef.current = null;
+        });
       }
 
       return;
@@ -3842,7 +3966,9 @@ const AnnotationEditor: React.FC = () => {
                         zIndex: 10, // Ensure it's above waveform
                       }}
                     >
-                      {boundingBoxes.map((box, index) => {
+                      {/* PERF: Only render visible boxes in waveform */}
+                      {visibleBoundingBoxes.map((box) => {
+                        const index = boxIndexMap.get(box) ?? -1;
                         const isSelected = selectedBoxes.has(index);
                         const labelColor = getLabelColor(box.label || "None");
                         // Calculate pixel positions for waveform boxes - use base dimensions for consistent positioning
@@ -3967,42 +4093,8 @@ const AnnotationEditor: React.FC = () => {
                 style={{
                   position: "absolute",
                   top: "0",
-                  left: `${Math.round(LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH)}px`, // Pixel-aligned offset for frequency scale</
-                  cursor: isAnnotationMode
-                    ? "crosshair"
-                    : isRoiSelectionMode
-                      ? "crosshair"
-                      : isPanning
-                        ? "grabbing"
-                        : hoveredHandle
-                          ? (hoveredHandle.handle.includes("n") &&
-                              hoveredHandle.handle.includes("w")) ||
-                            (hoveredHandle.handle.includes("s") &&
-                              hoveredHandle.handle.includes("e"))
-                            ? "nwse-resize"
-                            : "nesw-resize"
-                          : draggingBox
-                            ? "grabbing"
-                            : resizingBox
-                              ? "grabbing"
-                              : isSelecting
-                                ? "crosshair"
-                                : boundingBoxes.some(
-                                      (box) =>
-                                        mousePosition.x >= box.x &&
-                                        mousePosition.x <= box.x + box.width &&
-                                        mousePosition.y >= box.y &&
-                                        mousePosition.y <= box.y + box.height,
-                                    )
-                                  ? "move"
-                                  : mousePosition.y >
-                                      Math.max(
-                                        spectrogramDimensions.height,
-                                        600,
-                                      ) *
-                                        0.8
-                                    ? "pointer"
-                                    : "default",
+                  left: `${Math.round(LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH)}px`,
+                  cursor: stageCursor, // Performance: Use memoized cursor
                 }}
               >
                 {/* Static layer for selection rectangle - cached */}
