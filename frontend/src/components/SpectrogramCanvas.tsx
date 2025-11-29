@@ -1,5 +1,6 @@
-import React, { useRef, useEffect, useCallback } from "react";
+import React, { useRef, useEffect, useCallback, useMemo } from "react";
 import { CoordinateUtils } from "../utils/coordinates";
+import { debounce } from "lodash";
 
 interface SpectrogramCanvasProps {
   imageUrl: string;
@@ -9,6 +10,7 @@ interface SpectrogramCanvasProps {
   zoomOffset: { x: number; y: number };
   interpolationType?: "nearest" | "bilinear" | "bicubic";
   contrast?: number;
+  enableSharpening?: boolean; // Performance: disabled by default
   onImageLoad?: () => void;
   onImageError?: (error: string) => void;
 }
@@ -21,26 +23,118 @@ const SpectrogramCanvas: React.FC<SpectrogramCanvasProps> = ({
   zoomOffset,
   interpolationType = "bicubic",
   contrast = 1.0,
+  enableSharpening = false, // Disabled by default for performance
   onImageLoad,
   onImageError,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const isRenderingRef = useRef<boolean>(false);
+  const lastZoomLevelRef = useRef<number>(1);
+
+  // Sharpening filter for enhanced clarity - DEBOUNCED for performance
+  const applySharpening = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      canvasWidth: number,
+      canvasHeight: number,
+      strength: number,
+    ) => {
+      // Skip if canvas is too large (performance protection)
+      const maxPixels = 500000; // ~700x700
+      if (canvasWidth * canvasHeight > maxPixels) {
+        console.debug(
+          "Sharpening skipped: canvas too large for performance",
+          canvasWidth,
+          "x",
+          canvasHeight,
+        );
+        return;
+      }
+
+      try {
+        const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+        const data = imageData.data;
+        const factor = Math.min(0.5, strength * 0.1);
+
+        // Simple unsharp mask
+        const tempData = new Uint8ClampedArray(data);
+
+        for (let y = 1; y < canvasHeight - 1; y++) {
+          for (let x = 1; x < canvasWidth - 1; x++) {
+            const idx = (y * canvasWidth + x) * 4;
+
+            for (let c = 0; c < 3; c++) {
+              const center = tempData[idx + c];
+              const neighbors =
+                (tempData[idx - canvasWidth * 4 + c] +
+                  tempData[idx + canvasWidth * 4 + c] +
+                  tempData[idx - 4 + c] +
+                  tempData[idx + 4 + c]) /
+                4;
+
+              data[idx + c] = Math.min(
+                255,
+                Math.max(0, center + factor * (center - neighbors)),
+              );
+            }
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+      } catch (e) {
+        console.debug("Sharpening failed:", e);
+      }
+    },
+    [],
+  );
+
+  // Debounced sharpening - only apply after zoom stabilizes
+  const debouncedSharpening = useMemo(
+    () =>
+      debounce(
+        (
+          ctx: CanvasRenderingContext2D,
+          w: number,
+          h: number,
+          strength: number,
+        ) => {
+          applySharpening(ctx, w, h, strength);
+        },
+        300, // Wait 300ms after last zoom change
+      ),
+    [applySharpening],
+  );
+
+  // Cleanup debounced function
+  useEffect(() => {
+    return () => {
+      debouncedSharpening.cancel();
+    };
+  }, [debouncedSharpening]);
 
   // High-quality image rendering with different interpolation methods
   const renderImage = useCallback(() => {
+    // Prevent concurrent renders
+    if (isRenderingRef.current) return;
+
     const canvas = canvasRef.current;
     const image = imageRef.current;
 
     if (!canvas || !image || !image.complete) return;
+
+    isRenderingRef.current = true;
 
     const ctx = canvas.getContext("2d", {
       alpha: false,
       desynchronized: true,
     });
 
-    if (!ctx) return;
+    if (!ctx) {
+      isRenderingRef.current = false;
+      return;
+    }
 
     // Get device pixel ratio for high-DPI display support
     const pixelRatio = CoordinateUtils.getDevicePixelRatio();
@@ -67,102 +161,33 @@ const SpectrogramCanvas: React.FC<SpectrogramCanvasProps> = ({
     ctx.translate(-zoomOffset.x, -zoomOffset.y);
     ctx.scale(zoomLevel, zoomLevel);
 
-    // Multi-step rendering for high-quality bicubic interpolation
-    if (interpolationType === "bicubic" && zoomLevel > 2) {
-      // Create temporary canvas for progressive scaling
-      const steps = Math.ceil(Math.log2(zoomLevel));
-      let tempCanvas = document.createElement("canvas");
-      let tempCtx = tempCanvas.getContext("2d")!;
-
-      tempCanvas.width = image.naturalWidth;
-      tempCanvas.height = image.naturalHeight;
-      tempCtx.drawImage(image, 0, 0);
-
-      // Progressive upscaling for better quality
-      for (let i = 1; i < steps; i++) {
-        const prevCanvas = tempCanvas;
-        tempCanvas = document.createElement("canvas");
-        tempCtx = tempCanvas.getContext("2d")!;
-
-        const stepScale = Math.pow(
-          2,
-          Math.min(1, Math.log2(zoomLevel) - i + 1),
-        );
-        tempCanvas.width = Math.floor(prevCanvas.width * stepScale);
-        tempCanvas.height = Math.floor(prevCanvas.height * stepScale);
-
-        tempCtx.imageSmoothingEnabled = true;
-        tempCtx.imageSmoothingQuality = "high";
-        tempCtx.drawImage(
-          prevCanvas,
-          0,
-          0,
-          tempCanvas.width,
-          tempCanvas.height,
-        );
-      }
-
-      // Draw the final scaled image
-      ctx.scale(1 / zoomLevel, 1 / zoomLevel);
-      ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
-    } else {
-      // Direct rendering for lower zoom levels
-      ctx.drawImage(image, 0, 0);
-    }
+    // Simplified rendering - skip progressive upscaling for performance
+    // Progressive upscaling was creating too many temporary canvases
+    ctx.drawImage(image, 0, 0);
 
     // Restore context state
     ctx.restore();
 
-    // Apply sharpening filter for better clarity at high zoom
-    if (zoomLevel > 2 && interpolationType !== "nearest") {
-      const pixelRatio = CoordinateUtils.getDevicePixelRatio();
-      // Use logical dimensions for sharpening, not physical pixels
-      applySharpening(
+    // Apply debounced sharpening only if enabled and zoom is high
+    if (enableSharpening && zoomLevel > 2 && interpolationType !== "nearest") {
+      // Use debounced version to avoid applying during zoom animation
+      debouncedSharpening(
         ctx,
-        canvas.width / pixelRatio,
-        canvas.height / pixelRatio,
+        Math.floor(canvas.width / pixelRatio),
+        Math.floor(canvas.height / pixelRatio),
         zoomLevel,
       );
     }
-  }, [zoomLevel, zoomOffset, interpolationType]);
 
-  // Sharpening filter for enhanced clarity
-  const applySharpening = (
-    ctx: CanvasRenderingContext2D,
-    width: number,
-    height: number,
-    strength: number,
-  ) => {
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-    const factor = Math.min(0.5, strength * 0.1);
-
-    // Simple unsharp mask
-    const tempData = new Uint8ClampedArray(data);
-
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        const idx = (y * width + x) * 4;
-
-        for (let c = 0; c < 3; c++) {
-          const center = tempData[idx + c];
-          const neighbors =
-            (tempData[idx - width * 4 + c] +
-              tempData[idx + width * 4 + c] +
-              tempData[idx - 4 + c] +
-              tempData[idx + 4 + c]) /
-            4;
-
-          data[idx + c] = Math.min(
-            255,
-            Math.max(0, center + factor * (center - neighbors)),
-          );
-        }
-      }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-  };
+    lastZoomLevelRef.current = zoomLevel;
+    isRenderingRef.current = false;
+  }, [
+    zoomLevel,
+    zoomOffset,
+    interpolationType,
+    enableSharpening,
+    debouncedSharpening,
+  ]);
 
   // Load image
   useEffect(() => {
@@ -205,10 +230,9 @@ const SpectrogramCanvas: React.FC<SpectrogramCanvasProps> = ({
   }, [renderImage]);
 
   // Calculate canvas dimensions with device pixel ratio support
-  const canvasDimensions = CoordinateUtils.getCanvasDimensions(
-    width,
-    height,
-    zoomLevel,
+  const canvasDimensions = useMemo(
+    () => CoordinateUtils.getCanvasDimensions(width, height, zoomLevel),
+    [width, height, zoomLevel],
   );
 
   return (
@@ -231,4 +255,5 @@ const SpectrogramCanvas: React.FC<SpectrogramCanvasProps> = ({
   );
 };
 
-export default SpectrogramCanvas;
+// Memoize component to prevent unnecessary re-renders
+export default React.memo(SpectrogramCanvas);

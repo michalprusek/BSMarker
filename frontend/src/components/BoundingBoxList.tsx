@@ -8,8 +8,13 @@ import {
 import { BoundingBox } from "../types";
 import clsx from "clsx";
 
+// Extended BoundingBox type with original index for sorted lists
+interface BoundingBoxWithIndex extends BoundingBox {
+  _originalIndex?: number;
+}
+
 interface BoundingBoxListProps {
-  boxes: BoundingBox[];
+  boxes: BoundingBoxWithIndex[];
   onDelete: (index: number) => void;
   onSelect: (box: BoundingBox | null) => void;
   selectedBox: BoundingBox | null;
@@ -52,7 +57,10 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
 
   const handleSelectAll = () => {
     if (onSelectMultiple) {
-      const allIndices = new Set(boxes.map((_, index) => index));
+      // Use original indices, not sorted indices
+      const allIndices = new Set(
+        boxes.map((box) => box._originalIndex ?? 0)
+      );
       onSelectMultiple(allIndices);
     }
   };
@@ -63,13 +71,13 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
     }
   };
 
-  const handleCheckboxChange = (index: number) => {
+  const handleCheckboxChange = (originalIndex: number) => {
     if (onSelectMultiple) {
       const newSelection = new Set(selectedBoxes);
-      if (newSelection.has(index)) {
-        newSelection.delete(index);
+      if (newSelection.has(originalIndex)) {
+        newSelection.delete(originalIndex);
       } else {
-        newSelection.add(index);
+        newSelection.add(originalIndex);
       }
       onSelectMultiple(newSelection);
     }
@@ -142,13 +150,16 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {boxes.map((box, index) => (
+              {boxes.map((box, index) => {
+                // Use original index for selection/deletion operations
+                const originalIndex = box._originalIndex ?? index;
+                return (
                 <tr
-                  key={index}
+                  key={originalIndex}
                   className={clsx(
                     "cursor-pointer hover:bg-gray-50",
                     selectedBox === box && "bg-blue-50",
-                    selectedBoxes.has(index) && "bg-blue-50/50",
+                    selectedBoxes.has(originalIndex) && "bg-blue-50/50",
                   )}
                   onClick={() => onSelect(box)}
                 >
@@ -159,14 +170,14 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
                     >
                       <input
                         type="checkbox"
-                        checked={selectedBoxes.has(index)}
-                        onChange={() => handleCheckboxChange(index)}
+                        checked={selectedBoxes.has(originalIndex)}
+                        onChange={() => handleCheckboxChange(originalIndex)}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                     </td>
                   )}
                   <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {editingIndex === index ? (
+                    {editingIndex === originalIndex ? (
                       <div
                         className="flex items-center gap-1"
                         onClick={(e) => e.stopPropagation()}
@@ -205,7 +216,7 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleEditStart(index, box.label || "None");
+                              handleEditStart(originalIndex, box.label || "None");
                             }}
                             className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
                           >
@@ -219,7 +230,7 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onDelete(index);
+                        onDelete(originalIndex);
                       }}
                       className="p-1 text-red-600 hover:text-red-700 transition-colors"
                       title="Delete annotation"
@@ -228,7 +239,8 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
                     </button>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>
@@ -237,4 +249,5 @@ const BoundingBoxList: React.FC<BoundingBoxListProps> = ({
   );
 };
 
-export default BoundingBoxList;
+// Memoize to prevent unnecessary re-renders when parent state changes
+export default React.memo(BoundingBoxList);
