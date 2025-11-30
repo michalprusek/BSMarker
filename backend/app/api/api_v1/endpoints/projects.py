@@ -357,6 +357,8 @@ async def export_project_annotations(
                             # Don't add to errors - spectrograms are optional
 
                 except Exception as recording_error:
+                    # Rollback the transaction to recover from InFailedSqlTransaction state
+                    db.rollback()
                     logger.error(
                         f"Failed to export recording {recording.id}: {str(recording_error)}"
                     )
