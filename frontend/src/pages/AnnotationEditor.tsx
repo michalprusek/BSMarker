@@ -2077,13 +2077,35 @@ const AnnotationEditor: React.FC = () => {
     }
 
     // Check if clicking on a bounding box first (before handling right-click)
-    const clickedBoxIndex = boundingBoxes.findIndex(
-      (box) =>
+    // Find all boxes under the cursor
+    const boxesUnderCursor: number[] = [];
+    boundingBoxes.forEach((box, index) => {
+      if (
         pos.x >= box.x &&
         pos.x <= box.x + box.width &&
         pos.y >= box.y &&
-        pos.y <= box.y + box.height,
-    );
+        pos.y <= box.y + box.height
+      ) {
+        boxesUnderCursor.push(index);
+      }
+    });
+
+    // Prefer selected boxes when multiple boxes overlap (fixes paste-then-drag bug)
+    // This ensures that after paste, clicking on the newly selected box will drag it,
+    // not an overlapping box that happens to be earlier in the array
+    let clickedBoxIndex = -1;
+    if (boxesUnderCursor.length > 0) {
+      // First, try to find a box that is already selected
+      const selectedUnderCursor = boxesUnderCursor.find((idx) =>
+        selectedBoxes.has(idx)
+      );
+      if (selectedUnderCursor !== undefined) {
+        clickedBoxIndex = selectedUnderCursor;
+      } else {
+        // Fall back to the last box (top-most in rendering order)
+        clickedBoxIndex = boxesUnderCursor[boxesUnderCursor.length - 1];
+      }
+    }
 
     // Handle right-click for panning
     if (e.evt.button === 2) {
@@ -2821,13 +2843,31 @@ const AnnotationEditor: React.FC = () => {
     setMousePosition({ x: adjustedX, y: adjustedY });
 
     // Check if right-clicking on a box
-    const clickedBoxIndex = boundingBoxes.findIndex(
-      (box) =>
+    // Find all boxes under the cursor (same logic as handleMouseDown)
+    const boxesUnderCursor: number[] = [];
+    boundingBoxes.forEach((box, index) => {
+      if (
         adjustedX >= box.x &&
         adjustedX <= box.x + box.width &&
         adjustedY >= box.y &&
-        adjustedY <= box.y + box.height,
-    );
+        adjustedY <= box.y + box.height
+      ) {
+        boxesUnderCursor.push(index);
+      }
+    });
+
+    // Prefer selected boxes when multiple boxes overlap
+    let clickedBoxIndex = -1;
+    if (boxesUnderCursor.length > 0) {
+      const selectedUnderCursor = boxesUnderCursor.find((idx) =>
+        selectedBoxes.has(idx)
+      );
+      if (selectedUnderCursor !== undefined) {
+        clickedBoxIndex = selectedUnderCursor;
+      } else {
+        clickedBoxIndex = boxesUnderCursor[boxesUnderCursor.length - 1];
+      }
+    }
 
     if (clickedBoxIndex !== -1) {
       // Show context menu without selecting the box
