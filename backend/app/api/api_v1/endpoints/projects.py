@@ -15,12 +15,13 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api import deps
 from app.api.api_v1.endpoints.annotations import convert_annotation_orm_to_dict
+from app.api.deps import check_project_edit_permission
 from app.core.config import settings
 from app.core.rate_limiter import RATE_LIMITS, limiter
 from app.models.annotation import Annotation
 from app.models.project import Project
 from app.models.recording import Recording
-from app.models.spectrogram import Spectrogram
+from app.models.spectrogram import Spectrogram, SpectrogramStatus
 from app.models.user import User
 from app.schemas.project import Project as ProjectSchema
 from app.schemas.project import ProjectCreate, ProjectUpdate
@@ -99,8 +100,9 @@ def update_project(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    if not current_user.is_admin and project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    # Use new permission check that respects ADMIN_CAN_EDIT_USER_PROJECTS setting
+    check_project_edit_permission(db, project, current_user)
 
     update_data = project_in.dict(exclude_unset=True)
     for field, value in update_data.items():
@@ -130,8 +132,9 @@ def delete_project(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    if not current_user.is_admin and project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    # Use new permission check that respects ADMIN_CAN_EDIT_USER_PROJECTS setting
+    check_project_edit_permission(db, project, current_user)
 
     logger.info(f"Deleting project {project_id} and all associated data")
 
@@ -335,7 +338,7 @@ async def export_project_annotations(
                                 db.query(Spectrogram)
                                 .filter(
                                     Spectrogram.recording_id == recording.id,
-                                    Spectrogram.status == "completed",
+                                    Spectrogram.status == SpectrogramStatus.COMPLETED,
                                 )
                                 .first()
                             )
@@ -351,6 +354,8 @@ async def export_project_annotations(
                                 zip_file.writestr(spectrogram_filename, spectrogram_data)
                                 export_stats["exported_spectrograms"] += 1
                         except Exception as spectrogram_error:
+                            # Rollback to recover from any DB errors
+                            db.rollback()
                             logger.warning(
                                 f"Failed to download spectrogram for recording {recording.id}: {str(spectrogram_error)}"
                             )

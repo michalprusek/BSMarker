@@ -9,6 +9,7 @@ import {
   FunnelIcon,
   ArrowDownTrayIcon,
   CheckIcon,
+  PencilIcon,
 } from "@heroicons/react/24/outline";
 import { Project, Recording } from "../types";
 import {
@@ -18,6 +19,7 @@ import {
 } from "../services/api";
 import toast from "react-hot-toast";
 import UploadRecordingModal from "../components/UploadRecordingModal";
+import EditProjectModal from "../components/EditProjectModal";
 import { formatRecordingDuration } from "../utils/duration";
 import LoadingSpinner from "../components/LoadingSpinner";
 import JSZip from "jszip";
@@ -29,6 +31,7 @@ const ProjectDetailPage: React.FC = () => {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedRecordings, setSelectedRecordings] = useState<Set<number>>(
     new Set(),
   );
@@ -85,6 +88,11 @@ const ProjectDetailPage: React.FC = () => {
 
   const handleRecordingUploaded = () => {
     setShowUploadModal(false);
+    fetchProjectData();
+  };
+
+  const handleProjectUpdated = () => {
+    setShowEditModal(false);
     fetchProjectData();
   };
 
@@ -483,9 +491,18 @@ const ProjectDetailPage: React.FC = () => {
 
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
-          <h1 className="text-2xl font-semibold text-gray-900">
-            {project.name}
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold text-gray-900">
+              {project.name}
+            </h1>
+            <button
+              onClick={() => setShowEditModal(true)}
+              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+              title="Edit project name and description"
+            >
+              <PencilIcon className="h-5 w-5" />
+            </button>
+          </div>
           <p className="mt-2 text-sm text-gray-700">{project.description}</p>
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none flex gap-2">
@@ -737,6 +754,14 @@ const ProjectDetailPage: React.FC = () => {
           projectId={parseInt(projectId)}
           onClose={() => setShowUploadModal(false)}
           onUploaded={handleRecordingUploaded}
+        />
+      )}
+
+      {showEditModal && project && (
+        <EditProjectModal
+          project={project}
+          onClose={() => setShowEditModal(false)}
+          onUpdated={handleProjectUpdated}
         />
       )}
     </div>

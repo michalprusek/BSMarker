@@ -236,6 +236,8 @@ const AnnotationEditor: React.FC = () => {
     x: 0,
     y: 0,
   });
+  const [isEditingZoom, setIsEditingZoom] = useState<boolean>(false);
+  const [zoomInputValue, setZoomInputValue] = useState<string>("");
   const [scrollOffset, setScrollOffset] = useState<number>(0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [segmentDuration, setSegmentDuration] = useState<number | null>(null);
@@ -771,7 +773,8 @@ const AnnotationEditor: React.FC = () => {
       }
 
       // Track Alt key for distance measurement feature
-      if (e.key === "Alt" && !isAltKeyPressed) {
+      // Note: Don't check isAltKeyPressed here - it may be stale due to closure
+      if (e.key === "Alt") {
         setIsAltKeyPressed(true);
       }
 
@@ -878,7 +881,10 @@ const AnnotationEditor: React.FC = () => {
         if (showCustomLabelInput) {
           setShowCustomLabelInput(false);
         }
-      } else if (e.key === "Backspace" && selectedBoxes.size > 0) {
+      } else if (
+        (e.key === "Backspace" || e.key === "Delete") &&
+        selectedBoxes.size > 0
+      ) {
         e.preventDefault();
         handleDeleteSelectedBoxes();
       } else if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
@@ -930,11 +936,20 @@ const AnnotationEditor: React.FC = () => {
 
     const handleKeyUp = (e: KeyboardEvent) => {
       // Track Alt key release for distance measurement feature
-      if (e.key === "Alt" && isAltKeyPressed) {
+      // Note: Don't check isAltKeyPressed here - it may be stale due to closure
+      // Just always reset when Alt key is released
+      if (e.key === "Alt") {
         setIsAltKeyPressed(false);
         setHoveredBoxIndex(null); // Clear hover state when Alt is released
       }
       // Arrow keys no longer need keyup handling since they're used for panning
+    };
+
+    // Handle window blur - reset Alt key state when window loses focus
+    // This prevents "stuck" state if user releases Alt while focused elsewhere
+    const handleWindowBlur = () => {
+      setIsAltKeyPressed(false);
+      setHoveredBoxIndex(null);
     };
 
     // Removed old handleWheel to prevent dual zoom system conflicts
@@ -942,11 +957,13 @@ const AnnotationEditor: React.FC = () => {
 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
     // Removed old wheel event listener - using React onWheel instead
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
       // Removed old wheel event cleanup
       if (rewindIntervalRef.current) {
         clearInterval(rewindIntervalRef.current);
@@ -1852,20 +1869,8 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const pauseAndNavigate = (path: string) => {
-    // Check for conflicts before navigating
-    const detectedConflicts = detectAllConflicts(boundingBoxes);
-    if (detectedConflicts.length > 0) {
-      toast.error(
-        `Cannot navigate: ${detectedConflicts.length} conflict${detectedConflicts.length > 1 ? "s" : ""} detected. Please resolve them first.`,
-        { duration: 5000 }
-      );
-      // Highlight conflicts to help user find them
-      setConflicts(detectedConflicts);
-      setHighlightConflicts(true);
-      return;
-    }
-
     // Pause audio before navigating
+    // Note: Conflict detection is handled by useNavigationGuard hook which shows the modal
     if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
       wavesurferRef.current.pause();
     }
@@ -1874,25 +1879,13 @@ const AnnotationEditor: React.FC = () => {
 
   const navigateToRecording = async (index: number) => {
     if (index >= 0 && index < projectRecordings.length) {
-      // Check for conflicts before navigating
-      const detectedConflicts = detectAllConflicts(boundingBoxes);
-      if (detectedConflicts.length > 0) {
-        toast.error(
-          `Cannot navigate: ${detectedConflicts.length} conflict${detectedConflicts.length > 1 ? "s" : ""} detected. Please resolve them first.`,
-          { duration: 5000 }
-        );
-        // Highlight conflicts to help user find them
-        setConflicts(detectedConflicts);
-        setHighlightConflicts(true);
-        return;
-      }
-
       // Pause audio before navigating
+      // Note: Conflict detection is handled by useNavigationGuard hook which shows the modal
       if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
         wavesurferRef.current.pause();
       }
 
-      // Save current annotations before navigating
+      // Save current annotations before navigating (if no conflicts, navigation will proceed)
       if (hasUnsavedChanges && recording) {
         await saveAnnotations(recording.id, boundingBoxes, false);
       }
@@ -2979,6 +2972,42 @@ const AnnotationEditor: React.FC = () => {
       unifiedScrollRef.current.scrollTop = 0;
     }
     setZoomOffset({ x: 0, y: 0 });
+  };
+
+  // Manual zoom input handlers
+  const handleZoomInputStart = () => {
+    setIsEditingZoom(true);
+    setZoomInputValue(Math.round(zoomLevel * 100).toString());
+  };
+
+  const handleZoomInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Allow only digits
+    const value = e.target.value.replace(/[^\d]/g, "");
+    setZoomInputValue(value);
+  };
+
+  const handleZoomInputConfirm = () => {
+    const numValue = parseInt(zoomInputValue, 10);
+    if (!isNaN(numValue) && numValue >= 100 && numValue <= 600) {
+      setZoomLevel(numValue / 100);
+    }
+    setIsEditingZoom(false);
+    setZoomInputValue("");
+  };
+
+  const handleZoomInputCancel = () => {
+    setIsEditingZoom(false);
+    setZoomInputValue("");
+  };
+
+  const handleZoomInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleZoomInputConfirm();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      handleZoomInputCancel();
+    }
   };
 
   // Conflict detection and resolution handlers
@@ -4684,9 +4713,27 @@ const AnnotationEditor: React.FC = () => {
             <ArrowsPointingOutIcon className="h-5 w-5 text-gray-600" />
           </button>
 
-          <div className="text-xs text-gray-500 px-1 text-center">
-            {Math.round(zoomLevel * 100)}%
-          </div>
+          {isEditingZoom ? (
+            <input
+              type="text"
+              value={zoomInputValue}
+              onChange={handleZoomInputChange}
+              onBlur={handleZoomInputConfirm}
+              onKeyDown={handleZoomInputKeyDown}
+              className="w-12 text-xs text-gray-700 px-1 py-0.5 text-center border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              autoFocus
+              maxLength={3}
+              title="Enter zoom level (100-600%)"
+            />
+          ) : (
+            <button
+              onClick={handleZoomInputStart}
+              className="text-xs text-gray-500 px-1 py-0.5 text-center hover:bg-gray-100 rounded cursor-pointer min-w-[3rem]"
+              title="Click to enter zoom level (100-600%)"
+            >
+              {Math.round(zoomLevel * 100)}%
+            </button>
+          )}
 
           {/* Divider */}
           <div className="w-8 h-px bg-gray-300 my-2"></div>

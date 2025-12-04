@@ -15,7 +15,9 @@ import {
   TrashIcon,
   CloudArrowDownIcon,
   MagnifyingGlassIcon,
+  PencilIcon,
 } from "@heroicons/react/24/outline";
+import EditProjectModal from "../components/EditProjectModal";
 
 const ProjectDetailPageOptimized: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -35,6 +37,7 @@ const ProjectDetailPageOptimized: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedRecordings, setSelectedRecordings] = useState<Set<number>>(
     new Set(),
   );
@@ -193,6 +196,16 @@ const ProjectDetailPageOptimized: React.FC = () => {
     fetchProjectData(1, false);
     toast.success("Recording uploaded successfully");
   }, [fetchProjectData]);
+
+  // Handle project edit success
+  const handleProjectUpdated = useCallback(async () => {
+    setShowEditModal(false);
+    // Refresh project data
+    if (projectId) {
+      const projectData = await projectService.getProject(parseInt(projectId));
+      setProject(projectData);
+    }
+  }, [projectId]);
 
   // Handle bulk delete
   const handleBulkDelete = useCallback(async () => {
@@ -407,9 +420,20 @@ const ProjectDetailPageOptimized: React.FC = () => {
         </button>
 
         <div className="bg-white rounded-lg shadow p-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            {project?.name || "Loading..."}
-          </h1>
+          <div className="flex items-center gap-2 mb-2">
+            <h1 className="text-3xl font-bold text-gray-900">
+              {project?.name || "Loading..."}
+            </h1>
+            {project && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                title="Edit project name and description"
+              >
+                <PencilIcon className="h-5 w-5" />
+              </button>
+            )}
+          </div>
           {project?.description && (
             <p className="text-gray-600 mb-4">{project.description}</p>
           )}
@@ -659,6 +683,15 @@ const ProjectDetailPageOptimized: React.FC = () => {
           projectId={parseInt(projectId)}
           onClose={() => setShowUploadModal(false)}
           onUploaded={handleRecordingUploaded}
+        />
+      )}
+
+      {/* Edit Project Modal */}
+      {showEditModal && project && (
+        <EditProjectModal
+          project={project}
+          onClose={() => setShowEditModal(false)}
+          onUpdated={handleProjectUpdated}
         />
       )}
     </div>
