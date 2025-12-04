@@ -20,7 +20,7 @@ from app.core.rate_limiter import RATE_LIMITS, limiter
 from app.models.annotation import Annotation
 from app.models.project import Project
 from app.models.recording import Recording
-from app.models.spectrogram import Spectrogram
+from app.models.spectrogram import Spectrogram, SpectrogramStatus
 from app.models.user import User
 from app.schemas.project import Project as ProjectSchema
 from app.schemas.project import ProjectCreate, ProjectUpdate
@@ -335,7 +335,7 @@ async def export_project_annotations(
                                 db.query(Spectrogram)
                                 .filter(
                                     Spectrogram.recording_id == recording.id,
-                                    Spectrogram.status == "completed",
+                                    Spectrogram.status == SpectrogramStatus.COMPLETED,
                                 )
                                 .first()
                             )
@@ -351,6 +351,8 @@ async def export_project_annotations(
                                 zip_file.writestr(spectrogram_filename, spectrogram_data)
                                 export_stats["exported_spectrograms"] += 1
                         except Exception as spectrogram_error:
+                            # Rollback to recover from any DB errors
+                            db.rollback()
                             logger.warning(
                                 f"Failed to download spectrogram for recording {recording.id}: {str(spectrogram_error)}"
                             )
