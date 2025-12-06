@@ -40,20 +40,29 @@ const EditProjectModal: React.FC<EditProjectModalProps> = ({
       toast.success("Project updated successfully");
       onUpdated();
     } catch (error: unknown) {
-      // Handle 403 permission error with specific message
-      if (
-        error &&
-        typeof error === "object" &&
-        "response" in error &&
-        (error as { response?: { status?: number; data?: { detail?: string } } })
-          .response?.status === 403
-      ) {
-        const detail = (
-          error as { response?: { data?: { detail?: string } } }
-        ).response?.data?.detail;
+      // Extract error details from the response
+      const axiosError = error as {
+        response?: { status?: number; data?: { detail?: string } };
+        message?: string;
+      };
+      const status = axiosError?.response?.status;
+      const detail = axiosError?.response?.data?.detail;
+      const fallbackMessage = axiosError?.message;
+
+      // Handle specific HTTP status codes
+      if (status === 403) {
         toast.error(detail || "You don't have permission to edit this project");
+      } else if (status === 404) {
+        toast.error("Project not found");
+      } else if (status === 422) {
+        toast.error(detail || "Invalid project data");
+      } else if (status && status >= 500) {
+        toast.error("Server error. Please try again later.");
+        console.error("Project update server error:", error);
       } else {
-        toast.error("Failed to update project");
+        // For other errors, show the detail if available, otherwise a generic message
+        toast.error(detail || fallbackMessage || "Failed to update project");
+        console.error("Project update failed:", error);
       }
     }
   };

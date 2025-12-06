@@ -187,13 +187,20 @@ def generate_random_bounding_box(
 
 
 def boxes_overlap(box1: Dict, box2: Dict) -> bool:
-    """Check if two bounding boxes overlap in time (no stacking allowed)."""
+    """Check if two bounding boxes conflict in the time dimension.
+
+    This uses time-only overlap detection, meaning boxes at the same time
+    are considered overlapping regardless of their frequency ranges.
+    This creates a simpler non-overlapping distribution along the time axis.
+
+    Returns:
+        True if boxes share any time range.
+    """
     # Check time overlap only - boxes cannot share any time range
     time_overlap = not (
         box1["end_time"] <= box2["start_time"] or box1["start_time"] >= box2["end_time"]
     )
 
-    # Boxes conflict if their time ranges overlap (regardless of frequency)
     return time_overlap
 
 

@@ -118,7 +118,18 @@ def create_annotation(token: str, recording_id: int, annotation_data: Dict) -> b
 
 
 def boxes_overlap(box1: Dict, box2: Dict) -> bool:
-    """Check if two bounding boxes overlap in time OR frequency."""
+    """Check if two bounding boxes conflict (share any time OR frequency range).
+
+    This uses a strict definition where boxes cannot share ANY time range
+    OR ANY frequency range. This prevents "stacking" of boxes vertically
+    at the same time or horizontally at the same frequency.
+
+    For true 2D spatial overlap (requiring BOTH dimensions to overlap),
+    use: return time_overlap and freq_overlap
+
+    Returns:
+        True if boxes share any time range OR any frequency range.
+    """
     # Check time overlap
     time_overlap = not (
         box1["end_time"] <= box2["start_time"] or box1["start_time"] >= box2["end_time"]
@@ -130,7 +141,7 @@ def boxes_overlap(box1: Dict, box2: Dict) -> bool:
         or box1["min_frequency"] >= box2["max_frequency"]
     )
 
-    # Boxes overlap if EITHER time OR frequency overlaps
+    # Boxes conflict if EITHER time OR frequency overlaps (strict mode - no stacking)
     return time_overlap or freq_overlap
 
 

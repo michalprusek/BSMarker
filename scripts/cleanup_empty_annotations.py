@@ -27,7 +27,11 @@ def login(username: str, password: str) -> str:
 
 
 def get_recordings(token: str, project_id: int = 1):
-    """Get all recordings."""
+    """Get all recordings with annotations.
+
+    Returns:
+        List of recordings with annotation_count > 0, or None on API error.
+    """
     headers = {"Authorization": f"Bearer {token}"}
 
     all_recordings = []
@@ -41,7 +45,9 @@ def get_recordings(token: str, project_id: int = 1):
         )
 
         if response.status_code != 200:
-            break
+            print(f"❌ API error on page {page}: {response.status_code}")
+            print(f"   Response: {response.text[:200]}")
+            return None  # Return None to indicate error, not empty list
 
         data = response.json()
         recordings = data.get("items", [])
@@ -63,7 +69,11 @@ def get_recordings(token: str, project_id: int = 1):
 
 
 def get_annotations(token: str, recording_id: int):
-    """Get annotations for a specific recording."""
+    """Get annotations for a specific recording.
+
+    Returns:
+        List of annotations, or None on API error.
+    """
     headers = {"Authorization": f"Bearer {token}"}
 
     response = requests.get(
@@ -72,13 +82,18 @@ def get_annotations(token: str, recording_id: int):
     )
 
     if response.status_code != 200:
-        return []
+        print(f"  ❌ Failed to fetch annotations for recording {recording_id}: {response.status_code}")
+        return None  # Return None to indicate error, not empty list
 
     return response.json()
 
 
-def delete_annotation(token: str, annotation_id: int) -> bool:
-    """Delete an annotation."""
+def delete_annotation(token: str, annotation_id: int) -> tuple[bool, str]:
+    """Delete an annotation.
+
+    Returns:
+        Tuple of (success: bool, message: str with error details if failed).
+    """
     headers = {"Authorization": f"Bearer {token}"}
 
     response = requests.delete(
@@ -86,7 +101,10 @@ def delete_annotation(token: str, annotation_id: int) -> bool:
         headers=headers,
     )
 
-    return response.status_code in [200, 204]
+    if response.status_code in [200, 204]:
+        return True, "OK"
+    else:
+        return False, f"HTTP {response.status_code}: {response.text[:100]}"
 
 
 def main():
@@ -99,9 +117,14 @@ def main():
 
     # Get recordings with annotations
     recordings = get_recordings(token)
+
+    if recordings is None:
+        print("\n❌ Failed to fetch recordings. Aborting to prevent data loss.")
+        sys.exit(1)
+
     print(f"📊 Found {len(recordings)} recordings with annotations")
 
-    if not recordings:
+    if len(recordings) == 0:
         print("\n✅ No annotations to clean up!")
         return
 
@@ -110,6 +133,7 @@ def main():
 
     total_deleted = 0
     total_kept = 0
+    total_errors = 0
 
     for recording in recordings:
         rec_id = recording["id"]
@@ -117,24 +141,34 @@ def main():
 
         annotations = get_annotations(token, rec_id)
 
+        if annotations is None:
+            # API error - skip this recording to prevent data loss
+            print(f"⚠️  Skipping recording {filename} due to API error")
+            total_errors += 1
+            continue
+
         for ann in annotations:
             ann_id = ann["id"]
             bounding_boxes = ann.get("bounding_boxes", [])
 
             if len(bounding_boxes) == 0:
                 # Empty annotation - delete it
-                if delete_annotation(token, ann_id):
+                success, message = delete_annotation(token, ann_id)
+                if success:
                     print(f"🗑️  Deleted empty annotation {ann_id} from {filename}")
                     total_deleted += 1
                 else:
-                    print(f"❌ Failed to delete annotation {ann_id}")
+                    print(f"❌ Failed to delete annotation {ann_id}: {message}")
+                    total_errors += 1
             else:
                 total_kept += 1
 
     print(f"\n{'='*60}")
-    print(f"✅ CLEANUP COMPLETED!")
+    print("✅ CLEANUP COMPLETED!")
     print(f"   Deleted: {total_deleted} empty annotations")
     print(f"   Kept: {total_kept} annotations with bounding boxes")
+    if total_errors > 0:
+        print(f"   ⚠️  Errors: {total_errors}")
     print(f"{'='*60}")
 
 

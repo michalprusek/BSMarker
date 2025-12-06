@@ -267,6 +267,7 @@ async def export_project_annotations(
                 "exported_annotations": 0,
                 "exported_audio": 0,
                 "exported_spectrograms": 0,
+                "failed_spectrograms": 0,
                 "skipped": 0,
                 "errors": [],
             }
@@ -353,13 +354,22 @@ async def export_project_annotations(
                                 )
                                 zip_file.writestr(spectrogram_filename, spectrogram_data)
                                 export_stats["exported_spectrograms"] += 1
-                        except Exception as spectrogram_error:
-                            # Rollback to recover from any DB errors
+                        except (OSError, IOError, ConnectionError) as spectrogram_error:
+                            # Handle expected I/O and connection errors for spectrogram download
                             db.rollback()
-                            logger.warning(
-                                f"Failed to download spectrogram for recording {recording.id}: {str(spectrogram_error)}"
+                            logger.error(
+                                f"Failed to download spectrogram for recording {recording.id} "
+                                f"({recording.original_filename}): {type(spectrogram_error).__name__}: {spectrogram_error}"
                             )
-                            # Don't add to errors - spectrograms are optional
+                            export_stats["failed_spectrograms"] += 1
+                        except Exception as spectrogram_error:
+                            # Log unexpected errors but don't fail the entire export
+                            db.rollback()
+                            logger.error(
+                                f"Unexpected error downloading spectrogram for recording {recording.id} "
+                                f"({recording.original_filename}): {type(spectrogram_error).__name__}: {spectrogram_error}"
+                            )
+                            export_stats["failed_spectrograms"] += 1
 
                 except Exception as recording_error:
                     # Rollback the transaction to recover from InFailedSqlTransaction state

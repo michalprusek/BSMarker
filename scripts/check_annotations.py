@@ -27,7 +27,11 @@ def login(username: str, password: str) -> str:
 
 
 def get_recordings_with_annotations(token: str, project_id: int = 1):
-    """Get recordings that have annotation_count > 0."""
+    """Get recordings that have annotation_count > 0.
+
+    Returns:
+        List of recordings with annotations, or None on API error.
+    """
     headers = {"Authorization": f"Bearer {token}"}
 
     response = requests.get(
@@ -39,7 +43,7 @@ def get_recordings_with_annotations(token: str, project_id: int = 1):
     if response.status_code != 200:
         print(f"❌ Failed to fetch recordings: {response.status_code}")
         print(f"Response: {response.text}")
-        return []
+        return None  # Return None to indicate error
 
     data = response.json()
     all_recordings = data.get("items", [])
@@ -51,7 +55,11 @@ def get_recordings_with_annotations(token: str, project_id: int = 1):
 
 
 def get_annotations(token: str, recording_id: int):
-    """Get annotations for a specific recording."""
+    """Get annotations for a specific recording.
+
+    Returns:
+        List of annotations, or None on API error.
+    """
     headers = {"Authorization": f"Bearer {token}"}
 
     response = requests.get(
@@ -61,7 +69,7 @@ def get_annotations(token: str, recording_id: int):
 
     if response.status_code != 200:
         print(f"  ❌ Failed to fetch annotations: {response.status_code}")
-        return []
+        return None  # Return None to indicate error
 
     return response.json()
 
@@ -75,9 +83,14 @@ def main():
 
     # Get recordings marked as annotated
     recordings = get_recordings_with_annotations(token)
+
+    if recordings is None:
+        print("\n❌ Failed to fetch recordings. Aborting.")
+        sys.exit(1)
+
     print(f"\n📊 Found {len(recordings)} recordings marked as 'annotated'")
 
-    if not recordings:
+    if len(recordings) == 0:
         print("\n❌ No recordings with annotations found!")
         return
 
@@ -95,18 +108,26 @@ def main():
 
         # Get actual annotations
         annotations = get_annotations(token, rec_id)
+
+        if annotations is None:
+            print("   ⚠️  Failed to fetch annotations!")
+            print()
+            continue
+
         print(f"   Actual annotations in DB: {len(annotations)}")
 
         if annotations:
-            print(f"   First annotation sample:")
             ann = annotations[0]
-            print(f"     - Label: {ann.get('label')}")
-            print(f"     - Time: {ann.get('start_time')} - {ann.get('end_time')}")
-            print(f"     - Freq: {ann.get('min_frequency')} - {ann.get('max_frequency')}")
-            print(f"     - ID: {ann.get('id')}")
-            print(f"     - Full data: {ann}")
+            boxes = ann.get("bounding_boxes", [])
+            print(f"   First annotation (ID: {ann.get('id')}):")
+            print(f"     - Bounding boxes: {len(boxes)}")
+            if boxes:
+                box = boxes[0]
+                print(f"     - First box label: {box.get('label')}")
+                print(f"     - Time: {box.get('start_time')} - {box.get('end_time')}")
+                print(f"     - Freq: {box.get('min_frequency')} - {box.get('max_frequency')}")
         else:
-            print(f"   ⚠️  No annotations found in database!")
+            print("   ⚠️  No annotations found in database!")
 
         print()
 

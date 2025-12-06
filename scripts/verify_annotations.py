@@ -27,7 +27,11 @@ def login(username: str, password: str) -> str:
 
 
 def get_all_recordings(token: str, project_id: int = 1):
-    """Get all recordings with their IDs."""
+    """Get all recordings with their IDs.
+
+    Returns:
+        List of recordings, or None on API error.
+    """
     headers = {"Authorization": f"Bearer {token}"}
 
     all_recordings = []
@@ -41,7 +45,9 @@ def get_all_recordings(token: str, project_id: int = 1):
         )
 
         if response.status_code != 200:
-            break
+            print(f"❌ API error on page {page}: {response.status_code}")
+            print(f"   Response: {response.text[:200]}")
+            return None  # Return None to indicate error
 
         data = response.json()
         recordings = data.get("items", [])
@@ -61,7 +67,11 @@ def get_all_recordings(token: str, project_id: int = 1):
 
 
 def get_annotations(token: str, recording_id: int):
-    """Get annotations for a recording."""
+    """Get annotations for a recording.
+
+    Returns:
+        List of annotations, or None on API error.
+    """
     headers = {"Authorization": f"Bearer {token}"}
 
     response = requests.get(
@@ -70,13 +80,18 @@ def get_annotations(token: str, recording_id: int):
     )
 
     if response.status_code != 200:
-        return []
+        print(f"  ❌ Failed to fetch annotations for recording {recording_id}: {response.status_code}")
+        return None  # Return None to indicate error
 
     return response.json()
 
 
 def check_box_overlap(box1, box2):
-    """Check if two boxes overlap in time."""
+    """Check if two boxes overlap in the time dimension.
+
+    Returns:
+        True if boxes share any time range (regardless of frequency).
+    """
     time_overlap = not (
         box1["end_time"] <= box2["start_time"] or box1["start_time"] >= box2["end_time"]
     )
@@ -93,6 +108,10 @@ def main():
     # Get all recordings
     print("📊 Fetching recordings...")
     recordings = get_all_recordings(token)
+
+    if recordings is None:
+        print("\n❌ Failed to fetch recordings. Aborting.")
+        sys.exit(1)
 
     # Check for unique IDs
     unique_ids = set()
@@ -135,6 +154,11 @@ def main():
 
         filename = recording.get("original_filename", "unknown")
         annotations = get_annotations(token, rec_id)
+
+        if annotations is None:
+            print(f"{sample_count}. {filename} (ID: {rec_id})")
+            print("   ⚠️  Failed to fetch annotations")
+            continue
 
         total_boxes = sum(len(ann.get("bounding_boxes", [])) for ann in annotations)
 
