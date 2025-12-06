@@ -1,16 +1,15 @@
 """
-Gunicorn configuration for production
+Gunicorn configuration for production.
 """
-
-import multiprocessing
-import os
 
 # Server socket
 bind = "0.0.0.0:8000"
 backlog = 2048
 
 # Worker processes
-workers = 2  # Fixed number for debugging
+# Optimized for production: 6 workers provides good balance of concurrency
+# and resource usage for a 4-core server with 16GB RAM
+workers = 6
 worker_class = "uvicorn.workers.UvicornWorker"
 worker_connections = 1000
 max_requests = 1000

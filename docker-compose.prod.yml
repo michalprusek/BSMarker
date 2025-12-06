@@ -27,7 +27,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    # Increased memory for better cache hit ratio with 1000+ recordings
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     networks:
@@ -40,8 +41,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
+          cpus: '1'
+          memory: 2G
 
   minio:
     image: minio/minio:latest
@@ -128,7 +129,8 @@ services:
       - worker
       - --loglevel=info
       - --queues=spectrogram,default
-      - --concurrency=2
+      # Increased from 2 to 6 for faster spectrogram generation (3x throughput)
+      - --concurrency=6
     env_file:
       - .env.production
     environment:
@@ -159,6 +161,7 @@ services:
     deploy:
       resources:
         limits:
+          # Max available on 2-CPU server, supports 6 concurrent workers
           cpus: '2'
           memory: 2G
       restart_policy:

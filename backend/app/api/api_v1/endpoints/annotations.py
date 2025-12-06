@@ -3,7 +3,11 @@
 from datetime import datetime
 from typing import Any, List
 
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session, joinedload
+
 from app.api import deps
+from app.api.deps import check_project_edit_permission
 from app.core.rate_limiter import RATE_LIMITS, limiter
 from app.models.annotation import Annotation, BoundingBox
 from app.models.project import Project
@@ -11,8 +15,6 @@ from app.models.recording import Recording
 from app.models.user import User
 from app.schemas.annotation import Annotation as AnnotationSchema
 from app.schemas.annotation import AnnotationCreate, AnnotationUpdate
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session, joinedload
 
 
 def convert_annotation_orm_to_dict(annotation_orm):
@@ -65,13 +67,17 @@ def create_annotation(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
+    """Create a new annotation or update existing one for a recording."""
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=404, detail="Recording not found")
 
     project = db.query(Project).filter(Project.id == recording.project_id).first()
-    if not current_user.is_admin and project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Use shared permission check that respects ADMIN_CAN_EDIT_USER_PROJECTS setting
+    check_project_edit_permission(db, project, current_user)
 
     # Check if annotation already exists for this recording and user
     existing_annotation = (
@@ -129,11 +135,16 @@ def read_annotations(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
+    """Get all annotations for a recording."""
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=404, detail="Recording not found")
 
     project = db.query(Project).filter(Project.id == recording.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # For read operations, admins can always view (but not modify) any project
     if not current_user.is_admin and project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
@@ -159,12 +170,25 @@ def update_annotation(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
+    """Update an existing annotation with new bounding boxes."""
     annotation = db.query(Annotation).filter(Annotation.id == annotation_id).first()
     if not annotation:
         raise HTTPException(status_code=404, detail="Annotation not found")
 
-    if annotation.user_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    # Get the recording and project for permission check
+    recording = db.query(Recording).filter(Recording.id == annotation.recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=404, detail="Recording not found")
+
+    project = db.query(Project).filter(Project.id == recording.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Check annotation ownership - users can only edit their own annotations
+    # unless they have project-level edit permission (e.g., project owner or admin)
+    if annotation.user_id != current_user.id:
+        # User doesn't own this annotation, check if they have project-level permission
+        check_project_edit_permission(db, project, current_user)
 
     if annotation_in.bounding_boxes is not None:
         db.query(BoundingBox).filter(BoundingBox.annotation_id == annotation_id).delete()
@@ -205,12 +229,25 @@ def delete_annotation(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
+    """Delete an annotation and all its bounding boxes."""
     annotation = db.query(Annotation).filter(Annotation.id == annotation_id).first()
     if not annotation:
         raise HTTPException(status_code=404, detail="Annotation not found")
 
-    if annotation.user_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    # Get the recording and project for permission check
+    recording = db.query(Recording).filter(Recording.id == annotation.recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=404, detail="Recording not found")
+
+    project = db.query(Project).filter(Project.id == recording.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Check annotation ownership - users can only delete their own annotations
+    # unless they have project-level edit permission (e.g., project owner or admin)
+    if annotation.user_id != current_user.id:
+        # User doesn't own this annotation, check if they have project-level permission
+        check_project_edit_permission(db, project, current_user)
 
     db.delete(annotation)
     db.commit()

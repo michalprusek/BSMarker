@@ -1,11 +1,12 @@
 import logging
 import time
 
-from app.core.config import settings
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,13 @@ def create_database_engine():
     for attempt in range(max_retries):
         try:
             engine = create_engine(
-                settings.DATABASE_URL, pool_pre_ping=True, pool_recycle=300, echo=False
+                settings.DATABASE_URL,
+                # Connection pool optimization for 6 Gunicorn + 6 Celery workers
+                pool_size=15,  # Base pool connections (increased from default 5)
+                max_overflow=25,  # Burst capacity (increased from default 10)
+                pool_pre_ping=True,
+                pool_recycle=300,
+                echo=False,
             )
             # Test the connection
             connection = engine.connect()

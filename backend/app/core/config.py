@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 100 * 1024 * 1024
     ALLOWED_AUDIO_EXTENSIONS: List[str] = [".mp3", ".wav", ".m4a", ".flac"]
 
+    # Admin Permission Settings
+    ADMIN_CAN_EDIT_USER_PROJECTS: bool = Field(
+        default=False,
+        description="If False, admins cannot edit/delete projects owned by non-admin users",
+    )
+
     # Spectrogram Generation Settings
     SPECTROGRAM_N_FFT: int = 2048
     SPECTROGRAM_HOP_LENGTH: int = 512
