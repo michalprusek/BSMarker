@@ -10,11 +10,13 @@ import logging
 from typing import Optional
 
 import redis
-from app.core.config import settings
 from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +68,7 @@ def get_identifier(request: Request) -> str:
     return f"ip:{get_remote_address(request)}"
 
 
-def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> HTTPException:
+def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     """
     Custom handler for rate limit exceeded exceptions.
 
@@ -77,7 +79,7 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> HTT
         exc: RateLimitExceeded exception
 
     Returns:
-        HTTPException with rate limit details
+        JSONResponse with rate limit details
     """
     response_data = {
         "error": "Rate limit exceeded",
@@ -89,10 +91,16 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> HTT
     identifier = get_identifier(request)
     logger.warning(f"Rate limit exceeded for {identifier} on {request.url.path}: {exc.detail}")
 
-    return HTTPException(
+    headers = (
+        {"Retry-After": str(exc.retry_after)}
+        if hasattr(exc, "retry_after") and exc.retry_after
+        else {}
+    )
+
+    return JSONResponse(
         status_code=429,
-        detail=response_data,
-        headers={"Retry-After": str(exc.retry_after)} if hasattr(exc, "retry_after") else {},
+        content=response_data,
+        headers=headers,
     )
 
 
@@ -116,6 +124,8 @@ RATE_LIMITS = {
     "crud_write": "30 per minute",  # POST, PUT, DELETE operations
     # Bulk operations - very limited
     "bulk_operation": "5 per minute, 15 per hour",
+    # Export operations - more lenient since they're long-running
+    "export_operation": "3 per minute, 10 per hour",
     # Admin operations - moderate limits
     "admin_operation": "20 per minute, 100 per hour",
     # File serving endpoints

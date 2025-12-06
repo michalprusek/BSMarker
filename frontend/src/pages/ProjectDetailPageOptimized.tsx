@@ -56,6 +56,7 @@ const ProjectDetailPageOptimized: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloadingFull, setIsDownloadingFull] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<number>(0); // bytes downloaded
 
   // Debounce search term
   useEffect(() => {
@@ -278,11 +279,13 @@ const ProjectDetailPageOptimized: React.FC = () => {
     }
 
     setIsDownloading(true);
+    setDownloadProgress(0);
     try {
-      // Use the new bulk export endpoint
+      // Use the streaming export endpoint with progress tracking
       const blob = await projectService.exportAnnotations(
         parseInt(projectId),
         getFilterParams(),
+        (loaded) => setDownloadProgress(loaded),
       );
 
       // Download the ZIP file
@@ -298,9 +301,10 @@ const ProjectDetailPageOptimized: React.FC = () => {
       toast.success("Annotations downloaded successfully");
     } catch (error) {
       console.error("Failed to download annotations:", error);
-      toast.error("Failed to download annotations");
+      toast.error("Failed to download annotations. The export may have timed out for large projects.");
     } finally {
       setIsDownloading(false);
+      setDownloadProgress(0);
     }
   }, [
     projectId,
@@ -333,12 +337,14 @@ const ProjectDetailPageOptimized: React.FC = () => {
     }
 
     setIsDownloadingFull(true);
+    setDownloadProgress(0);
 
     try {
-      // Use the new bulk export endpoint for full export
+      // Use the streaming export endpoint for full export with progress
       const blob = await projectService.exportFull(
         parseInt(projectId),
         getFilterParams(),
+        (loaded) => setDownloadProgress(loaded),
       );
 
       // Download the ZIP file
@@ -354,9 +360,10 @@ const ProjectDetailPageOptimized: React.FC = () => {
       toast.success("Full project exported successfully");
     } catch (error) {
       console.error("Failed to export project:", error);
-      toast.error("Failed to export project");
+      toast.error("Failed to export project. Large exports may take several minutes.");
     } finally {
       setIsDownloadingFull(false);
+      setDownloadProgress(0);
     }
   }, [
     projectId,
@@ -572,19 +579,23 @@ const ProjectDetailPageOptimized: React.FC = () => {
           <button
             onClick={handleDownloadAnnotations}
             disabled={isDownloading || stats.annotatedRecordings === 0}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center"
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center min-w-[180px]"
           >
             <CloudArrowDownIcon className="h-5 w-5 mr-2" />
-            {isDownloading ? "Downloading..." : "Download Annotations"}
+            {isDownloading
+              ? `${(downloadProgress / 1024 / 1024).toFixed(1)} MB...`
+              : "Download Annotations"}
           </button>
 
           <button
             onClick={handleDownloadAll}
             disabled={isDownloadingFull || recordings.length === 0}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center min-w-[160px]"
           >
             <CloudArrowDownIcon className="h-5 w-5 mr-2" />
-            {isDownloadingFull ? "Exporting..." : "Download All"}
+            {isDownloadingFull
+              ? `${(downloadProgress / 1024 / 1024).toFixed(1)} MB...`
+              : "Download All"}
           </button>
         </div>
 
