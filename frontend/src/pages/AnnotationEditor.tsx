@@ -31,6 +31,7 @@ import {
 import toast from "react-hot-toast";
 import WaveSurfer from "wavesurfer.js";
 import { Stage, Layer, Rect, Line, Circle, Group, Text } from "react-konva";
+import Konva from "konva";
 import { recordingService, annotationService } from "../services/api";
 import { Recording, BoundingBox } from "../types";
 import { notification, Messages } from "../lib/notifications";
@@ -49,6 +50,8 @@ import {
   findNearestBox,
   isPointInBox,
   getBoxCenter,
+  boxArraysEqual,
+  boxArraysChanged,
 } from "../utils/annotationUtils";
 import {
   AXIS_STYLES,
@@ -73,6 +76,12 @@ import {
 } from "../utils/conflictDetection";
 // import { useSpectrogramZoom } from '../hooks/useSpectrogramZoom'; // Unused - replaced with custom throttled zoom
 import { throttle } from "lodash";
+
+// PERF: Limit pixel ratio for better performance on high-DPI displays
+// On retina displays, Konva automatically doubles canvas size which causes lag at high zoom
+// Limiting to 1.5 provides good balance between quality and performance
+const OPTIMIZED_PIXEL_RATIO = Math.min(window.devicePixelRatio || 1, 1.5);
+Konva.pixelRatio = OPTIMIZED_PIXEL_RATIO;
 
 /**
  * Type definition for distance measurement visualization
@@ -236,6 +245,11 @@ const AnnotationEditor: React.FC = () => {
     x: 0,
     y: 0,
   });
+  const [isEditingZoom, setIsEditingZoom] = useState<boolean>(false);
+  // PERF: Track active zooming to hide labels during zoom for smoother rendering
+  const [isActivelyZooming, setIsActivelyZooming] = useState<boolean>(false);
+  const zoomDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [zoomInputValue, setZoomInputValue] = useState<string>("");
   const [scrollOffset, setScrollOffset] = useState<number>(0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [segmentDuration, setSegmentDuration] = useState<number | null>(null);
@@ -306,6 +320,8 @@ const AnnotationEditor: React.FC = () => {
   }, [zoomLevel, spectrogramDimensions.height]);
 
   // Update visible boxes when viewport or boxes change
+  // PERF: Now also updates during drag/resize for smoother rendering
+  // The filtering is O(n) but faster than rendering all boxes
   useEffect(() => {
     const bounds = calculateVisibleBounds();
     const visible = boundingBoxes.filter((box) => {
@@ -324,6 +340,17 @@ const AnnotationEditor: React.FC = () => {
   const getNyquistFrequency = useCallback(() => {
     return recording?.sample_rate ? recording.sample_rate / 2 : 22050;
   }, [recording?.sample_rate]);
+
+  // Calculate dynamic max zoom level based on recording duration
+  // Longer recordings allow higher zoom for detailed annotation
+  // Formula: maxZoom = max(MIN_MAX_ZOOM, duration / DIVISOR)
+  const maxZoomLevel = useMemo(() => {
+    const { DIVISOR, MIN_MAX_ZOOM, MAX_MAX_ZOOM, DEFAULT_MAX_ZOOM } =
+      ANNOTATION_CONSTANTS.ZOOM;
+    if (duration <= 0) return DEFAULT_MAX_ZOOM;
+    const calculated = duration / DIVISOR;
+    return Math.min(MAX_MAX_ZOOM, Math.max(MIN_MAX_ZOOM, calculated));
+  }, [duration]);
 
   // Initialize custom hooks for coordinate transformations and time/frequency conversions
   const { transformMousePoint, clampSeekPosition, getMaxWorldX } =
@@ -403,6 +430,19 @@ const AnnotationEditor: React.FC = () => {
     return map;
   }, [boundingBoxes]);
 
+  // PERF: Create Set of conflicting box indices for O(1) lookup instead of O(n*m) per render
+  const conflictingBoxIndices = useMemo(() => {
+    if (!highlightConflicts || conflicts.length === 0) {
+      return new Set<number>();
+    }
+    const indices = new Set<number>();
+    conflicts.forEach((c) => {
+      indices.add(c.box1Index);
+      indices.add(c.box2Index);
+    });
+    return indices;
+  }, [conflicts, highlightConflicts]);
+
   // Memoize coordinate transformations - horizontal zoom only
   const transformedBoxes = useMemo(
     () =>
@@ -413,11 +453,15 @@ const AnnotationEditor: React.FC = () => {
         );
         // PERF: Use O(1) map lookup instead of O(n) findIndex
         const originalIndex = boxIndexMap.get(box) ?? -1;
+        // PERF: Pre-calculate label width to avoid computation in render loop
+        const label = box.label || "None";
+        const labelWidth = Math.max(45, label.length * 8 + 8);
         return {
           ...box,
           ...screenCoords,
-          color: getLabelColorMemoized(box.label || "None"),
+          color: getLabelColorMemoized(label),
           originalIndex, // Store the original index for later use
+          labelWidth, // Pre-calculated label width for performance
         };
       }),
     [visibleBoundingBoxes, boxIndexMap, zoomLevel, getLabelColorMemoized],
@@ -731,20 +775,16 @@ const AnnotationEditor: React.FC = () => {
     }
 
     // Only add to history if this is a user action, not loading from backend
+    // PERF: Use optimized boxArraysChanged instead of O(n) JSON.stringify
     if (boundingBoxes.length > 0 || history.length > 0) {
-      const currentState = JSON.stringify(boundingBoxes);
-      const lastHistoryState = history[historyIndex]
-        ? JSON.stringify(history[historyIndex])
-        : "";
+      const lastHistoryEntry = history[historyIndex] ?? null;
 
       if (
-        currentState !== lastHistoryState &&
-        currentState !== JSON.stringify(lastSavedState)
+        boxArraysChanged(boundingBoxes, lastHistoryEntry) &&
+        boxArraysChanged(boundingBoxes, lastSavedState)
       ) {
         addToHistory(boundingBoxes);
-        setHasUnsavedChanges(
-          JSON.stringify(boundingBoxes) !== JSON.stringify(lastSavedState),
-        );
+        setHasUnsavedChanges(boxArraysChanged(boundingBoxes, lastSavedState));
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -771,7 +811,8 @@ const AnnotationEditor: React.FC = () => {
       }
 
       // Track Alt key for distance measurement feature
-      if (e.key === "Alt" && !isAltKeyPressed) {
+      // Note: Don't check isAltKeyPressed here - it may be stale due to closure
+      if (e.key === "Alt") {
         setIsAltKeyPressed(true);
       }
 
@@ -878,7 +919,10 @@ const AnnotationEditor: React.FC = () => {
         if (showCustomLabelInput) {
           setShowCustomLabelInput(false);
         }
-      } else if (e.key === "Backspace" && selectedBoxes.size > 0) {
+      } else if (
+        (e.key === "Backspace" || e.key === "Delete") &&
+        selectedBoxes.size > 0
+      ) {
         e.preventDefault();
         handleDeleteSelectedBoxes();
       } else if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
@@ -930,11 +974,20 @@ const AnnotationEditor: React.FC = () => {
 
     const handleKeyUp = (e: KeyboardEvent) => {
       // Track Alt key release for distance measurement feature
-      if (e.key === "Alt" && isAltKeyPressed) {
+      // Note: Don't check isAltKeyPressed here - it may be stale due to closure
+      // Just always reset when Alt key is released
+      if (e.key === "Alt") {
         setIsAltKeyPressed(false);
         setHoveredBoxIndex(null); // Clear hover state when Alt is released
       }
       // Arrow keys no longer need keyup handling since they're used for panning
+    };
+
+    // Handle window blur - reset Alt key state when window loses focus
+    // This prevents "stuck" state if user releases Alt while focused elsewhere
+    const handleWindowBlur = () => {
+      setIsAltKeyPressed(false);
+      setHoveredBoxIndex(null);
     };
 
     // Removed old handleWheel to prevent dual zoom system conflicts
@@ -942,11 +995,13 @@ const AnnotationEditor: React.FC = () => {
 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
     // Removed old wheel event listener - using React onWheel instead
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
       // Removed old wheel event cleanup
       if (rewindIntervalRef.current) {
         clearInterval(rewindIntervalRef.current);
@@ -1852,20 +1907,8 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const pauseAndNavigate = (path: string) => {
-    // Check for conflicts before navigating
-    const detectedConflicts = detectAllConflicts(boundingBoxes);
-    if (detectedConflicts.length > 0) {
-      toast.error(
-        `Cannot navigate: ${detectedConflicts.length} conflict${detectedConflicts.length > 1 ? "s" : ""} detected. Please resolve them first.`,
-        { duration: 5000 }
-      );
-      // Highlight conflicts to help user find them
-      setConflicts(detectedConflicts);
-      setHighlightConflicts(true);
-      return;
-    }
-
     // Pause audio before navigating
+    // Note: Conflict detection is handled by useNavigationGuard hook which shows the modal
     if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
       wavesurferRef.current.pause();
     }
@@ -1874,25 +1917,13 @@ const AnnotationEditor: React.FC = () => {
 
   const navigateToRecording = async (index: number) => {
     if (index >= 0 && index < projectRecordings.length) {
-      // Check for conflicts before navigating
-      const detectedConflicts = detectAllConflicts(boundingBoxes);
-      if (detectedConflicts.length > 0) {
-        toast.error(
-          `Cannot navigate: ${detectedConflicts.length} conflict${detectedConflicts.length > 1 ? "s" : ""} detected. Please resolve them first.`,
-          { duration: 5000 }
-        );
-        // Highlight conflicts to help user find them
-        setConflicts(detectedConflicts);
-        setHighlightConflicts(true);
-        return;
-      }
-
       // Pause audio before navigating
+      // Note: Conflict detection is handled by useNavigationGuard hook which shows the modal
       if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
         wavesurferRef.current.pause();
       }
 
-      // Save current annotations before navigating
+      // Save current annotations before navigating (if no conflicts, navigation will proceed)
       if (hasUnsavedChanges && recording) {
         await saveAnnotations(recording.id, boundingBoxes, false);
       }
@@ -2077,16 +2108,19 @@ const AnnotationEditor: React.FC = () => {
     }
 
     // Check if clicking on a bounding box first (before handling right-click)
-    // Find all boxes under the cursor
+    // Find all boxes under the cursor - OPTIMIZED: use visibleBoundingBoxes instead of all boxes
     const boxesUnderCursor: number[] = [];
-    boundingBoxes.forEach((box, index) => {
+    visibleBoundingBoxes.forEach((box) => {
       if (
         pos.x >= box.x &&
         pos.x <= box.x + box.width &&
         pos.y >= box.y &&
         pos.y <= box.y + box.height
       ) {
-        boxesUnderCursor.push(index);
+        const originalIndex = boxIndexMap.get(box) ?? -1;
+        if (originalIndex >= 0) {
+          boxesUnderCursor.push(originalIndex);
+        }
       }
     });
 
@@ -2648,13 +2682,14 @@ const AnnotationEditor: React.FC = () => {
     }
 
     // Update cursor and hover state for resize handles
+    // PERF: Only check visible boxes instead of all boxes (O(visible) vs O(all))
     if (!isAnnotationMode && !isDrawing && !isSelecting) {
       let foundHandle = false;
-      for (let i = 0; i < boundingBoxes.length; i++) {
-        const box = boundingBoxes[i];
+      for (const box of visibleBoundingBoxes) {
         const handle = getResizeHandle(box, pos.x, pos.y);
         if (handle) {
-          setHoveredHandle({ boxIndex: i, handle });
+          const originalIndex = boxIndexMap.get(box) ?? -1;
+          setHoveredHandle({ boxIndex: originalIndex, handle });
           foundHandle = true;
           break;
         }
@@ -2665,14 +2700,15 @@ const AnnotationEditor: React.FC = () => {
     }
 
     // Distance measurement: Track hovered box when Alt is pressed
+    // PERF: Only check visible boxes instead of all boxes
     if (isAltKeyPressed && !isAnnotationMode && selectedBoxes.size > 0) {
       let newHoveredIndex: number | null = null;
 
       // Find which box the mouse is hovering over (reverse order for z-index)
-      for (let i = boundingBoxes.length - 1; i >= 0; i--) {
-        const box = boundingBoxes[i];
+      for (let i = visibleBoundingBoxes.length - 1; i >= 0; i--) {
+        const box = visibleBoundingBoxes[i];
         if (isPointInBox(pos, box)) {
-          newHoveredIndex = i;
+          newHoveredIndex = boxIndexMap.get(box) ?? null;
           break;
         }
       }
@@ -2701,11 +2737,9 @@ const AnnotationEditor: React.FC = () => {
       setDraggingBox(null);
 
       // Add single history entry for the entire drag operation
+      // PERF: Use optimized boxArraysChanged instead of O(n) JSON.stringify
       if (preOperationState) {
-        const currentState = JSON.stringify(boundingBoxes);
-        const preOpState = JSON.stringify(preOperationState);
-
-        if (currentState !== preOpState) {
+        if (boxArraysChanged(boundingBoxes, preOperationState)) {
           addToHistory(boundingBoxes);
           setHasUnsavedChanges(true);
         }
@@ -2722,11 +2756,9 @@ const AnnotationEditor: React.FC = () => {
       setDragStartPos(null);
 
       // Add single history entry for the entire resize operation
+      // PERF: Use optimized boxArraysChanged instead of O(n) JSON.stringify
       if (preOperationState) {
-        const currentState = JSON.stringify(boundingBoxes);
-        const preOpState = JSON.stringify(preOperationState);
-
-        if (currentState !== preOpState) {
+        if (boxArraysChanged(boundingBoxes, preOperationState)) {
           addToHistory(boundingBoxes);
           setHasUnsavedChanges(true);
         }
@@ -2843,16 +2875,19 @@ const AnnotationEditor: React.FC = () => {
     setMousePosition({ x: adjustedX, y: adjustedY });
 
     // Check if right-clicking on a box
-    // Find all boxes under the cursor (same logic as handleMouseDown)
+    // Find all boxes under the cursor - OPTIMIZED: use visibleBoundingBoxes instead of all boxes
     const boxesUnderCursor: number[] = [];
-    boundingBoxes.forEach((box, index) => {
+    visibleBoundingBoxes.forEach((box) => {
       if (
         adjustedX >= box.x &&
         adjustedX <= box.x + box.width &&
         adjustedY >= box.y &&
         adjustedY <= box.y + box.height
       ) {
-        boxesUnderCursor.push(index);
+        const originalIndex = boxIndexMap.get(box) ?? -1;
+        if (originalIndex >= 0) {
+          boxesUnderCursor.push(originalIndex);
+        }
       }
     });
 
@@ -2957,7 +2992,7 @@ const AnnotationEditor: React.FC = () => {
 
   // Zoom handlers
   const handleZoomIn = () => {
-    const newZoom = Math.min(zoomLevel * 1.5, 6); // Limit to 600%
+    const newZoom = Math.min(zoomLevel * 1.5, maxZoomLevel);
     setZoomLevel(newZoom);
     // No need to sync WaveSurfer zoom - container width handles it
   };
@@ -2979,6 +3014,43 @@ const AnnotationEditor: React.FC = () => {
       unifiedScrollRef.current.scrollTop = 0;
     }
     setZoomOffset({ x: 0, y: 0 });
+  };
+
+  // Manual zoom input handlers
+  const handleZoomInputStart = () => {
+    setIsEditingZoom(true);
+    setZoomInputValue(Math.round(zoomLevel * 100).toString());
+  };
+
+  const handleZoomInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Allow only digits
+    const value = e.target.value.replace(/[^\d]/g, "");
+    setZoomInputValue(value);
+  };
+
+  const handleZoomInputConfirm = () => {
+    const numValue = parseInt(zoomInputValue, 10);
+    const maxPercent = Math.round(maxZoomLevel * 100);
+    if (!isNaN(numValue) && numValue >= 100 && numValue <= maxPercent) {
+      setZoomLevel(numValue / 100);
+    }
+    setIsEditingZoom(false);
+    setZoomInputValue("");
+  };
+
+  const handleZoomInputCancel = () => {
+    setIsEditingZoom(false);
+    setZoomInputValue("");
+  };
+
+  const handleZoomInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleZoomInputConfirm();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      handleZoomInputCancel();
+    }
   };
 
   // Conflict detection and resolution handlers
@@ -3226,8 +3298,8 @@ const AnnotationEditor: React.FC = () => {
           const delta = -event.deltaY * zoomSpeed;
           const zoomFactor = Math.exp(delta);
 
-          // Calculate new zoom level with limits
-          const newZoom = Math.max(1, Math.min(6, zoomLevel * zoomFactor)); // Limit max zoom to 600%
+          // Calculate new zoom level with limits (dynamic based on duration)
+          const newZoom = Math.max(1, Math.min(maxZoomLevel, zoomLevel * zoomFactor));
 
           if (newZoom === zoomLevel) return;
 
@@ -3259,17 +3331,29 @@ const AnnotationEditor: React.FC = () => {
             unifiedScrollRef.current.scrollLeft = newOffsetX;
           }
 
+          // PERF: Hide labels during active zooming, show after 150ms of inactivity
+          setIsActivelyZooming(true);
+          if (zoomDebounceRef.current) {
+            clearTimeout(zoomDebounceRef.current);
+          }
+          zoomDebounceRef.current = setTimeout(() => {
+            setIsActivelyZooming(false);
+          }, 150);
+
           // No need to update WaveSurfer zoom - container width handles it
           // WaveSurfer will automatically adjust to the new container width
         });
       }, 16), // 60 FPS throttle
-    [zoomLevel, spectrogramDimensions.width],
+    [zoomLevel, spectrogramDimensions.width, maxZoomLevel],
   );
 
-  // Clean up throttled function on unmount
+  // Clean up throttled function and zoom debounce on unmount
   useEffect(() => {
     return () => {
       handleWheelZoom.cancel?.();
+      if (zoomDebounceRef.current) {
+        clearTimeout(zoomDebounceRef.current);
+      }
     };
   }, [handleWheelZoom]);
 
@@ -4130,6 +4214,7 @@ const AnnotationEditor: React.FC = () => {
                 scaleX={1}
                 scaleY={1}
                 listening={true}
+                pixelRatio={OPTIMIZED_PIXEL_RATIO} // PERF: Limit pixel ratio for high zoom performance
                 style={{
                   position: "absolute",
                   top: "0",
@@ -4160,6 +4245,8 @@ const AnnotationEditor: React.FC = () => {
                       stroke="#3B82F6"
                       strokeWidth={1}
                       dash={[5, 5]}
+                      perfectDrawEnabled={false}
+                      listening={false}
                     />
                   )}
                 </Layer>
@@ -4175,14 +4262,8 @@ const AnnotationEditor: React.FC = () => {
                       selectedBox && boundingBoxes[globalIndex] === selectedBox;
                     const labelColor = transformedBox.color;
 
-                    // Check if this box is involved in any conflicts
-                    const isInConflict =
-                      highlightConflicts &&
-                      conflicts.some(
-                        (c) =>
-                          c.box1Index === globalIndex ||
-                          c.box2Index === globalIndex,
-                      );
+                    // Check if this box is involved in any conflicts (O(1) lookup)
+                    const isInConflict = conflictingBoxIndices.has(globalIndex);
 
                     // Use transformed coordinates for better performance
                     const scaledBox = {
@@ -4195,7 +4276,8 @@ const AnnotationEditor: React.FC = () => {
                     // Use label color as base, but modify for selection states
                     let strokeColor = labelColor.stroke;
                     let fillColor = labelColor.fill;
-                    let strokeWidth = 2;
+                    // LOD: Use thinner stroke for small boxes
+                    let strokeWidth = scaledBox.width < 30 ? 1 : 2;
                     let shadowBlur = 0;
                     let shadowColor = "transparent";
                     let dashArray: number[] | undefined = undefined;
@@ -4236,6 +4318,8 @@ const AnnotationEditor: React.FC = () => {
                           shadowBlur={shadowBlur}
                           shadowColor={shadowColor}
                           dash={dashArray}
+                          perfectDrawEnabled={false}
+                          shadowForStrokeEnabled={false}
                           onContextMenu={(e) => {
                             e.evt.preventDefault();
                             e.cancelBubble = true;
@@ -4250,8 +4334,8 @@ const AnnotationEditor: React.FC = () => {
                           }}
                         />
 
-                        {/* Label text - always show, including "None" */}
-                        {
+                        {/* Label text - LOD: only show when box is large enough (>= 50px width) and not actively zooming */}
+                        {scaledBox.width >= 50 && !isActivelyZooming && (
                           <>
                             {/* Background for label */}
                             <Rect
@@ -4259,16 +4343,13 @@ const AnnotationEditor: React.FC = () => {
                               y={Math.max(5, scaledBox.y - 20)}
                               width={Math.min(
                                 scaledBox.width,
-                                Math.max(
-                                  45,
-                                  (transformedBox.label || "None").length * 8 +
-                                    8,
-                                ),
+                                transformedBox.labelWidth,
                               )}
                               height={18}
                               fill={`rgba(0, 0, 0, ${transformedBox.label && transformedBox.label !== "None" ? 0.8 : 0.6})`}
                               cornerRadius={3}
                               listening={false}
+                              perfectDrawEnabled={false}
                             />
                             {/* Label text */}
                             <Text
@@ -4292,11 +4373,12 @@ const AnnotationEditor: React.FC = () => {
                               listening={false}
                             />
                           </>
-                        }
+                        )}
 
-                        {/* Resize handles */}
+                        {/* Resize handles - LOD: only show when box is large enough (>= 30px) */}
                         {(isSingleSelected || isSelected) &&
-                          !isAnnotationMode && (
+                          !isAnnotationMode &&
+                          scaledBox.width >= 30 && (
                             <>
                               {/* Corner handles - smaller for precision */}
                               <Circle
@@ -4372,6 +4454,8 @@ const AnnotationEditor: React.FC = () => {
                       strokeWidth={2}
                       fill="transparent"
                       dash={[5, 5]}
+                      perfectDrawEnabled={false}
+                      listening={false}
                     />
                   )}
 
@@ -4451,6 +4535,7 @@ const AnnotationEditor: React.FC = () => {
                               height={20}
                               fill="#3B82F6"
                               cornerRadius={4}
+                              perfectDrawEnabled={false}
                             />
                             <Text
                               text={`Bottom: ${Math.round(bottomLine.frequency || 0)} Hz`}
@@ -4533,6 +4618,7 @@ const AnnotationEditor: React.FC = () => {
                           fill="rgba(139, 92, 246, 0.95)"
                           cornerRadius={4}
                           listening={false}
+                          perfectDrawEnabled={false}
                         />
                         <Text
                           text={`${Math.round(distanceMeasurement.distanceMs)} ms`}
@@ -4684,9 +4770,27 @@ const AnnotationEditor: React.FC = () => {
             <ArrowsPointingOutIcon className="h-5 w-5 text-gray-600" />
           </button>
 
-          <div className="text-xs text-gray-500 px-1 text-center">
-            {Math.round(zoomLevel * 100)}%
-          </div>
+          {isEditingZoom ? (
+            <input
+              type="text"
+              value={zoomInputValue}
+              onChange={handleZoomInputChange}
+              onBlur={handleZoomInputConfirm}
+              onKeyDown={handleZoomInputKeyDown}
+              className="w-12 text-xs text-gray-700 px-1 py-0.5 text-center border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              autoFocus
+              maxLength={3}
+              title="Enter zoom level (100-600%)"
+            />
+          ) : (
+            <button
+              onClick={handleZoomInputStart}
+              className="text-xs text-gray-500 px-1 py-0.5 text-center hover:bg-gray-100 rounded cursor-pointer min-w-[3rem]"
+              title="Click to enter zoom level (100-600%)"
+            >
+              {Math.round(zoomLevel * 100)}%
+            </button>
+          )}
 
           {/* Divider */}
           <div className="w-8 h-px bg-gray-300 my-2"></div>

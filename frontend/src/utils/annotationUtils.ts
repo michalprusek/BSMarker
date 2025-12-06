@@ -517,6 +517,65 @@ export function findNearestBox(
   return nearestBox;
 }
 
+/**
+ * PERFORMANCE OPTIMIZATION: Fast shallow comparison of bounding box arrays
+ * Avoids O(n) JSON.stringify by checking reference equality first,
+ * then falls back to key-by-key comparison of changed properties.
+ *
+ * @returns true if arrays are functionally equal, false otherwise
+ */
+export function boxArraysEqual(
+  arr1: BoundingBox[] | null,
+  arr2: BoundingBox[] | null,
+): boolean {
+  // Reference equality - fastest path
+  if (arr1 === arr2) return true;
+
+  // Null checks
+  if (!arr1 || !arr2) return false;
+
+  // Length check - fast rejection
+  if (arr1.length !== arr2.length) return false;
+
+  // Empty arrays are equal
+  if (arr1.length === 0) return true;
+
+  // Compare each box - check only essential properties for change detection
+  for (let i = 0; i < arr1.length; i++) {
+    const box1 = arr1[i];
+    const box2 = arr2[i];
+
+    // Reference equality for individual boxes
+    if (box1 === box2) continue;
+
+    // Compare essential properties that affect rendering/history
+    if (
+      box1.x !== box2.x ||
+      box1.y !== box2.y ||
+      box1.width !== box2.width ||
+      box1.height !== box2.height ||
+      box1.label !== box2.label ||
+      box1.id !== box2.id
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * PERFORMANCE OPTIMIZATION: Check if box arrays have changed
+ * Returns true if there are differences, false if equal.
+ * This is the inverse of boxArraysEqual for semantic clarity in change detection.
+ */
+export function boxArraysChanged(
+  current: BoundingBox[] | null,
+  previous: BoundingBox[] | null,
+): boolean {
+  return !boxArraysEqual(current, previous);
+}
+
 const annotationUtils = {
   isPointInBox,
   doBoxesOverlap,
@@ -540,6 +599,8 @@ const annotationUtils = {
   generateBoxId,
   calculateTemporalDistance,
   findNearestBox,
+  boxArraysEqual,
+  boxArraysChanged,
 };
 
 export default annotationUtils;

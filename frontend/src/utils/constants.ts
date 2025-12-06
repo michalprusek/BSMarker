@@ -19,6 +19,16 @@ export const ANNOTATION_CONSTANTS = {
   MAX_ZOOM_LEVEL: 10,
   ZOOM_STEP: 0.1,
 
+  // Dynamic zoom configuration based on recording duration
+  // Formula: maxZoom = max(MIN_MAX_ZOOM, duration / DIVISOR)
+  // Longer recordings allow higher zoom for detailed annotation
+  ZOOM: {
+    DIVISOR: 10, // duration / DIVISOR = base maxZoom
+    MIN_MAX_ZOOM: 6, // 600% - minimum max zoom for any recording
+    MAX_MAX_ZOOM: 50, // 5000% - absolute ceiling
+    DEFAULT_MAX_ZOOM: 6, // 600% - fallback when duration unknown
+  },
+
   // Autosave interval (milliseconds)
   AUTOSAVE_INTERVAL: 5000,
 
