@@ -2,23 +2,24 @@
 Rate limiting module using Redis backend for BSMarker API.
 
 This module provides rate limiting functionality to protect against DoS attacks
-and brute force attempts. It uses slowapi (FastAPI wrapper for flask-limiter)
-with Redis as the storage backend.
+and brute force attempts. It uses slowapi with Redis as the storage backend.
 """
 
 import logging
-from typing import Optional
 
 import redis
-from fastapi import HTTPException, Request
+from fastapi import Request
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Track if rate limiting is degraded (using memory instead of Redis)
+RATE_LIMITING_DEGRADED = False
 
 # Initialize Redis connection
 try:
@@ -27,9 +28,12 @@ try:
     redis_client.ping()
     logger.info("Redis connection established for rate limiting")
 except Exception as e:
-    logger.error(f"Failed to connect to Redis for rate limiting: {e}")
-    # Fallback to memory storage (not recommended for production)
+    logger.critical(
+        f"RATE LIMITING DEGRADED: Failed to connect to Redis: {e}. "
+        "Using in-memory storage - rate limits will NOT be shared across instances!"
+    )
     redis_client = None
+    RATE_LIMITING_DEGRADED = True
 
 
 def get_identifier(request: Request) -> str:
@@ -61,8 +65,13 @@ def get_identifier(request: Request) -> str:
             payload = decode_access_token(token)
             if payload and payload.get("sub"):
                 return f"user:{payload['sub']}"
-    except Exception:
-        pass
+    except Exception as e:
+        # Log at debug level - this is expected for unauthenticated requests
+        # or requests with invalid/expired tokens
+        logger.debug(
+            f"Could not extract user from token for rate limiting, "
+            f"falling back to IP: {type(e).__name__}"
+        )
 
     # Fall back to IP address
     return f"ip:{get_remote_address(request)}"
@@ -124,7 +133,7 @@ RATE_LIMITS = {
     "crud_write": "30 per minute",  # POST, PUT, DELETE operations
     # Bulk operations - very limited
     "bulk_operation": "5 per minute, 15 per hour",
-    # Export operations - more lenient since they're long-running
+    # Export operations - limited frequency but paired with extended nginx timeouts
     "export_operation": "3 per minute, 10 per hour",
     # Admin operations - moderate limits
     "admin_operation": "20 per minute, 100 per hour",

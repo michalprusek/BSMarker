@@ -12,12 +12,21 @@ import { PaginatedResponse } from "../types/pagination";
 // Use relative URL to automatically use the same protocol as the page
 const API_URL = process.env.REACT_APP_API_URL || "";
 
-console.log("API Configuration:", {
-  API_URL,
-  baseURL: API_URL,
-  env: process.env.NODE_ENV,
-  reactAppApiUrl: process.env.REACT_APP_API_URL,
-});
+// Only log in development mode to prevent leaking sensitive info in production
+const IS_DEV = process.env.NODE_ENV === "development";
+const debugLog = (...args: unknown[]) => {
+  if (IS_DEV) {
+    console.log(...args);
+  }
+};
+
+if (IS_DEV) {
+  console.log("API Configuration:", {
+    API_URL,
+    baseURL: API_URL,
+    env: process.env.NODE_ENV,
+  });
+}
 
 const api = axios.create({
   baseURL: API_URL,
@@ -27,27 +36,11 @@ const api = axios.create({
   timeout: 30000, // 30 second timeout (increased from 10s)
 });
 
-console.log("Axios instance created with config:", {
-  baseURL: api.defaults.baseURL,
-  timeout: api.defaults.timeout,
-  headers: api.defaults.headers,
-});
-
 api.interceptors.request.use(
   (config) => {
-    console.log("API Request Interceptor:", {
-      url: `${config.baseURL}${config.url}`,
-      method: config.method?.toUpperCase(),
-      headers: config.headers,
-      hasData: !!config.data,
-    });
-
     const token = localStorage.getItem("token");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log("API Request Interceptor: Added Bearer token to request");
-    } else {
-      console.log("API Request Interceptor: No token found in localStorage");
     }
     return config;
   },
@@ -104,24 +97,8 @@ export const setAuthToken = (token: string) => {
 };
 
 api.interceptors.response.use(
-  (response) => {
-    console.log("API Response Interceptor:", {
-      url: response.config.url,
-      status: response.status,
-      statusText: response.statusText,
-      hasData: !!response.data,
-    });
-    return response;
-  },
+  (response) => response,
   (error) => {
-    console.error("API Response Interceptor Error:", {
-      url: error.config?.url,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      message: error.message,
-      code: error.code,
-    });
-
     if (error.response?.status === 401 || error.response?.status === 403) {
       // Check if it's a real auth error vs other 403 (like rate limiting)
       const isAuthError =
@@ -133,9 +110,6 @@ api.interceptors.response.use(
         error.response?.status === 401; // Always treat 401 as auth error
 
       if (isAuthError) {
-        console.log(
-          "API Response Interceptor: Auth error detected - removing token and redirecting to login",
-        );
         // Clear token and redirect to login
         localStorage.removeItem("token");
         localStorage.removeItem("user");
@@ -144,10 +118,6 @@ api.interceptors.response.use(
         if (!window.location.pathname.includes("/login")) {
           window.location.href = "/login";
         }
-      } else {
-        console.log(
-          "API Response Interceptor: 403 error but not auth-related, continuing...",
-        );
       }
     }
     return Promise.reject(error);
@@ -157,102 +127,47 @@ api.interceptors.response.use(
 // Health check function to test backend connectivity
 export const healthCheck = async (): Promise<boolean> => {
   try {
-    console.log("Health Check: Testing backend connectivity...");
     // Use a simple API endpoint that always works
-    const response = await axios.get(`${API_URL}/projects/`, { timeout: 5000 });
-    console.log("Health Check: Backend is reachable", response.status);
+    await axios.get(`${API_URL}/projects/`, { timeout: 5000 });
     return true;
-  } catch (error: any) {
+  } catch (error: unknown) {
     // 401/403 means backend is up but requires auth - this is success for health check
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      console.log("Health Check: Backend is reachable (auth required)", error.response.status);
+    if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
       return true;
     }
-    console.error("Health Check: Backend is not reachable:", {
-      message: error.message,
-      code: error.code,
-      status: error.response?.status,
-    });
     return false;
   }
 };
 
 export const authService = {
   login: async (credentials: LoginCredentials): Promise<AuthToken> => {
-    console.log("authService.login: Starting login request");
-    console.log("authService.login: API base URL:", api.defaults.baseURL);
-    console.log(
-      "authService.login: Full URL will be:",
-      `${api.defaults.baseURL}/auth/login`,
-    );
-    console.log("authService.login: Username:", credentials.username);
-
     try {
       const formData = new FormData();
       formData.append("username", credentials.username);
       formData.append("password", credentials.password);
 
-      console.log("authService.login: FormData created with credentials");
-      console.log("authService.login: About to send POST request");
-
-      const startTime = Date.now();
       const response = await api.post<AuthToken>("/auth/login", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      const endTime = Date.now();
-
-      console.log(
-        `authService.login: Request completed in ${endTime - startTime}ms`,
-      );
-      console.log("authService.login: Response status:", response.status);
-      console.log("authService.login: Response headers:", response.headers);
-      console.log("authService.login: Response data:", {
-        hasAccessToken: !!response.data?.access_token,
-        tokenType: response.data?.token_type,
-        tokenLength: response.data?.access_token?.length,
-      });
 
       if (!response.data?.access_token) {
-        console.error("authService.login: No access_token in response data");
         throw new Error("No access token received from server");
       }
 
-      console.log("authService.login: Returning successful response");
       return response.data;
-    } catch (error: any) {
-      console.error("authService.login: Request failed:", {
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        url: error.config?.url,
-        method: error.config?.method,
-        baseURL: error.config?.baseURL,
-        responseData: error.response?.data,
-        responseHeaders: error.response?.headers,
-        requestHeaders: error.config?.headers,
-        timeout: error.config?.timeout,
-        code: error.code,
-        stack: error.stack,
-      });
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        // Network error handling
+        if (error.code === "ECONNREFUSED" || error.code === "ERR_NETWORK") {
+          throw new Error(
+            "Unable to connect to server. Please check if the backend is running.",
+          );
+        }
 
-      // Network error handling
-      if (error.code === "ECONNREFUSED" || error.code === "ERR_NETWORK") {
-        console.error(
-          "authService.login: Network connection failed - backend may be down",
-        );
-        const networkError = new Error(
-          "Unable to connect to server. Please check if the backend is running.",
-        );
-        throw networkError;
-      }
-
-      // Timeout error handling
-      if (error.code === "ECONNABORTED") {
-        console.error("authService.login: Request timeout");
-        const timeoutError = new Error(
-          "Login request timed out. Please try again.",
-        );
-        throw timeoutError;
+        // Timeout error handling
+        if (error.code === "ECONNABORTED") {
+          throw new Error("Login request timed out. Please try again.");
+        }
       }
 
       throw error;
@@ -377,14 +292,6 @@ export const recordingService = {
     file: File,
     onProgress?: (percent: number) => void,
   ): Promise<Recording> => {
-    console.log(
-      `RecordingService: Uploading ${file.name} to project ${projectId}`,
-    );
-    console.log(
-      `RecordingService: File size: ${(file.size / 1024 / 1024).toFixed(2)} MB`,
-    );
-    console.log(`RecordingService: File type: ${file.type || "unknown"}`);
-
     // Validate file before sending
     if (file.size === 0) {
       throw new Error("File is empty");
@@ -400,9 +307,6 @@ export const recordingService = {
     formData.append("file", file);
 
     try {
-      console.log(
-        `RecordingService: Sending POST to /recordings/${projectId}/upload`,
-      );
       const response = await api.post<Recording>(
         `/recordings/${projectId}/upload`,
         formData,
@@ -410,48 +314,33 @@ export const recordingService = {
           headers: { "Content-Type": "multipart/form-data" },
           timeout: 180000, // 3 minute timeout for uploads (includes spectrogram generation time)
           onUploadProgress: (progressEvent) => {
-            if (progressEvent.total) {
+            if (progressEvent.total && onProgress) {
               const percentComplete = Math.round(
                 (progressEvent.loaded * 100) / progressEvent.total,
               );
-              console.log(
-                `RecordingService: Upload progress for ${file.name}: ${percentComplete}%`,
-              );
-              if (onProgress) {
-                onProgress(percentComplete);
-              }
+              onProgress(percentComplete);
             }
           },
         },
       );
-      console.log(
-        `RecordingService: Upload successful for ${file.name}`,
-        response.data,
-      );
       return response.data;
-    } catch (error: any) {
-      console.error(`RecordingService: Upload failed for ${file.name}`, error);
-      console.error(`RecordingService: Error details:`, {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        headers: error.response?.headers,
-      });
-
-      // Provide better error messages
-      if (error.response?.status === 400) {
-        const detail = error.response.data?.detail;
-        if (detail) {
-          throw new Error(detail);
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        // Provide better error messages
+        if (error.response?.status === 400) {
+          const detail = error.response.data?.detail;
+          if (detail) {
+            throw new Error(detail);
+          }
+        } else if (error.response?.status === 413) {
+          throw new Error("File too large for server");
+        } else if (error.response?.status === 415) {
+          throw new Error("Unsupported file format");
+        } else if (error.code === "ECONNABORTED") {
+          throw new Error(
+            "Upload timeout - file may be too large or connection is slow",
+          );
         }
-      } else if (error.response?.status === 413) {
-        throw new Error("File too large for server");
-      } else if (error.response?.status === 415) {
-        throw new Error("Unsupported file format");
-      } else if (error.code === "ECONNABORTED") {
-        throw new Error(
-          "Upload timeout - file may be too large or connection is slow",
-        );
       }
 
       throw error;
@@ -629,33 +518,28 @@ export const annotationService = {
 
   createOrUpdateAnnotation: async (
     recordingId: number,
-    boundingBoxes: any[],
+    boundingBoxes: unknown[],
   ): Promise<Annotation> => {
-    console.log("createOrUpdateAnnotation called with:", {
-      recordingId,
-      boundingBoxesCount: boundingBoxes.length,
-      rawBoxes: boundingBoxes,
-    });
-
     // Ensure all required fields are present for each bounding box
     // Round coordinates to prevent floating-point precision issues
-    const validBoxes = boundingBoxes.map((box) => ({
-      x: Math.round(Number(box.x) || 0),
-      y: Math.round(Number(box.y) || 0),
-      width: Math.round(Number(box.width) || 0),
-      height: Math.round(Number(box.height) || 0),
-      start_time: Number(box.start_time) || 0,
-      end_time: Number(box.end_time) || 0,
-      min_frequency:
-        box.min_frequency !== undefined ? Number(box.min_frequency) : null,
-      max_frequency:
-        box.max_frequency !== undefined ? Number(box.max_frequency) : null,
-      label: String(box.label || "None"),
-      confidence: box.confidence !== undefined ? Number(box.confidence) : null,
-      metadata: box.metadata || null,
-    }));
-
-    console.log("After mapping - validBoxes:", validBoxes);
+    const validBoxes = boundingBoxes.map((box: unknown) => {
+      const b = box as Record<string, unknown>;
+      return {
+        x: Math.round(Number(b.x) || 0),
+        y: Math.round(Number(b.y) || 0),
+        width: Math.round(Number(b.width) || 0),
+        height: Math.round(Number(b.height) || 0),
+        start_time: Number(b.start_time) || 0,
+        end_time: Number(b.end_time) || 0,
+        min_frequency:
+          b.min_frequency !== undefined ? Number(b.min_frequency) : null,
+        max_frequency:
+          b.max_frequency !== undefined ? Number(b.max_frequency) : null,
+        label: String(b.label || "None"),
+        confidence: b.confidence !== undefined ? Number(b.confidence) : null,
+        metadata: (b.metadata as Record<string, unknown>) || null,
+      };
+    });
 
     // Filter out invalid boxes (with NaN or invalid values)
     const filteredBoxes = validBoxes.filter(
@@ -671,47 +555,17 @@ export const annotationService = {
         box.end_time > box.start_time,
     );
 
-    console.log("After filtering - filteredBoxes:", filteredBoxes);
-
     // Backend expects AnnotationCreate schema with recording_id and bounding_boxes
     const payload = {
       recording_id: recordingId,
       bounding_boxes: filteredBoxes,
     };
 
-    console.log(
-      "Final payload being sent to API:",
-      JSON.stringify(payload, null, 2),
+    const response = await api.post<Annotation>(
+      `/annotations/${recordingId}`,
+      payload,
     );
-
-    try {
-      const response = await api.post<Annotation>(
-        `/annotations/${recordingId}`,
-        payload,
-      );
-      console.log("Annotation saved successfully:", response.data);
-      return response.data;
-    } catch (error: any) {
-      console.error("Failed to save annotation:", error);
-      console.error("Error response:", error.response?.data);
-      console.error("Error status:", error.response?.status);
-      console.error("Full error object:", error);
-
-      // Log the exact validation error from backend
-      if (error.response?.data?.detail) {
-        console.error(
-          "Backend validation error detail:",
-          error.response.data.detail,
-        );
-        if (Array.isArray(error.response.data.detail)) {
-          error.response.data.detail.forEach((err: any, index: number) => {
-            console.error(`Validation error ${index}:`, err);
-          });
-        }
-      }
-
-      throw error;
-    }
+    return response.data;
   },
 };
 
