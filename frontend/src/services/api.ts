@@ -326,13 +326,19 @@ export const projectService = {
       max_duration?: number;
       annotation_status?: string;
     },
+    onProgress?: (loaded: number) => void,
   ): Promise<Blob> => {
     const response = await api.get(
       `/projects/${projectId}/annotations/export`,
       {
         params: { include: "annotations", ...filters },
         responseType: "blob",
-        timeout: 300000, // 5 minute timeout for large exports
+        timeout: 1800000, // 30 minute timeout for large exports
+        onDownloadProgress: (progressEvent) => {
+          if (onProgress && progressEvent.loaded) {
+            onProgress(progressEvent.loaded);
+          }
+        },
       },
     );
     return response.data;
@@ -346,13 +352,19 @@ export const projectService = {
       max_duration?: number;
       annotation_status?: string;
     },
+    onProgress?: (loaded: number) => void,
   ): Promise<Blob> => {
     const response = await api.get(
       `/projects/${projectId}/annotations/export`,
       {
         params: { include: "full", ...filters },
         responseType: "blob",
-        timeout: 600000, // 10 minute timeout for full exports with audio
+        timeout: 1800000, // 30 minute timeout for full exports with audio
+        onDownloadProgress: (progressEvent) => {
+          if (onProgress && progressEvent.loaded) {
+            onProgress(progressEvent.loaded);
+          }
+        },
       },
     );
     return response.data;
