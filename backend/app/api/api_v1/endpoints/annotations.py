@@ -67,6 +67,7 @@ def create_annotation(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
+    """Create a new annotation or update existing one for a recording."""
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=404, detail="Recording not found")
@@ -134,6 +135,7 @@ def read_annotations(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
+    """Get all annotations for a recording."""
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=404, detail="Recording not found")
@@ -168,6 +170,7 @@ def update_annotation(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
+    """Update an existing annotation with new bounding boxes."""
     annotation = db.query(Annotation).filter(Annotation.id == annotation_id).first()
     if not annotation:
         raise HTTPException(status_code=404, detail="Annotation not found")
@@ -181,8 +184,11 @@ def update_annotation(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Use shared permission check that respects ADMIN_CAN_EDIT_USER_PROJECTS setting
-    check_project_edit_permission(db, project, current_user)
+    # Check annotation ownership - users can only edit their own annotations
+    # unless they have project-level edit permission (e.g., project owner or admin)
+    if annotation.user_id != current_user.id:
+        # User doesn't own this annotation, check if they have project-level permission
+        check_project_edit_permission(db, project, current_user)
 
     if annotation_in.bounding_boxes is not None:
         db.query(BoundingBox).filter(BoundingBox.annotation_id == annotation_id).delete()
@@ -223,6 +229,7 @@ def delete_annotation(
     db: Session = Depends(deps.get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
+    """Delete an annotation and all its bounding boxes."""
     annotation = db.query(Annotation).filter(Annotation.id == annotation_id).first()
     if not annotation:
         raise HTTPException(status_code=404, detail="Annotation not found")
@@ -236,8 +243,11 @@ def delete_annotation(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Use shared permission check that respects ADMIN_CAN_EDIT_USER_PROJECTS setting
-    check_project_edit_permission(db, project, current_user)
+    # Check annotation ownership - users can only delete their own annotations
+    # unless they have project-level edit permission (e.g., project owner or admin)
+    if annotation.user_id != current_user.id:
+        # User doesn't own this annotation, check if they have project-level permission
+        check_project_edit_permission(db, project, current_user)
 
     db.delete(annotation)
     db.commit()
