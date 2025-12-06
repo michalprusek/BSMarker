@@ -161,9 +161,9 @@ services:
     deploy:
       resources:
         limits:
-          # Increased to support 6 concurrent workers
-          cpus: '3'
-          memory: 3G
+          # Max available on 2-CPU server, supports 6 concurrent workers
+          cpus: '2'
+          memory: 2G
       restart_policy:
         condition: on-failure
         delay: 5s

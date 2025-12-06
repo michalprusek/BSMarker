@@ -1,9 +1,14 @@
 # CLAUDE.md - BSMarker
 
+## Server Info
+- **This is the PRODUCTION SERVER** (hostname: bsmarker)
+- Path: /home/prusek/BSMarker
+- Docker containers run here directly
+
 ## Test Credentials
 - **URL**: https://bsmarker.utia.cas.cz
 - **Username**: newcastlea@gmail.com
-- **Password**: bsmarker
+- **Password**: snehurka18
 
 ## Overview
 Bird song annotation tool - upload audio, generate spectrograms, annotate with bounding boxes.
