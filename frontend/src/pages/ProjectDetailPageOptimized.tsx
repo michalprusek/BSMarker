@@ -15,7 +15,9 @@ import {
   TrashIcon,
   CloudArrowDownIcon,
   MagnifyingGlassIcon,
+  PencilIcon,
 } from "@heroicons/react/24/outline";
+import EditProjectModal from "../components/EditProjectModal";
 
 const ProjectDetailPageOptimized: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -35,6 +37,7 @@ const ProjectDetailPageOptimized: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedRecordings, setSelectedRecordings] = useState<Set<number>>(
     new Set(),
   );
@@ -53,6 +56,7 @@ const ProjectDetailPageOptimized: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloadingFull, setIsDownloadingFull] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<number>(0); // bytes downloaded
 
   // Debounce search term
   useEffect(() => {
@@ -194,6 +198,16 @@ const ProjectDetailPageOptimized: React.FC = () => {
     toast.success("Recording uploaded successfully");
   }, [fetchProjectData]);
 
+  // Handle project edit success
+  const handleProjectUpdated = useCallback(async () => {
+    setShowEditModal(false);
+    // Refresh project data
+    if (projectId) {
+      const projectData = await projectService.getProject(parseInt(projectId));
+      setProject(projectData);
+    }
+  }, [projectId]);
+
   // Handle bulk delete
   const handleBulkDelete = useCallback(async () => {
     if (selectedRecordings.size === 0) return;
@@ -265,11 +279,13 @@ const ProjectDetailPageOptimized: React.FC = () => {
     }
 
     setIsDownloading(true);
+    setDownloadProgress(0);
     try {
-      // Use the new bulk export endpoint
+      // Use the streaming export endpoint with progress tracking
       const blob = await projectService.exportAnnotations(
         parseInt(projectId),
         getFilterParams(),
+        (loaded) => setDownloadProgress(loaded),
       );
 
       // Download the ZIP file
@@ -285,9 +301,10 @@ const ProjectDetailPageOptimized: React.FC = () => {
       toast.success("Annotations downloaded successfully");
     } catch (error) {
       console.error("Failed to download annotations:", error);
-      toast.error("Failed to download annotations");
+      toast.error("Failed to download annotations. The export may have timed out for large projects.");
     } finally {
       setIsDownloading(false);
+      setDownloadProgress(0);
     }
   }, [
     projectId,
@@ -320,12 +337,14 @@ const ProjectDetailPageOptimized: React.FC = () => {
     }
 
     setIsDownloadingFull(true);
+    setDownloadProgress(0);
 
     try {
-      // Use the new bulk export endpoint for full export
+      // Use the streaming export endpoint for full export with progress
       const blob = await projectService.exportFull(
         parseInt(projectId),
         getFilterParams(),
+        (loaded) => setDownloadProgress(loaded),
       );
 
       // Download the ZIP file
@@ -341,9 +360,10 @@ const ProjectDetailPageOptimized: React.FC = () => {
       toast.success("Full project exported successfully");
     } catch (error) {
       console.error("Failed to export project:", error);
-      toast.error("Failed to export project");
+      toast.error("Failed to export project. Large exports may take several minutes.");
     } finally {
       setIsDownloadingFull(false);
+      setDownloadProgress(0);
     }
   }, [
     projectId,
@@ -407,9 +427,20 @@ const ProjectDetailPageOptimized: React.FC = () => {
         </button>
 
         <div className="bg-white rounded-lg shadow p-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            {project?.name || "Loading..."}
-          </h1>
+          <div className="flex items-center gap-2 mb-2">
+            <h1 className="text-3xl font-bold text-gray-900">
+              {project?.name || "Loading..."}
+            </h1>
+            {project && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                title="Edit project name and description"
+              >
+                <PencilIcon className="h-5 w-5" />
+              </button>
+            )}
+          </div>
           {project?.description && (
             <p className="text-gray-600 mb-4">{project.description}</p>
           )}
@@ -548,19 +579,23 @@ const ProjectDetailPageOptimized: React.FC = () => {
           <button
             onClick={handleDownloadAnnotations}
             disabled={isDownloading || stats.annotatedRecordings === 0}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center"
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center min-w-[180px]"
           >
             <CloudArrowDownIcon className="h-5 w-5 mr-2" />
-            {isDownloading ? "Downloading..." : "Download Annotations"}
+            {isDownloading
+              ? `${(downloadProgress / 1024 / 1024).toFixed(1)} MB...`
+              : "Download Annotations"}
           </button>
 
           <button
             onClick={handleDownloadAll}
             disabled={isDownloadingFull || recordings.length === 0}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center min-w-[160px]"
           >
             <CloudArrowDownIcon className="h-5 w-5 mr-2" />
-            {isDownloadingFull ? "Exporting..." : "Download All"}
+            {isDownloadingFull
+              ? `${(downloadProgress / 1024 / 1024).toFixed(1)} MB...`
+              : "Download All"}
           </button>
         </div>
 
@@ -659,6 +694,15 @@ const ProjectDetailPageOptimized: React.FC = () => {
           projectId={parseInt(projectId)}
           onClose={() => setShowUploadModal(false)}
           onUploaded={handleRecordingUploaded}
+        />
+      )}
+
+      {/* Edit Project Modal */}
+      {showEditModal && project && (
+        <EditProjectModal
+          project={project}
+          onClose={() => setShowEditModal(false)}
+          onUpdated={handleProjectUpdated}
         />
       )}
     </div>

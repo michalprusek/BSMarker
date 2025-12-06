@@ -89,6 +89,19 @@ class MinioClient:
                 raise
 
     def download_file(self, bucket_name: str, object_name: str) -> bytes:
+        """
+        Download a file from MinIO storage.
+
+        Args:
+            bucket_name: Name of the bucket
+            object_name: Path to the object in the bucket
+
+        Returns:
+            File contents as bytes
+
+        Raises:
+            S3Error: If the file cannot be downloaded (not found, permission denied, etc.)
+        """
         try:
             response = self.client.get_object(bucket_name, object_name)
             data = response.read()
@@ -96,8 +109,8 @@ class MinioClient:
             response.release_conn()
             return data
         except S3Error as e:
-            logger.error(f"Error downloading file: {e}")
-            return None
+            logger.error(f"Error downloading file {object_name} from {bucket_name}: {e}")
+            raise
 
     def delete_file(self, bucket_name: str, object_name: str):
         try:

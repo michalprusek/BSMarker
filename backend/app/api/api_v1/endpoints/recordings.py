@@ -15,6 +15,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api import deps
+from app.api.deps import check_project_edit_permission
 from app.core.config import settings
 from app.core.rate_limiter import RATE_LIMITS, limiter
 from app.models.annotation import Annotation
@@ -112,8 +113,9 @@ async def upload_recording(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    if not current_user.is_admin and project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    # Use shared permission check that respects ADMIN_CAN_EDIT_USER_PROJECTS setting
+    check_project_edit_permission(db, project, current_user)
 
     # Validate file extension securely
     try:
@@ -515,8 +517,11 @@ def delete_recording(
         raise HTTPException(status_code=404, detail="Recording not found")
 
     project = db.query(Project).filter(Project.id == recording.project_id).first()
-    if not current_user.is_admin and project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Use shared permission check that respects ADMIN_CAN_EDIT_USER_PROJECTS setting
+    check_project_edit_permission(db, project, current_user)
 
     minio_client.delete_file(
         bucket_name=settings.MINIO_BUCKET_RECORDINGS, object_name=recording.file_path
@@ -545,8 +550,9 @@ def bulk_delete_recordings(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    if not current_user.is_admin and project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    # Use shared permission check that respects ADMIN_CAN_EDIT_USER_PROJECTS setting
+    check_project_edit_permission(db, project, current_user)
 
     recordings = (
         db.query(Recording)
@@ -865,9 +871,8 @@ def toggle_recording_finished(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Check permissions
-    if not current_user.is_admin and project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    # Use shared permission check that respects ADMIN_CAN_EDIT_USER_PROJECTS setting
+    check_project_edit_permission(db, project, current_user)
 
     # Toggle finished status
     recording.is_finished = not recording.is_finished
