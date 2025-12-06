@@ -246,6 +246,9 @@ const AnnotationEditor: React.FC = () => {
     y: 0,
   });
   const [isEditingZoom, setIsEditingZoom] = useState<boolean>(false);
+  // PERF: Track active zooming to hide labels during zoom for smoother rendering
+  const [isActivelyZooming, setIsActivelyZooming] = useState<boolean>(false);
+  const zoomDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [zoomInputValue, setZoomInputValue] = useState<string>("");
   const [scrollOffset, setScrollOffset] = useState<number>(0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -2105,16 +2108,19 @@ const AnnotationEditor: React.FC = () => {
     }
 
     // Check if clicking on a bounding box first (before handling right-click)
-    // Find all boxes under the cursor
+    // Find all boxes under the cursor - OPTIMIZED: use visibleBoundingBoxes instead of all boxes
     const boxesUnderCursor: number[] = [];
-    boundingBoxes.forEach((box, index) => {
+    visibleBoundingBoxes.forEach((box) => {
       if (
         pos.x >= box.x &&
         pos.x <= box.x + box.width &&
         pos.y >= box.y &&
         pos.y <= box.y + box.height
       ) {
-        boxesUnderCursor.push(index);
+        const originalIndex = boxIndexMap.get(box) ?? -1;
+        if (originalIndex >= 0) {
+          boxesUnderCursor.push(originalIndex);
+        }
       }
     });
 
@@ -2869,16 +2875,19 @@ const AnnotationEditor: React.FC = () => {
     setMousePosition({ x: adjustedX, y: adjustedY });
 
     // Check if right-clicking on a box
-    // Find all boxes under the cursor (same logic as handleMouseDown)
+    // Find all boxes under the cursor - OPTIMIZED: use visibleBoundingBoxes instead of all boxes
     const boxesUnderCursor: number[] = [];
-    boundingBoxes.forEach((box, index) => {
+    visibleBoundingBoxes.forEach((box) => {
       if (
         adjustedX >= box.x &&
         adjustedX <= box.x + box.width &&
         adjustedY >= box.y &&
         adjustedY <= box.y + box.height
       ) {
-        boxesUnderCursor.push(index);
+        const originalIndex = boxIndexMap.get(box) ?? -1;
+        if (originalIndex >= 0) {
+          boxesUnderCursor.push(originalIndex);
+        }
       }
     });
 
@@ -3322,6 +3331,15 @@ const AnnotationEditor: React.FC = () => {
             unifiedScrollRef.current.scrollLeft = newOffsetX;
           }
 
+          // PERF: Hide labels during active zooming, show after 150ms of inactivity
+          setIsActivelyZooming(true);
+          if (zoomDebounceRef.current) {
+            clearTimeout(zoomDebounceRef.current);
+          }
+          zoomDebounceRef.current = setTimeout(() => {
+            setIsActivelyZooming(false);
+          }, 150);
+
           // No need to update WaveSurfer zoom - container width handles it
           // WaveSurfer will automatically adjust to the new container width
         });
@@ -3329,10 +3347,13 @@ const AnnotationEditor: React.FC = () => {
     [zoomLevel, spectrogramDimensions.width, maxZoomLevel],
   );
 
-  // Clean up throttled function on unmount
+  // Clean up throttled function and zoom debounce on unmount
   useEffect(() => {
     return () => {
       handleWheelZoom.cancel?.();
+      if (zoomDebounceRef.current) {
+        clearTimeout(zoomDebounceRef.current);
+      }
     };
   }, [handleWheelZoom]);
 
@@ -4224,6 +4245,8 @@ const AnnotationEditor: React.FC = () => {
                       stroke="#3B82F6"
                       strokeWidth={1}
                       dash={[5, 5]}
+                      perfectDrawEnabled={false}
+                      listening={false}
                     />
                   )}
                 </Layer>
@@ -4253,7 +4276,8 @@ const AnnotationEditor: React.FC = () => {
                     // Use label color as base, but modify for selection states
                     let strokeColor = labelColor.stroke;
                     let fillColor = labelColor.fill;
-                    let strokeWidth = 2;
+                    // LOD: Use thinner stroke for small boxes
+                    let strokeWidth = scaledBox.width < 30 ? 1 : 2;
                     let shadowBlur = 0;
                     let shadowColor = "transparent";
                     let dashArray: number[] | undefined = undefined;
@@ -4294,6 +4318,8 @@ const AnnotationEditor: React.FC = () => {
                           shadowBlur={shadowBlur}
                           shadowColor={shadowColor}
                           dash={dashArray}
+                          perfectDrawEnabled={false}
+                          shadowForStrokeEnabled={false}
                           onContextMenu={(e) => {
                             e.evt.preventDefault();
                             e.cancelBubble = true;
@@ -4308,8 +4334,8 @@ const AnnotationEditor: React.FC = () => {
                           }}
                         />
 
-                        {/* Label text - always show, including "None" */}
-                        {
+                        {/* Label text - LOD: only show when box is large enough (>= 50px width) and not actively zooming */}
+                        {scaledBox.width >= 50 && !isActivelyZooming && (
                           <>
                             {/* Background for label */}
                             <Rect
@@ -4323,6 +4349,7 @@ const AnnotationEditor: React.FC = () => {
                               fill={`rgba(0, 0, 0, ${transformedBox.label && transformedBox.label !== "None" ? 0.8 : 0.6})`}
                               cornerRadius={3}
                               listening={false}
+                              perfectDrawEnabled={false}
                             />
                             {/* Label text */}
                             <Text
@@ -4346,11 +4373,12 @@ const AnnotationEditor: React.FC = () => {
                               listening={false}
                             />
                           </>
-                        }
+                        )}
 
-                        {/* Resize handles */}
+                        {/* Resize handles - LOD: only show when box is large enough (>= 30px) */}
                         {(isSingleSelected || isSelected) &&
-                          !isAnnotationMode && (
+                          !isAnnotationMode &&
+                          scaledBox.width >= 30 && (
                             <>
                               {/* Corner handles - smaller for precision */}
                               <Circle
@@ -4426,6 +4454,8 @@ const AnnotationEditor: React.FC = () => {
                       strokeWidth={2}
                       fill="transparent"
                       dash={[5, 5]}
+                      perfectDrawEnabled={false}
+                      listening={false}
                     />
                   )}
 
@@ -4505,6 +4535,7 @@ const AnnotationEditor: React.FC = () => {
                               height={20}
                               fill="#3B82F6"
                               cornerRadius={4}
+                              perfectDrawEnabled={false}
                             />
                             <Text
                               text={`Bottom: ${Math.round(bottomLine.frequency || 0)} Hz`}
@@ -4587,6 +4618,7 @@ const AnnotationEditor: React.FC = () => {
                           fill="rgba(139, 92, 246, 0.95)"
                           cornerRadius={4}
                           listening={false}
+                          perfectDrawEnabled={false}
                         />
                         <Text
                           text={`${Math.round(distanceMeasurement.distanceMs)} ms`}
