@@ -3,16 +3,19 @@
 from datetime import timedelta
 from typing import Any
 
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
+
 from app.api import deps
 from app.core import security
 from app.core.config import settings
 from app.core.rate_limiter import get_rate_limit, limiter
+from app.core.security import get_password_hash
 from app.models.user import User
 from app.schemas.token import Token
+from app.schemas.user import PasswordChange
 from app.schemas.user import User as UserSchema
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -47,3 +50,35 @@ def read_users_me(
     request: Request, current_user: User = Depends(deps.get_current_active_user)
 ) -> Any:
     return current_user
+
+
+@router.post("/change-password")
+@limiter.limit(get_rate_limit("auth_me"))
+def change_password(
+    *,
+    request: Request,
+    db: Session = Depends(deps.get_db),
+    password_data: PasswordChange,
+    current_user: User = Depends(deps.get_current_active_user),
+) -> Any:
+    """Change the current user's password."""
+    # Verify current password
+    if not security.verify_password(password_data.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect current password",
+        )
+
+    # Validate new password (minimum length)
+    if len(password_data.new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 6 characters long",
+        )
+
+    # Update password
+    current_user.hashed_password = get_password_hash(password_data.new_password)
+    db.add(current_user)
+    db.commit()
+
+    return {"message": "Password changed successfully"}

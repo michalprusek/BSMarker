@@ -35,3 +35,10 @@ class User(UserInDBBase):
 
 class UserInDB(UserInDBBase):
     hashed_password: str
+
+
+class PasswordChange(BaseModel):
+    """Schema for changing user's own password."""
+
+    current_password: str
+    new_password: str

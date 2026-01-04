@@ -1,16 +1,19 @@
-import React from "react";
+import React, { useState } from "react";
 import { Outlet, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
   HomeIcon,
   UsersIcon,
   ArrowRightOnRectangleIcon,
+  KeyIcon,
 } from "@heroicons/react/24/outline";
 import Logo from "./Logo";
+import ChangePasswordModal from "./ChangePasswordModal";
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -51,6 +54,13 @@ const Layout: React.FC = () => {
                 {user?.full_name || user?.username}
               </span>
               <button
+                onClick={() => setShowChangePassword(true)}
+                className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 mr-2"
+                title="Change Password"
+              >
+                <KeyIcon className="h-4 w-4" />
+              </button>
+              <button
                 onClick={handleLogout}
                 className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
               >
@@ -64,6 +74,10 @@ const Layout: React.FC = () => {
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <Outlet />
       </main>
+
+      {showChangePassword && (
+        <ChangePasswordModal onClose={() => setShowChangePassword(false)} />
+      )}
     </div>
   );
 };
