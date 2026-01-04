@@ -1795,13 +1795,15 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const toggleRoiSelectionMode = () => {
-    const newState = !isRoiSelectionMode;
-    setIsRoiSelectionMode(newState);
-    // Disable other modes when enabling ROI selection mode
-    if (newState) {
-      setIsAnnotationMode(false);
-      setIsSettingBottomLine(false);
-    }
+    setIsRoiSelectionMode((prev) => {
+      const newState = !prev;
+      // Disable other modes when enabling ROI selection mode
+      if (newState) {
+        setIsAnnotationMode(false);
+        setIsSettingBottomLine(false);
+      }
+      return newState;
+    });
   };
 
   // Handle horizontal panning with arrow keys
@@ -2084,7 +2086,8 @@ const AnnotationEditor: React.FC = () => {
     if (!canvasContainerRef.current) return;
 
     const stage = e.target.getStage();
-    const point = stage.getPointerPosition();
+    // Use getRelativePointerPosition to get world-space coordinates (auto-inverts Stage scaleY)
+    const point = stage.getRelativePointerPosition();
     const containerHeight = Math.max(baseSpectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
 
@@ -2431,7 +2434,8 @@ const AnnotationEditor: React.FC = () => {
 
   const handleMouseMove = (e: any) => {
     const stage = e.target.getStage();
-    const point = stage.getPointerPosition();
+    // Use getRelativePointerPosition to get world-space coordinates (auto-inverts Stage scaleY)
+    const point = stage.getRelativePointerPosition();
     const containerHeight = Math.max(baseSpectrogramDimensions.height, 600);
     const spectrogramHeight = containerHeight * LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
 
@@ -2864,7 +2868,8 @@ const AnnotationEditor: React.FC = () => {
     e.evt.preventDefault();
 
     const stage = e.target.getStage();
-    const point = stage.getPointerPosition();
+    // Use getRelativePointerPosition to get world-space coordinates (auto-inverts Stage scaleY)
+    const point = stage.getRelativePointerPosition();
 
     // Use centralized coordinate transformation hook
     const { pos } = transformMousePoint(point);
@@ -4091,7 +4096,7 @@ const AnnotationEditor: React.FC = () => {
                       }}
                     >
                       {/* PERF: Only render visible boxes in waveform */}
-                      {visibleBoundingBoxes.map((box) => {
+                      {visibleBoundingBoxes.map((box, mapIndex) => {
                         const index = boxIndexMap.get(box) ?? -1;
                         const isSelected = selectedBoxes.has(index);
                         const labelColor = getLabelColor(box.label || "None");
@@ -4121,7 +4126,7 @@ const AnnotationEditor: React.FC = () => {
                           LAYOUT_CONSTANTS.WAVEFORM_HEIGHT_RATIO; // Use base dimensions for consistent height
 
                         return (
-                          <g key={index}>
+                          <g key={index >= 0 ? index : `waveform_${mapIndex}`}>
                             {/* Selected box highlight background */}
                             {isSelected && (
                               <rect
@@ -4198,12 +4203,16 @@ const AnnotationEditor: React.FC = () => {
               </div>
 
               {/* Optimized Canvas for annotations and cursor - moved inside scroll container */}
+              {/* Stage is limited to spectrogram area (65%) and scales vertically with viewport */}
               <Stage
                 width={CoordinateUtils.getZoomedContentWidth(
                   baseSpectrogramDimensions.width,
                   zoomLevel,
                 )} // Full zoomed width for proper event handling
-                height={baseSpectrogramDimensions.height} // Full height to include waveform
+                height={
+                  spectrogramDimensions.height *
+                  LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO
+                } // Match spectrogram area height (65% of viewport)
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -4212,7 +4221,12 @@ const AnnotationEditor: React.FC = () => {
                 x={0} // No x offset needed - Stage is relative to container
                 y={-zoomOffset.y} // Keep vertical offset for consistency
                 scaleX={1}
-                scaleY={1}
+                scaleY={
+                  (spectrogramDimensions.height *
+                    LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO) /
+                  (baseSpectrogramDimensions.height *
+                    LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO)
+                } // Scale boxes vertically when viewport changes
                 listening={true}
                 pixelRatio={OPTIMIZED_PIXEL_RATIO} // PERF: Limit pixel ratio for high zoom performance
                 style={{
@@ -4643,7 +4657,8 @@ const AnnotationEditor: React.FC = () => {
                         timelineCursorPosition, // Already in zoomed coordinates
                         0,
                         timelineCursorPosition, // Already in zoomed coordinates
-                        spectrogramDimensions.height, // Fixed height - no vertical zoom
+                        baseSpectrogramDimensions.height *
+                          LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO, // World space height (will be scaled by Stage scaleY)
                       ]}
                       stroke="#EF4444"
                       strokeWidth={2}
