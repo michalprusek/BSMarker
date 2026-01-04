@@ -4095,9 +4095,9 @@ const AnnotationEditor: React.FC = () => {
                         zIndex: 10, // Ensure it's above waveform
                       }}
                     >
-                      {/* PERF: Only render visible boxes in waveform */}
-                      {visibleBoundingBoxes.map((box, mapIndex) => {
-                        const index = boxIndexMap.get(box) ?? -1;
+                      {/* Render ALL boxes in waveform - it shows the full recording overview */}
+                      {boundingBoxes.map((box, mapIndex) => {
+                        const index = mapIndex;
                         const isSelected = selectedBoxes.has(index);
                         const labelColor = getLabelColor(box.label || "None");
                         // Calculate pixel positions for waveform boxes - use base dimensions for consistent positioning
@@ -4122,11 +4122,11 @@ const AnnotationEditor: React.FC = () => {
                               )
                             : 0;
                         const waveformHeight =
-                          baseSpectrogramDimensions.height *
-                          LAYOUT_CONSTANTS.WAVEFORM_HEIGHT_RATIO; // Use base dimensions for consistent height
+                          spectrogramDimensions.height *
+                          LAYOUT_CONSTANTS.WAVEFORM_HEIGHT_RATIO; // Use viewport dimensions to match container
 
                         return (
-                          <g key={index >= 0 ? index : `waveform_${mapIndex}`}>
+                          <g key={`waveform_box_${index}`}>
                             {/* Selected box highlight background */}
                             {isSelected && (
                               <rect
