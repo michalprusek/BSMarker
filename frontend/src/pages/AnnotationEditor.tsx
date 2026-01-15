@@ -44,13 +44,12 @@ import KeyboardShortcutsModal from "../components/KeyboardShortcutsModal";
 import BottomLineModal from "../components/BottomLineModal";
 import ConflictWarningModal from "../components/ConflictWarningModal";
 import ContrastModal from "../components/ContrastModal";
+import OptimizedWaveform, { OptimizedWaveformHandle } from "../components/OptimizedWaveform";
 import { CoordinateUtils, LAYOUT_CONSTANTS } from "../utils/coordinates";
 import {
   calculateTemporalDistance,
   findNearestBox,
   isPointInBox,
-  getBoxCenter,
-  boxArraysEqual,
   boxArraysChanged,
 } from "../utils/annotationUtils";
 import {
@@ -63,18 +62,15 @@ import { useMouseCoordinates } from "../hooks/useMouseCoordinates";
 import { useBoundingBoxTimeFrequency } from "../hooks/useBoundingBoxTimeFrequency";
 import { useBottomLine } from "../hooks/useBottomLine";
 import { useNavigationGuard } from "../hooks/useNavigationGuard";
+import { useModalManager } from "../hooks/useModalManager";
+import { useDrawingMode } from "../hooks/useDrawingMode";
+import { useConflictDetection } from "../hooks/useConflictDetection";
 import { ANNOTATION_CONSTANTS, LABEL_COLORS } from "../utils/constants";
 import {
-  detectConflicts,
-  resolveConflicts,
-  BoundingBoxConflict,
-  // New unified conflict system
   detectAllConflicts,
   resolveAllConflicts,
-  formatUnifiedConflictDescription,
   UnifiedConflict,
 } from "../utils/conflictDetection";
-// import { useSpectrogramZoom } from '../hooks/useSpectrogramZoom'; // Unused - replaced with custom throttled zoom
 import { throttle } from "lodash";
 
 // PERF: Limit pixel ratio for better performance on high-DPI displays
@@ -135,18 +131,10 @@ const AnnotationEditor: React.FC = () => {
     useState<boolean>(false);
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
   const [selectedBox, setSelectedBox] = useState<BoundingBox | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawingBox, setDrawingBox] = useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [showLabelModal, setShowLabelModal] = useState(false);
   const [tempBox, setTempBox] = useState<BoundingBox | null>(null);
   const [spectrogramDimensions, setSpectrogramDimensions] = useState({
     width: 800,
@@ -157,24 +145,14 @@ const AnnotationEditor: React.FC = () => {
     width: 800,
     height: 400,
   });
-  const [showSidebar, setShowSidebar] = useState(false);
   const [sortMode, setSortMode] = useState<"time" | "alphabetical">("time");
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [verticalScrollOffset, setVerticalScrollOffset] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentSpeedIndex, setCurrentSpeedIndex] = useState(0);
-  const [isAnnotationMode, setIsAnnotationMode] = useState(false);
-  const [isRoiSelectionMode, setIsRoiSelectionMode] = useState(false);
   const [isRewindingLeft, setIsRewindingLeft] = useState(false);
   const [isRewindingRight, setIsRewindingRight] = useState(false);
   const [selectedBoxes, setSelectedBoxes] = useState<Set<number>>(new Set());
-  const [selectionRect, setSelectionRect] = useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
-  const [isSelecting, setIsSelecting] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -186,7 +164,6 @@ const AnnotationEditor: React.FC = () => {
   } | null>(null);
   const [defaultLabel, setDefaultLabel] = useState<string | null>(null);
   const [lastUsedLabel, setLastUsedLabel] = useState<string | null>(null);
-  const [showDefaultLabelInput, setShowDefaultLabelInput] = useState(false);
   const [defaultLabelInput, setDefaultLabelInput] = useState("");
   const [clipboardBox, setClipboardBox] = useState<
     BoundingBox | BoundingBox[] | null
@@ -245,7 +222,6 @@ const AnnotationEditor: React.FC = () => {
     x: 0,
     y: 0,
   });
-  const [isEditingZoom, setIsEditingZoom] = useState<boolean>(false);
   // PERF: Track active zooming to hide labels during zoom for smoother rendering
   const [isActivelyZooming, setIsActivelyZooming] = useState<boolean>(false);
   const zoomDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -256,25 +232,16 @@ const AnnotationEditor: React.FC = () => {
   const [timelineCursorPosition, setTimelineCursorPosition] =
     useState<number>(0);
   const [customLabelInput, setCustomLabelInput] = useState<string>("");
-  const [showCustomLabelInput, setShowCustomLabelInput] =
-    useState<boolean>(false);
   const [lastClickTime, setLastClickTime] = useState<number>(0);
   const [lastClickedBox, setLastClickedBox] = useState<number | null>(null);
-  const [isPanning, setIsPanning] = useState<boolean>(false);
   const [panStartPos, setPanStartPos] = useState<{
     x: number;
     scrollX: number;
     y?: number;
     scrollY?: number;
   } | null>(null);
-  const [showKeyboardShortcuts, setShowKeyboardShortcuts] =
-    useState<boolean>(false);
-  const [showBottomLineModal, setShowBottomLineModal] = useState<boolean>(false);
-  const [showContrastModal, setShowContrastModal] = useState<boolean>(false);
   const [contrast, setContrast] = useState<number>(1.0);
   const [isDraggingBottomLine, setIsDraggingBottomLine] = useState<boolean>(false);
-  const [conflicts, setConflicts] = useState<UnifiedConflict[]>([]);
-  const [highlightConflicts, setHighlightConflicts] = useState<boolean>(false);
 
   // Distance measurement state (Alt key feature)
   const [isAltKeyPressed, setIsAltKeyPressed] = useState<boolean>(false);
@@ -292,11 +259,18 @@ const AnnotationEditor: React.FC = () => {
 
   const waveformRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
+  const optimizedWaveformRef = useRef<OptimizedWaveformHandle>(null);
   const stageRef = useRef<any>(null);
   const spectrogramImgRef = useRef<HTMLImageElement>(null);
   const audioUrlRef = useRef<string | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const unifiedScrollRef = useRef<HTMLDivElement>(null);
+
+  // PERF: Use optimized waveform rendering to avoid 4096px canvas limit
+  const useOptimizedWaveform = true;
+  const [viewportWidth, setViewportWidth] = useState(800);
+  // State to track audio URL for OptimizedWaveform (ref doesn't trigger re-render)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
   // Viewport culling for performance optimization
   const calculateVisibleBounds = useCallback(() => {
@@ -386,6 +360,74 @@ const AnnotationEditor: React.FC = () => {
     boundingBoxes,
     enabled: true,
   });
+
+  // Centralized modal state management
+  const modals = useModalManager();
+
+  // Drawing mode state machine
+  const drawingMode = useDrawingMode();
+
+  // Conflict detection and resolution
+  const conflictDetection = useConflictDetection();
+
+  // Backward-compatible aliases for modal states
+  const showLabelModal = modals.isOpen('label');
+  const setShowLabelModal = useCallback((show: boolean) => show ? modals.open('label') : modals.close('label'), [modals]);
+  const showSidebar = modals.isOpen('sidebar');
+  const setShowSidebar = useCallback((show: boolean) => show ? modals.open('sidebar') : modals.close('sidebar'), [modals]);
+  const showDefaultLabelInput = modals.isOpen('defaultLabelInput');
+  const setShowDefaultLabelInput = useCallback((show: boolean) => show ? modals.open('defaultLabelInput') : modals.close('defaultLabelInput'), [modals]);
+  const showCustomLabelInput = modals.isOpen('customLabelInput');
+  const setShowCustomLabelInput = useCallback((show: boolean) => show ? modals.open('customLabelInput') : modals.close('customLabelInput'), [modals]);
+  const showKeyboardShortcuts = modals.isOpen('keyboardShortcuts');
+  const setShowKeyboardShortcuts = useCallback((show: boolean) => show ? modals.open('keyboardShortcuts') : modals.close('keyboardShortcuts'), [modals]);
+  const showBottomLineModal = modals.isOpen('bottomLine');
+  const setShowBottomLineModal = useCallback((show: boolean) => show ? modals.open('bottomLine') : modals.close('bottomLine'), [modals]);
+  const showContrastModal = modals.isOpen('contrast');
+  const setShowContrastModal = useCallback((show: boolean) => show ? modals.open('contrast') : modals.close('contrast'), [modals]);
+  const isEditingZoom = modals.isOpen('zoomInput');
+  const setIsEditingZoom = useCallback((editing: boolean) => editing ? modals.open('zoomInput') : modals.close('zoomInput'), [modals]);
+
+  // Backward-compatible aliases for drawing mode states
+  const isAnnotationMode = drawingMode.isAnnotationMode;
+  const setIsAnnotationMode = useCallback((enabled: boolean) => {
+    if (enabled) drawingMode.setMode('annotation');
+    else if (drawingMode.mode === 'annotation') drawingMode.setMode('none');
+  }, [drawingMode]);
+  const isRoiSelectionMode = drawingMode.isRoiSelectionMode;
+  const setIsRoiSelectionMode = useCallback((enabled: boolean) => {
+    if (enabled) drawingMode.setMode('roi_selection');
+    else if (drawingMode.mode === 'roi_selection') drawingMode.setMode('none');
+  }, [drawingMode]);
+  const isPanning = drawingMode.isPanning;
+  const setIsPanning = useCallback((enabled: boolean) => {
+    if (enabled) drawingMode.enablePanning();
+    else drawingMode.disablePanning();
+  }, [drawingMode]);
+  const isDrawing = drawingMode.isDrawing;
+  const drawingBox = drawingMode.drawingBox;
+  const setIsDrawing = useCallback((drawing: boolean) => {
+    if (!drawing) drawingMode.cancelDrawing();
+  }, [drawingMode]);
+  const setDrawingBox = useCallback((_box: { x: number; y: number; width: number; height: number } | null) => {
+    // Drawing box is managed by startDrawing/updateDrawing/endDrawing
+    // This setter is kept for compatibility but has limited use
+  }, []);
+  const isSelecting = drawingMode.isSelecting;
+  const selectionRect = drawingMode.selectionRect;
+  const setIsSelecting = useCallback((selecting: boolean) => {
+    if (!selecting) drawingMode.cancelSelection();
+  }, [drawingMode]);
+  const setSelectionRect = useCallback((_rect: { x: number; y: number; width: number; height: number } | null) => {
+    // Selection rect is managed by startSelection/updateSelection/endSelection
+    // This setter is kept for compatibility but has limited use
+  }, []);
+
+  // Backward-compatible aliases for conflict detection states
+  const conflicts = conflictDetection.conflicts;
+  const setConflicts = conflictDetection.setConflicts;
+  const highlightConflicts = conflictDetection.highlightConflicts;
+  const setHighlightConflicts = conflictDetection.setHighlightConflicts;
 
   // Memoized sorted bounding boxes with original indices preserved
   const sortedBoundingBoxes = useMemo(() => {
@@ -743,24 +785,36 @@ const AnnotationEditor: React.FC = () => {
   }, [recordingId]);
 
   // Cleanup blob URLs when component unmounts
+  // Note: Using refs to capture current values at cleanup time, not dependencies
+  // This ensures cleanup only happens on unmount, not on every spectrogramUrl change
+  const spectrogramUrlRef = useRef(spectrogramUrl);
+  spectrogramUrlRef.current = spectrogramUrl;
+
   useEffect(() => {
     return () => {
       // Clean up blob URLs when component unmounts
-      if (spectrogramUrl && spectrogramUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(spectrogramUrl);
+      if (spectrogramUrlRef.current && spectrogramUrlRef.current.startsWith("blob:")) {
+        URL.revokeObjectURL(spectrogramUrlRef.current);
       }
       if (audioUrlRef.current && audioUrlRef.current.startsWith("blob:")) {
         URL.revokeObjectURL(audioUrlRef.current);
       }
     };
-  }, [spectrogramUrl]);
+  }, []); // Empty deps = only run cleanup on unmount
 
   // Audio cleanup on component unmount only (beforeunload handled above)
   useEffect(() => {
+    // Capture refs at effect time for cleanup
+    const optimizedWaveform = optimizedWaveformRef.current;
+    const wavesurfer = wavesurferRef.current;
+
     return () => {
       // Pause audio when component unmounts (route change)
-      if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
-        wavesurferRef.current.pause();
+      // Note: useOptimizedWaveform is a constant (true), so this is always the first branch
+      if (optimizedWaveform?.isPlaying()) {
+        optimizedWaveform.pause();
+      } else if (wavesurfer?.isPlaying()) {
+        wavesurfer.pause();
       }
     };
   }, []); // Empty dependency array means this effect runs once on mount and cleanup on unmount
@@ -1151,6 +1205,9 @@ const AnnotationEditor: React.FC = () => {
             height: containerHeight,
           });
 
+          // PERF: Update viewport width for OptimizedWaveform
+          setViewportWidth(containerWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH);
+
           // Update base dimensions if container grew significantly (e.g., console closed)
           // This allows expansion but prevents unwanted shrinking of coordinate space
           const RESIZE_THRESHOLD = 50; // pixels
@@ -1522,7 +1579,49 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const initializeWavesurfer = async () => {
-    if (!recording || !waveformRef.current) return;
+    if (!recording) return;
+
+    // For OptimizedWaveform, we only need to fetch the audio URL
+    // and let the OptimizedWaveform component handle WaveSurfer internally
+    if (useOptimizedWaveform) {
+      // Cleanup old blob URL
+      if (audioUrlRef.current && audioUrlRef.current.startsWith("blob:")) {
+        URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
+        setAudioUrl(null);
+      }
+
+      const baseUrl = process.env.REACT_APP_API_URL || "";
+      const token = localStorage.getItem("token");
+
+      try {
+        const response = await fetch(
+          `${baseUrl}/recordings/${recording.id}/audio`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          audioUrlRef.current = url;
+          setAudioUrl(url); // Trigger re-render
+        } else {
+          console.error("Failed to fetch audio");
+          toast.error("Failed to load audio");
+        }
+      } catch (error) {
+        console.error("Failed to fetch audio:", error);
+        toast.error("Failed to load audio");
+      }
+      return;
+    }
+
+    // Legacy WaveSurfer path (when useOptimizedWaveform is false)
+    if (!waveformRef.current) return;
 
     // Destroy existing instance if any
     if (wavesurferRef.current) {
@@ -1719,7 +1818,14 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const handlePlayPause = () => {
-    if (wavesurferRef.current) {
+    // Use OptimizedWaveform if enabled, otherwise fall back to WaveSurfer
+    if (useOptimizedWaveform && optimizedWaveformRef.current) {
+      if (optimizedWaveformRef.current.isPlaying()) {
+        optimizedWaveformRef.current.pause();
+      } else {
+        optimizedWaveformRef.current.play();
+      }
+    } else if (wavesurferRef.current) {
       wavesurferRef.current.playPause();
     }
   };
@@ -1785,25 +1891,19 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const toggleAnnotationMode = () => {
-    const newState = !isAnnotationMode;
-    setIsAnnotationMode(newState);
-    // Disable other modes when enabling annotation mode
-    if (newState) {
-      setIsRoiSelectionMode(false);
+    drawingMode.toggleAnnotationMode();
+    // Also disable bottom line mode
+    if (!isAnnotationMode) {
       setIsSettingBottomLine(false);
     }
   };
 
   const toggleRoiSelectionMode = () => {
-    setIsRoiSelectionMode((prev) => {
-      const newState = !prev;
-      // Disable other modes when enabling ROI selection mode
-      if (newState) {
-        setIsAnnotationMode(false);
-        setIsSettingBottomLine(false);
-      }
-      return newState;
-    });
+    drawingMode.toggleRoiSelectionMode();
+    // Also disable bottom line mode
+    if (!isRoiSelectionMode) {
+      setIsSettingBottomLine(false);
+    }
   };
 
   // Handle horizontal panning with arrow keys
@@ -1873,10 +1973,22 @@ const AnnotationEditor: React.FC = () => {
     const nextIndex = (currentSpeedIndex + 1) % PLAYBACK_SPEEDS.length;
     const nextSpeed = PLAYBACK_SPEEDS[nextIndex];
 
-    if (wavesurferRef.current) {
+    // Use OptimizedWaveform if enabled
+    if (useOptimizedWaveform && optimizedWaveformRef.current) {
+      const wasPlaying = optimizedWaveformRef.current.isPlaying();
+      if (wasPlaying) {
+        optimizedWaveformRef.current.pause();
+      }
+      optimizedWaveformRef.current.setPlaybackRate(nextSpeed);
+      if (wasPlaying) {
+        setTimeout(() => {
+          optimizedWaveformRef.current?.play();
+        }, 50);
+      }
+    } else if (wavesurferRef.current) {
       // Preserve current playback position and state
       const currentTime = wavesurferRef.current.getCurrentTime();
-      const duration = wavesurferRef.current.getDuration();
+      const dur = wavesurferRef.current.getDuration();
       const wasPlaying = wavesurferRef.current.isPlaying();
 
       // Pause if playing to prevent jump
@@ -1888,8 +2000,8 @@ const AnnotationEditor: React.FC = () => {
       wavesurferRef.current.setPlaybackRate(nextSpeed);
 
       // Restore position using relative position (prevents drift)
-      if (duration > 0) {
-        const relativePosition = currentTime / duration;
+      if (dur > 0) {
+        const relativePosition = currentTime / dur;
         wavesurferRef.current.seekTo(relativePosition);
       }
 
@@ -1911,7 +2023,9 @@ const AnnotationEditor: React.FC = () => {
   const pauseAndNavigate = (path: string) => {
     // Pause audio before navigating
     // Note: Conflict detection is handled by useNavigationGuard hook which shows the modal
-    if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
+    if (useOptimizedWaveform && optimizedWaveformRef.current?.isPlaying()) {
+      optimizedWaveformRef.current.pause();
+    } else if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
       wavesurferRef.current.pause();
     }
     navigate(path);
@@ -2057,7 +2171,7 @@ const AnnotationEditor: React.FC = () => {
         setShowLabelModal(true);
       }
     },
-    [boundingBoxes],
+    [boundingBoxes, setShowLabelModal],
   );
 
   const getResizeHandle = (box: BoundingBox, x: number, y: number) => {
@@ -2182,14 +2296,18 @@ const AnnotationEditor: React.FC = () => {
       !isAnnotationMode &&
       !isSettingBottomLine &&
       e.evt.button === 0 &&
-      wavesurferRef.current &&
       duration > 0 &&
       !e.evt.shiftKey &&
       !e.evt.ctrlKey &&
       !e.evt.metaKey
     ) {
       const clampedSeekPosition = clampSeekPosition(seekPosition);
-      wavesurferRef.current.seekTo(clampedSeekPosition);
+      // Use OptimizedWaveform if enabled
+      if (useOptimizedWaveform && optimizedWaveformRef.current) {
+        optimizedWaveformRef.current.seekTo(clampedSeekPosition);
+      } else if (wavesurferRef.current) {
+        wavesurferRef.current.seekTo(clampedSeekPosition);
+      }
     }
 
     // Check if clicking in waveform area (starts after spectrogram at 65%)
@@ -3233,16 +3351,16 @@ const AnnotationEditor: React.FC = () => {
       setHighlightConflicts(false);
 
       // CRITICAL FIX: Save the resolved boxes to the backend before navigating
-      toast.loading(`Saving ${activeConflicts.length} resolved conflict${activeConflicts.length > 1 ? "s" : ""}...`);
+      const loadingToastId = toast.loading(`Saving ${activeConflicts.length} resolved conflict${activeConflicts.length > 1 ? "s" : ""}...`);
 
       const saved = await saveAnnotations(recording?.id, resolvedBoxesWithPixelCoords, false);
 
       if (saved) {
-        toast.success(`Resolved and saved ${activeConflicts.length} conflict${activeConflicts.length > 1 ? "s" : ""}!`);
+        toast.success(`Resolved and saved ${activeConflicts.length} conflict${activeConflicts.length > 1 ? "s" : ""}!`, { id: loadingToastId });
         // Proceed with navigation after successfully saving
         proceedNavigation();
       } else {
-        toast.error("Failed to save resolved conflicts. Please try again.");
+        toast.error("Failed to save resolved conflicts. Please try again.", { id: loadingToastId });
         // Don't navigate if save failed
         cancelNavigation();
       }
@@ -4073,16 +4191,85 @@ const AnnotationEditor: React.FC = () => {
                       display: "block",
                     }}
                   >
-                    {/* Waveform container - fixed width to prevent resize */}
-                    <div
-                      ref={waveformRef}
-                      id="waveform-container"
-                      style={{
-                        width: `${(baseSpectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,
-                        height: "100%",
-                        position: "relative",
-                      }}
-                    />
+                    {/* Waveform container - uses OptimizedWaveform for performance */}
+                    {useOptimizedWaveform && audioUrl ? (
+                      <div
+                        style={{
+                          width: `${(baseSpectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,
+                          height: "100%",
+                          position: "relative",
+                        }}
+                      >
+                        {/* OptimizedWaveform stays at viewport position via transform */}
+                        <div
+                          style={{
+                            width: viewportWidth,
+                            height: "100%",
+                            position: "absolute",
+                            left: 0,
+                            transform: `translateX(${scrollOffset}px)`,
+                            willChange: "transform",
+                          }}
+                        >
+                          <OptimizedWaveform
+                            ref={optimizedWaveformRef}
+                            audioUrl={audioUrl}
+                            width={viewportWidth}
+                            height={Math.max(50, spectrogramDimensions.height * 0.27)}
+                            zoomLevel={zoomLevel}
+                            scrollOffset={scrollOffset}
+                            waveColor="#3B82F6"
+                            progressColor="#1E40AF"
+                            onReady={(dur) => {
+                              setDuration(dur);
+                            }}
+                            onTimeUpdate={(time) => {
+                              setCurrentTime(time);
+                              // Update timeline cursor position
+                              if (duration > 0) {
+                                const relativePosition = time / duration;
+                                const position = relativePosition * CoordinateUtils.getZoomedContentWidth(
+                                  baseSpectrogramDimensions.width,
+                                  zoomLevel
+                                );
+                                setTimelineCursorPosition(position);
+                              }
+                            }}
+                            onPlay={() => setIsPlaying(true)}
+                            onPause={() => setIsPlaying(false)}
+                            onFinish={() => setIsPlaying(false)}
+                            onSeek={(time) => {
+                              setCurrentTime(time);
+                              if (duration > 0) {
+                                const relativePosition = time / duration;
+                                const position = relativePosition * CoordinateUtils.getZoomedContentWidth(
+                                  baseSpectrogramDimensions.width,
+                                  zoomLevel
+                                );
+                                setTimelineCursorPosition(position);
+                              }
+                            }}
+                            onClick={(time) => {
+                              // Seek when clicking waveform
+                              if (optimizedWaveformRef.current) {
+                                optimizedWaveformRef.current.seekTo(time / duration);
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      /* Fallback to original WaveSurfer when audio not loaded or optimized disabled */
+                      <div
+                        ref={waveformRef}
+                        id="waveform-container"
+                        style={{
+                          width: `${(baseSpectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,
+                          height: "100%",
+                          position: "relative",
+                        }}
+                      />
+                    )}
 
                     {/* Bounding box projections on waveform - overlay on top of waveform */}
                     <svg

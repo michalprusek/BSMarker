@@ -26,8 +26,8 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Set production API URL (empty because api.ts adds /api/v1)
-ENV REACT_APP_API_URL=
+# Set production API URL base path
+ENV REACT_APP_API_URL=/api/v1
 ENV REACT_APP_MINIO_URL=/storage
 
 # Build the application
@@ -35,6 +35,9 @@ RUN npm run build
 
 # Production stage - serve with nginx
 FROM nginx:alpine AS production
+# Remove default nginx config and add our SPA-friendly config
+RUN rm -rf /etc/nginx/conf.d/*
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/build /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,31 @@
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './tests',
+  fullyParallel: false, // Run tests sequentially for login state
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: 1,
+  reporter: 'html',
+
+  use: {
+    baseURL: 'https://bsmarker.utia.cas.cz',
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+
+    // Longer timeouts for spectrogram loading
+    actionTimeout: 30000,
+    navigationTimeout: 60000,
+  },
+
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
+
+  // Output folder for test artifacts
+  outputDir: 'test-results/',
+});

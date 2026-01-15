@@ -4,10 +4,7 @@
  */
 
 import api, { annotationService, recordingService } from "./api";
-import {
-  notificationService,
-  NotificationMessages,
-} from "./notificationService";
+import { notification, Messages } from "../lib/notifications";
 import { BoundingBox, Recording } from "../types";
 
 export interface SaveAnnotationOptions {
@@ -41,7 +38,7 @@ class AnnotationApiService {
 
     if (this.saveInProgress) {
       if (showNotification) {
-        notificationService.warning("Save already in progress");
+        notification.warning("Save already in progress");
       }
       return { success: false, timestamp: new Date() };
     }
@@ -60,7 +57,7 @@ class AnnotationApiService {
           this.lastSaveTime = new Date();
 
           if (showNotification) {
-            notificationService.success(NotificationMessages.ANNOTATION_SAVED);
+            notification.success(Messages.ANNOTATION.SAVE_SUCCESS);
           }
 
           return { success: true, timestamp: this.lastSaveTime };
@@ -80,7 +77,7 @@ class AnnotationApiService {
 
       if (showNotification) {
         const errorMessage = this.getErrorMessage(error);
-        notificationService.error(errorMessage);
+        notification.error(errorMessage);
       }
 
       return { success: false, timestamp: new Date() };
@@ -106,9 +103,9 @@ class AnnotationApiService {
       const recording = await recordingService.getRecording(recordingId);
 
       if (!recording) {
-        const errorMsg = NotificationMessages.RECORDING_NOT_FOUND;
+        const errorMsg = Messages.RECORDING.NOT_FOUND;
         if (showNotification) {
-          notificationService.error(errorMsg);
+          notification.error(errorMsg);
         }
         return { recording: null, annotations: [], error: errorMsg };
       }
@@ -117,7 +114,7 @@ class AnnotationApiService {
       let annotations: BoundingBox[] = [];
 
       if (showNotification) {
-        notificationService.success(NotificationMessages.RECORDING_LOADED);
+        notification.success(Messages.RECORDING.LOADED);
       }
 
       return { recording, annotations, error: null };
@@ -126,7 +123,7 @@ class AnnotationApiService {
 
       const errorMsg = this.getErrorMessage(error);
       if (showNotification) {
-        notificationService.error(errorMsg);
+        notification.error(errorMsg);
       }
 
       return { recording: null, annotations: [], error: errorMsg };
@@ -161,7 +158,7 @@ class AnnotationApiService {
         onStatusUpdate?.(status);
 
         if (status === "completed" && spectrogramUrl) {
-          notificationService.success(NotificationMessages.SPECTROGRAM_LOADED);
+          notification.success(Messages.RECORDING.SPECTROGRAM_LOADED);
           return { url: spectrogramUrl, error: null };
         }
 
@@ -170,7 +167,7 @@ class AnnotationApiService {
         }
 
         if (status === "processing" && attempt === 0) {
-          notificationService.info(NotificationMessages.SPECTROGRAM_PROCESSING);
+          notification.info(Messages.RECORDING.SPECTROGRAM_PROCESSING);
         }
 
         await this.delay(pollInterval);
@@ -181,7 +178,7 @@ class AnnotationApiService {
       console.error("Failed to load spectrogram:", error);
 
       const errorMsg = this.getErrorMessage(error);
-      notificationService.error(errorMsg);
+      notification.error(errorMsg);
 
       return { url: null, error: errorMsg };
     }
@@ -192,7 +189,7 @@ class AnnotationApiService {
    */
   async generateSpectrogram(recordingId: number): Promise<boolean> {
     try {
-      notificationService.info(NotificationMessages.SPECTROGRAM_GENERATING);
+      notification.info(Messages.RECORDING.SPECTROGRAM_GENERATING);
 
       // Note: Need to add generateSpectrogram endpoint to recordingService
       // For now, we'll use the updateStatus endpoint or similar
@@ -203,7 +200,7 @@ class AnnotationApiService {
       console.error("Failed to generate spectrogram:", error);
 
       const errorMsg = this.getErrorMessage(error);
-      notificationService.error(errorMsg);
+      notification.error(errorMsg);
 
       return false;
     }
@@ -246,7 +243,7 @@ class AnnotationApiService {
       // Note: This would require a backend endpoint for batch deletion
       // For now, we'll update with the filtered list
       if (showNotification) {
-        notificationService.success(NotificationMessages.ANNOTATION_DELETED);
+        notification.success(Messages.ANNOTATION.DELETE_SUCCESS);
       }
 
       return true;
@@ -255,7 +252,7 @@ class AnnotationApiService {
 
       if (showNotification) {
         const errorMsg = this.getErrorMessage(error);
-        notificationService.error(errorMsg);
+        notification.error(errorMsg);
       }
 
       return false;
@@ -277,7 +274,7 @@ class AnnotationApiService {
       // Note: This would require a backend endpoint for single box update
       // For now, we'll handle it through full annotation update
       if (showNotification) {
-        notificationService.success(NotificationMessages.LABEL_UPDATED);
+        notification.success(Messages.ANNOTATION.LABEL_UPDATED);
       }
 
       return true;
@@ -286,7 +283,7 @@ class AnnotationApiService {
 
       if (showNotification) {
         const errorMsg = this.getErrorMessage(error);
-        notificationService.error(errorMsg);
+        notification.error(errorMsg);
       }
 
       return false;
@@ -320,18 +317,18 @@ class AnnotationApiService {
     }
 
     if (error.response?.status === 403) {
-      return NotificationMessages.PERMISSION_DENIED;
+      return Messages.AUTH.UNAUTHORIZED;
     }
 
     if (error.response?.status === 401) {
-      return NotificationMessages.SESSION_EXPIRED;
+      return Messages.AUTH.SESSION_EXPIRED;
     }
 
     if (error.code === "ECONNABORTED" || error.code === "ERR_NETWORK") {
-      return NotificationMessages.NETWORK_ERROR;
+      return Messages.GENERAL.NETWORK_ERROR;
     }
 
-    return NotificationMessages.UNEXPECTED_ERROR;
+    return Messages.GENERAL.UNKNOWN_ERROR;
   }
 
   /**

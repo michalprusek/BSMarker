@@ -14,6 +14,7 @@ const API_URL = process.env.REACT_APP_API_URL || "";
 
 // Only log in development mode to prevent leaking sensitive info in production
 const IS_DEV = process.env.NODE_ENV === "development";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const debugLog = (...args: unknown[]) => {
   if (IS_DEV) {
     console.log(...args);
