@@ -229,9 +229,11 @@ const ProjectDetailPageOptimized: React.FC = () => {
       toast.success(`Deleted ${selectedRecordings.size} recordings`);
       setSelectedRecordings(new Set());
       fetchProjectData(1, false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to delete recordings:", error);
-      toast.error("Failed to delete recordings");
+      const errorDetail =
+        error.response?.data?.detail || error.message || "Unknown error";
+      toast.error(`Failed to delete recordings: ${errorDetail}`);
     } finally {
       setIsDeleting(false);
     }

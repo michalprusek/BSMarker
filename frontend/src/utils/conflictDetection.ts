@@ -41,6 +41,30 @@ export interface UnifiedConflict {
 }
 
 /**
+ * Helper: Determines which box to remove when two boxes have equal length
+ * Rule: Remove the lower box (higher min_frequency value), use index as tie-breaker
+ */
+function determineBoxToRemoveForEqualLengths(
+  box1: { box: BoundingBox; index: number },
+  box2: { box: BoundingBox; index: number }
+): { nestedIndex: number; containerIndex: number } {
+  const freq1 = box1.box.min_frequency || 0;
+  const freq2 = box2.box.min_frequency || 0;
+
+  // Remove the lower box (higher min_frequency value)
+  if (freq1 > freq2) {
+    return { nestedIndex: box1.index, containerIndex: box2.index };
+  }
+  if (freq2 > freq1) {
+    return { nestedIndex: box2.index, containerIndex: box1.index };
+  }
+  // Equal frequencies - remove higher index as tie-breaker
+  return box1.index > box2.index
+    ? { nestedIndex: box1.index, containerIndex: box2.index }
+    : { nestedIndex: box2.index, containerIndex: box1.index };
+}
+
+/**
  * Detects nested bounding boxes (one box temporally contained within another)
  * Optimized algorithm: O(n log n) for sorting + O(n²) worst case for nested checking
  *
@@ -100,67 +124,27 @@ export function detectNestingConflicts(boxes: BoundingBox[]): UnifiedConflict[] 
       if (isCurrentNestedInOther) {
         // current is inside other
         if (currentLength < otherLength) {
-          // current is shorter → remove current
           nestedIndex = current.index;
           containerIndex = other.index;
           reason = 'shorter';
         } else if (currentLength === otherLength) {
-          // Same length → remove the lower one (higher min_frequency)
-          const currentMinFreq = current.box.min_frequency || 0;
-          const otherMinFreq = other.box.min_frequency || 0;
-
-          if (currentMinFreq > otherMinFreq) {
-            nestedIndex = current.index;
-            containerIndex = other.index;
-            reason = 'lower';
-          } else if (otherMinFreq > currentMinFreq) {
-            nestedIndex = other.index;
-            containerIndex = current.index;
-            reason = 'lower';
-          } else {
-            // Equal frequencies - use index as tie-breaker (remove higher index)
-            if (current.index > other.index) {
-              nestedIndex = current.index;
-              containerIndex = other.index;
-            } else {
-              nestedIndex = other.index;
-              containerIndex = current.index;
-            }
-            reason = 'lower';
-          }
+          const result = determineBoxToRemoveForEqualLengths(current, other);
+          nestedIndex = result.nestedIndex;
+          containerIndex = result.containerIndex;
+          reason = 'lower';
         }
         // If current is longer, other should be removed (handled when j iteration processes other)
       } else if (isOtherNestedInCurrent) {
         // other is inside current
         if (otherLength < currentLength) {
-          // other is shorter → remove other
           nestedIndex = other.index;
           containerIndex = current.index;
           reason = 'shorter';
         } else if (otherLength === currentLength) {
-          // Same length → remove the lower one
-          const currentMinFreq = current.box.min_frequency || 0;
-          const otherMinFreq = other.box.min_frequency || 0;
-
-          if (otherMinFreq > currentMinFreq) {
-            nestedIndex = other.index;
-            containerIndex = current.index;
-            reason = 'lower';
-          } else if (currentMinFreq > otherMinFreq) {
-            nestedIndex = current.index;
-            containerIndex = other.index;
-            reason = 'lower';
-          } else {
-            // Equal frequencies - use index as tie-breaker (remove higher index)
-            if (other.index > current.index) {
-              nestedIndex = other.index;
-              containerIndex = current.index;
-            } else {
-              nestedIndex = current.index;
-              containerIndex = other.index;
-            }
-            reason = 'lower';
-          }
+          const result = determineBoxToRemoveForEqualLengths(current, other);
+          nestedIndex = result.nestedIndex;
+          containerIndex = result.containerIndex;
+          reason = 'lower';
         }
       }
 

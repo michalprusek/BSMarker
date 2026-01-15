@@ -31,6 +31,7 @@ class MinioClient:
             raise
 
     def _ensure_buckets(self):
+        """Ensure required buckets exist. Fails fast if bucket creation fails."""
         buckets = [settings.MINIO_BUCKET_RECORDINGS, settings.MINIO_BUCKET_SPECTROGRAMS]
         for bucket in buckets:
             try:
@@ -41,8 +42,10 @@ class MinioClient:
                     logger.debug(f"Bucket already exists: {bucket}")
             except S3Error as e:
                 logger.error(f"Error creating bucket {bucket}: {e}")
+                raise  # Fail fast - don't create broken client
             except Exception as e:
                 logger.error(f"Unexpected error with bucket {bucket}: {e}")
+                raise  # Fail fast - don't create broken client
 
     def upload_file(
         self,
@@ -103,15 +106,17 @@ class MinioClient:
         Raises:
             S3Error: If the file cannot be downloaded (not found, permission denied, etc.)
         """
+        response = None
         try:
             response = self.client.get_object(bucket_name, object_name)
-            data = response.read()
-            response.close()
-            response.release_conn()
-            return data
+            return response.read()
         except S3Error as e:
             logger.error(f"Error downloading file {object_name} from {bucket_name}: {e}")
             raise
+        finally:
+            if response:
+                response.close()
+                response.release_conn()
 
     def delete_file(self, bucket_name: str, object_name: str):
         try:
@@ -123,15 +128,17 @@ class MinioClient:
 
     def get_file(self, bucket_name: str, object_name: str):
         """Get file as a stream for use with StreamingResponse."""
+        response = None
         try:
             response = self.client.get_object(bucket_name, object_name)
-            data = BytesIO(response.read())
-            response.close()
-            response.release_conn()
-            return data
+            return BytesIO(response.read())
         except S3Error as e:
-            logger.error(f"Error getting file: {e}")
+            logger.error(f"Error getting file {object_name} from {bucket_name}: {e}")
             raise
+        finally:
+            if response:
+                response.close()
+                response.release_conn()
 
     def get_presigned_url(self, bucket_name: str, object_name: str, expiry: int = 3600):
         try:
