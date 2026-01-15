@@ -188,17 +188,17 @@ const ProjectDetailPage: React.FC = () => {
             // Generate visualization with bounding boxes
             // Skip visualization if spectrogram is not available
             try {
-              const spectrogramUrl = await recordingService.getSpectrogramUrl(
+              const spectrogramResult = await recordingService.getSpectrogramUrl(
                 recording.id,
               );
               if (
-                spectrogramUrl &&
+                spectrogramResult.url &&
                 visualizationsFolder &&
                 latestAnnotation.bounding_boxes.length > 0
               ) {
                 try {
                   const visualizationBlob = await generateVisualization(
-                    spectrogramUrl,
+                    spectrogramResult.url,
                     latestAnnotation.bounding_boxes,
                     recording,
                   );

@@ -209,10 +209,15 @@ class AnnotationApiService {
   /**
    * Load project recordings for navigation
    */
-  async loadProjectRecordings(projectId: number): Promise<{
+  async loadProjectRecordings(
+    projectId: number,
+    options: { showNotification?: boolean } = {},
+  ): Promise<{
     recordings: Recording[];
     error: string | null;
   }> {
+    const { showNotification = true } = options;
+
     try {
       const recordingsResponse =
         await recordingService.getRecordings(projectId);
@@ -225,69 +230,52 @@ class AnnotationApiService {
 
       const errorMsg = this.getErrorMessage(error);
 
+      // Show notification to inform user about the failure
+      if (showNotification) {
+        notification.error(errorMsg);
+      }
+
       return { recordings: [], error: errorMsg };
     }
   }
 
   /**
    * Delete bounding boxes
+   *
+   * NOTE: This method is not implemented. Use saveAnnotations() with filtered boxes instead.
+   * The backend does not have a dedicated endpoint for batch box deletion.
+   *
+   * @throws Error always - method not implemented
+   * @deprecated Use saveAnnotations with filtered bounding_boxes array instead
    */
   async deleteBoundingBoxes(
-    annotationId: number,
-    boxIds: number[],
-    options: { showNotification?: boolean } = {},
+    _annotationId: number,
+    _boxIds: number[],
+    _options: { showNotification?: boolean } = {},
   ): Promise<boolean> {
-    const { showNotification = true } = options;
-
-    try {
-      // Note: This would require a backend endpoint for batch deletion
-      // For now, we'll update with the filtered list
-      if (showNotification) {
-        notification.success(Messages.ANNOTATION.DELETE_SUCCESS);
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Failed to delete annotations:", error);
-
-      if (showNotification) {
-        const errorMsg = this.getErrorMessage(error);
-        notification.error(errorMsg);
-      }
-
-      return false;
-    }
+    throw new Error(
+      "deleteBoundingBoxes is not implemented. Use saveAnnotations() with filtered boxes instead."
+    );
   }
 
   /**
    * Update bounding box label
+   *
+   * NOTE: This method is not implemented. Use saveAnnotations() with updated boxes instead.
+   * The backend does not have a dedicated endpoint for single box updates.
+   *
+   * @throws Error always - method not implemented
+   * @deprecated Use saveAnnotations with updated bounding_boxes array instead
    */
   async updateBoundingBoxLabel(
-    annotationId: number,
-    boxId: number,
-    label: string,
-    options: { showNotification?: boolean } = {},
+    _annotationId: number,
+    _boxId: number,
+    _label: string,
+    _options: { showNotification?: boolean } = {},
   ): Promise<boolean> {
-    const { showNotification = true } = options;
-
-    try {
-      // Note: This would require a backend endpoint for single box update
-      // For now, we'll handle it through full annotation update
-      if (showNotification) {
-        notification.success(Messages.ANNOTATION.LABEL_UPDATED);
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Failed to update label:", error);
-
-      if (showNotification) {
-        const errorMsg = this.getErrorMessage(error);
-        notification.error(errorMsg);
-      }
-
-      return false;
-    }
+    throw new Error(
+      "updateBoundingBoxLabel is not implemented. Use saveAnnotations() with updated boxes instead."
+    );
   }
 
   /**
