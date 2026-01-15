@@ -29,6 +29,7 @@ export interface OptimizedWaveformHandle {
   getCurrentTime: () => number;
   getDuration: () => number;
   isPlaying: () => boolean;
+  isReady: () => boolean;
   setPlaybackRate: (rate: number) => void;
 }
 
@@ -39,7 +40,6 @@ interface OptimizedWaveformProps {
   zoomLevel: number;
   scrollOffset: number; // In zoomed pixels
   waveColor?: string;
-  progressColor?: string;
   onReady?: (duration: number) => void;
   onTimeUpdate?: (currentTime: number) => void;
   onPlay?: () => void;
@@ -59,7 +59,6 @@ const OptimizedWaveform = forwardRef<OptimizedWaveformHandle, OptimizedWaveformP
       zoomLevel,
       scrollOffset,
       waveColor = "#3B82F6",
-      progressColor = "#1E40AF",
       onReady,
       onTimeUpdate,
       onPlay,
@@ -88,23 +87,24 @@ const OptimizedWaveform = forwardRef<OptimizedWaveformHandle, OptimizedWaveformP
     // Calculate total zoomed width (virtual content width)
     const totalZoomedWidth = width * zoomLevel;
 
+    // handleSeek is defined later, after requestRender
+    const handleSeekRef = useRef<(progress: number, fireCallback?: boolean) => void>(() => {});
+
     // Expose methods via ref
     useImperativeHandle(ref, () => ({
       play: () => wavesurferRef.current?.play(),
       pause: () => wavesurferRef.current?.pause(),
       stop: () => {
         wavesurferRef.current?.pause();
-        wavesurferRef.current?.seekTo(0);
+        handleSeekRef.current(0, false); // Don't fire onSeek callback when stopping
       },
-      seekTo: (progress: number) => {
-        const clampedProgress = Math.max(0, Math.min(1, progress));
-        wavesurferRef.current?.seekTo(clampedProgress);
-      },
+      seekTo: (progress: number) => handleSeekRef.current(progress),
       getCurrentTime: () => wavesurferRef.current?.getCurrentTime() ?? 0,
       getDuration: () => wavesurferRef.current?.getDuration() ?? 0,
       isPlaying: () => wavesurferRef.current?.isPlaying() ?? false,
+      isReady: () => isReadyRef.current,
       setPlaybackRate: (rate: number) => wavesurferRef.current?.setPlaybackRate(rate),
-    }));
+    }), []);
 
     // Render waveform directly from peaks data
     const renderWaveform = useCallback(() => {
@@ -168,21 +168,24 @@ const OptimizedWaveform = forwardRef<OptimizedWaveformHandle, OptimizedWaveformP
         ctx.fill();
       }
 
-      // Draw progress indicator overlay
+      // Draw playback position indicator (red vertical line)
       if (currentTime > 0) {
         const progressRatio = currentTime / duration;
-        ctx.fillStyle = progressColor + "40"; // 25% opacity
 
-        if (progressRatio > endRatio) {
-          // Entire visible area is played
-          ctx.fillRect(0, 0, width, height);
-        } else if (progressRatio >= startRatio) {
-          // Progress is within visible range
+        // Only draw if the current position is within visible range
+        if (progressRatio >= startRatio && progressRatio <= endRatio) {
           const progressInViewport = ((progressRatio - startRatio) / (endRatio - startRatio)) * width;
-          ctx.fillRect(0, 0, progressInViewport, height);
+
+          // Draw red vertical line
+          ctx.strokeStyle = "#EF4444"; // Red-500
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(progressInViewport, 0);
+          ctx.lineTo(progressInViewport, height);
+          ctx.stroke();
         }
       }
-    }, [width, height, scrollOffset, totalZoomedWidth, duration, currentTime, waveColor, progressColor]);
+    }, [width, height, scrollOffset, totalZoomedWidth, duration, currentTime, waveColor]);
 
     // Throttled render using requestAnimationFrame
     const requestRender = useCallback(() => {
@@ -194,6 +197,47 @@ const OptimizedWaveform = forwardRef<OptimizedWaveformHandle, OptimizedWaveformP
         renderRequestRef.current = null;
       });
     }, [renderWaveform]);
+
+    // Shared seek handler - ensures onSeek callback fires from both clicks and programmatic seeks
+    const handleSeek = useCallback(
+      (progress: number, fireCallback = true) => {
+        // Validate input
+        if (!Number.isFinite(progress)) {
+          console.warn('[OptimizedWaveform] Invalid progress value:', progress);
+          return;
+        }
+
+        // Check if WaveSurfer is initialized
+        if (!wavesurferRef.current) {
+          console.warn('[OptimizedWaveform] Seek called but WaveSurfer not initialized');
+          return;
+        }
+
+        // Validate duration BEFORE seeking to prevent state desync
+        const currentDuration = wavesurferRef.current.getDuration();
+        if (!Number.isFinite(currentDuration) || currentDuration <= 0) {
+          console.warn('[OptimizedWaveform] Seek called but duration is invalid:', currentDuration);
+          return;
+        }
+
+        // All checks passed - perform seek
+        const clampedProgress = Math.max(0, Math.min(1, progress));
+        wavesurferRef.current.seekTo(clampedProgress);
+
+        const time = clampedProgress * currentDuration;
+        setCurrentTime(time);
+        if (fireCallback) {
+          onSeek?.(time);
+        }
+        requestRender();
+      },
+      [onSeek, requestRender]
+    );
+
+    // Keep handleSeekRef in sync for useImperativeHandle
+    useEffect(() => {
+      handleSeekRef.current = handleSeek;
+    }, [handleSeek]);
 
     // Animation loop for smooth playback updates
     const startAnimationLoop = useCallback(() => {
@@ -321,14 +365,11 @@ const OptimizedWaveform = forwardRef<OptimizedWaveformHandle, OptimizedWaveformP
         const clickTime = (clickInZoomed / totalZoomedWidth) * duration;
         const clampedTime = Math.max(0, Math.min(clickTime, duration));
 
-        // Seek WaveSurfer and update state
-        wavesurferRef.current?.seekTo(clampedTime / duration);
-        setCurrentTime(clampedTime);
+        // Use shared seek handler (handles onSeek callback + state update)
+        handleSeek(clampedTime / duration);
         onClick?.(clampedTime);
-        onSeek?.(clampedTime);
-        requestRender();
       },
-      [duration, scrollOffset, totalZoomedWidth, onClick, onSeek, requestRender]
+      [duration, scrollOffset, totalZoomedWidth, onClick, handleSeek]
     );
 
     return (

@@ -18,17 +18,11 @@ const LoginPage: React.FC = () => {
   } = useForm<LoginCredentials>();
 
   useEffect(() => {
-    console.log("LoginPage: Component mounted");
-
     // Run health check to verify backend connectivity
     const runHealthCheck = async () => {
       const isHealthy = await healthCheck();
-      if (isHealthy) {
-        console.log("LoginPage: Backend health check passed");
-      } else {
-        console.error(
-          "LoginPage: Backend health check failed - login may not work",
-        );
+      if (!isHealthy) {
+        console.error("Backend health check failed - login may not work");
         alert(
           "Warning: Cannot connect to the backend server. Please ensure the backend is running on port 8123.",
         );
@@ -38,80 +32,44 @@ const LoginPage: React.FC = () => {
     runHealthCheck();
 
     return () => {
-      console.log("LoginPage: Component unmounted");
       if (loginTimeout) {
         clearTimeout(loginTimeout);
-        console.log("LoginPage: Cleared login timeout on unmount");
       }
     };
   }, [loginTimeout]);
 
   const onSubmit = async (data: LoginCredentials) => {
-    console.log("LoginPage: Form submitted with data:", {
-      username: data.username,
-      password: data.password ? "[REDACTED]" : "empty",
-    });
-
     if (!data.username || !data.password) {
-      console.error("LoginPage: Missing credentials", {
-        hasUsername: !!data.username,
-        hasPassword: !!data.password,
-      });
       return;
     }
 
-    console.log("LoginPage: Setting loading to true");
     setIsLoading(true);
 
     // Set up a timeout to catch stuck logins
     const timeoutId = setTimeout(() => {
-      console.error(
-        "LoginPage: Login timeout after 30 seconds - forcing loading to false",
-      );
+      console.error("Login timeout after 30 seconds");
       setIsLoading(false);
       alert("Login is taking too long. Please try again.");
     }, 30000);
 
     setLoginTimeout(timeoutId);
 
-    const startTime = Date.now();
-
     try {
-      console.log("LoginPage: About to call login function from AuthContext");
-
       await login(data);
-
-      const endTime = Date.now();
-      console.log(`LoginPage: Login successful in ${endTime - startTime}ms`);
-
-      console.log("LoginPage: Navigating to /projects");
       navigate("/projects");
     } catch (error: any) {
-      const endTime = Date.now();
-      console.error(`LoginPage: Login failed after ${endTime - startTime}ms`, {
-        error: error,
-        message: error?.message,
-        response: error?.response,
-        status: error?.response?.status,
-        data: error?.response?.data,
-      });
-
-      // Show user-friendly error message
+      console.error("Login failed:", error);
       const errorMessage =
         error?.response?.data?.detail ||
         error?.message ||
         "Login failed. Please check your credentials and try again.";
-
-      console.log("LoginPage: Showing error message to user:", errorMessage);
       alert(`Login failed: ${errorMessage}`);
     } finally {
-      console.log("LoginPage: Clearing timeout and setting loading to false");
       if (loginTimeout) {
         clearTimeout(loginTimeout);
         setLoginTimeout(null);
       }
       setIsLoading(false);
-      console.log("LoginPage: Login process completed, isLoading set to false");
     }
   };
 

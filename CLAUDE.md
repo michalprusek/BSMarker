@@ -15,6 +15,18 @@
 4. **Use read-only queries first** to understand data before any modifications
 5. **Test ALL changes on development** before deploying to production
 6. **Review each implementation** with `code-simplifier` agent before committing
+7. **DEPLOYMENT: Use `--no-deps` flag** when rebuilding single service to avoid stopping dependent services:
+   ```bash
+   # CORRECT - only restarts frontend:
+   docker-compose -f docker-compose.prod.yml up -d --no-deps frontend
+
+   # WRONG - may stop redis/postgres causing 502:
+   docker-compose -f docker-compose.prod.yml up -d frontend
+   ```
+8. **After deployment, ALWAYS restart nginx** to reconnect to services:
+   ```bash
+   docker restart bsmarker_nginx_1
+   ```
 
 ### Database Access (Read-Only)
 ```bash
@@ -93,6 +105,25 @@ BSMarker/
 2. **API client**: Use `import api from '../services/api'` (default export)
 3. **State**: React Context for global (auth), useState for local
 4. **Spectrograms**: Inverted grayscale (white bg, black peaks)
+
+## Code Quality Principles
+
+### DRY (Don't Repeat Yourself)
+- **Extract duplicated logic** into helper functions (e.g., `prepare_bounding_box_dict` in annotations.py)
+- **Use shared dependencies** for common patterns (e.g., `check_project_edit_permission` in deps.py)
+- **Consolidate similar code** - if you see the same 3+ lines in multiple places, extract them
+- **Remove deprecated code** - don't keep deprecated functions alongside new ones
+
+### SSOT (Single Source of Truth)
+- **Constants**: All shared constants in `frontend/src/utils/constants.ts` (e.g., `LABEL_COLORS`)
+- **Types**: Shared types in `frontend/src/types/index.ts`
+- **API schemas**: Pydantic schemas in `backend/app/schemas/`
+- **Permission logic**: Centralized in `backend/app/api/deps.py`
+
+### Clean Code Practices
+- **No debug logs in production**: Remove `console.log` before committing (keep `console.error` for real errors)
+- **Delete unused code**: Don't comment out old code, delete it (Git has history)
+- **One canonical version**: Never maintain two versions of the same component (e.g., Page.tsx and PageOptimized.tsx)
 
 ## API Endpoints
 ```
