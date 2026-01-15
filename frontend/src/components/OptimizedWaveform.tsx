@@ -83,6 +83,7 @@ const OptimizedWaveform = forwardRef<OptimizedWaveformHandle, OptimizedWaveformP
     // State
     const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
+    const [error, setError] = useState<Error | null>(null);
 
     // Calculate total zoomed width (virtual content width)
     const totalZoomedWidth = width * zoomLevel;
@@ -219,6 +220,9 @@ const OptimizedWaveform = forwardRef<OptimizedWaveformHandle, OptimizedWaveformP
     useEffect(() => {
       if (!hiddenContainerRef.current || !audioUrl) return;
 
+      // Reset error state when loading new audio
+      setError(null);
+
       // Cleanup previous instance
       if (wavesurferRef.current) {
         wavesurferRef.current.destroy();
@@ -280,6 +284,7 @@ const OptimizedWaveform = forwardRef<OptimizedWaveformHandle, OptimizedWaveformP
 
       ws.on("error", (err: Error) => {
         console.error("[OptimizedWaveform] Error:", err);
+        setError(err);
         onError?.(err);
       });
 
@@ -341,6 +346,36 @@ const OptimizedWaveform = forwardRef<OptimizedWaveformHandle, OptimizedWaveformP
           }}
         />
 
+        {/* Error state display */}
+        {error && (
+          <div
+            className="absolute inset-0 flex items-center justify-center bg-red-50 rounded"
+            style={{ zIndex: 10 }}
+          >
+            <div className="text-center px-4">
+              <svg
+                className="mx-auto h-8 w-8 text-red-400 mb-2"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              <p className="text-sm text-red-600 font-medium">
+                Audio loading failed
+              </p>
+              <p className="text-xs text-red-500 mt-1 max-w-xs truncate">
+                {error.message || "Unable to decode audio file"}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Visible canvas - renders only visible portion at full resolution */}
         <canvas
           ref={canvasRef}
@@ -350,8 +385,9 @@ const OptimizedWaveform = forwardRef<OptimizedWaveformHandle, OptimizedWaveformP
           style={{
             width: "100%",
             height: "100%",
-            cursor: "pointer",
+            cursor: error ? "default" : "pointer",
             borderRadius: "4px",
+            opacity: error ? 0.3 : 1,
           }}
         />
       </div>
