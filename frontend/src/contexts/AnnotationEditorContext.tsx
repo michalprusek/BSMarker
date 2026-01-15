@@ -17,11 +17,15 @@ export interface AnnotationEditorState {
   // Recording data
   recording: Recording | null;
   duration: number;
+  projectRecordings: Recording[];
+  currentRecordingIndex: number;
 
   // Spectrogram data
   spectrogramUrl: string | null;
   spectrogramDimensions: { width: number; height: number };
+  baseSpectrogramDimensions: { width: number; height: number };
   spectrogramStatus: "idle" | "loading" | "ready" | "error";
+  spectrogramError: string | null;
 
   // Annotation data
   boundingBoxes: BoundingBox[];
@@ -40,12 +44,22 @@ export interface AnnotationEditorState {
   // Playback state
   currentTime: number;
   isPlaying: boolean;
+
+  // History for undo/redo
+  history: BoundingBox[][];
+  historyIndex: number;
+
+  // Saving state
+  isSaving: boolean;
+  lastSaveTime: Date | null;
 }
 
 export interface AnnotationEditorActions {
   // Recording actions
   setRecording: (recording: Recording | null) => void;
   setDuration: (duration: number) => void;
+  setProjectRecordings: (recordings: Recording[]) => void;
+  setCurrentRecordingIndex: (index: number) => void;
 
   // Spectrogram actions
   setSpectrogramUrl: (url: string | null) => void;
@@ -53,9 +67,14 @@ export interface AnnotationEditorActions {
     width: number;
     height: number;
   }) => void;
+  setBaseSpectrogramDimensions: (dimensions: {
+    width: number;
+    height: number;
+  }) => void;
   setSpectrogramStatus: (
     status: "idle" | "loading" | "ready" | "error",
   ) => void;
+  setSpectrogramError: (error: string | null) => void;
 
   // Annotation actions
   setBoundingBoxes: (boxes: BoundingBox[]) => void;
@@ -83,6 +102,16 @@ export interface AnnotationEditorActions {
   // Playback actions
   setCurrentTime: (time: number) => void;
   setIsPlaying: (playing: boolean) => void;
+
+  // History actions
+  addToHistory: (boxes: BoundingBox[]) => void;
+  undo: () => BoundingBox[] | null;
+  redo: () => BoundingBox[] | null;
+  clearHistory: () => void;
+
+  // Saving actions
+  setIsSaving: (saving: boolean) => void;
+  setLastSaveTime: (time: Date | null) => void;
 }
 
 export interface AnnotationEditorContextType {
@@ -98,12 +127,16 @@ export interface AnnotationEditorProviderProps {
   children: ReactNode;
 }
 
+const MAX_HISTORY_SIZE = 50;
+
 export const AnnotationEditorProvider: React.FC<
   AnnotationEditorProviderProps
 > = ({ children }) => {
   // Recording state
   const [recording, setRecording] = useState<Recording | null>(null);
   const [duration, setDuration] = useState(0);
+  const [projectRecordings, setProjectRecordings] = useState<Recording[]>([]);
+  const [currentRecordingIndex, setCurrentRecordingIndex] = useState(0);
 
   // Spectrogram state
   const [spectrogramUrl, setSpectrogramUrl] = useState<string | null>(null);
@@ -111,9 +144,14 @@ export const AnnotationEditorProvider: React.FC<
     width: 800,
     height: 400,
   });
+  const [baseSpectrogramDimensions, setBaseSpectrogramDimensions] = useState({
+    width: 800,
+    height: 400,
+  });
   const [spectrogramStatus, setSpectrogramStatus] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
+  const [spectrogramError, setSpectrogramError] = useState<string | null>(null);
 
   // Annotation state
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
@@ -134,6 +172,14 @@ export const AnnotationEditorProvider: React.FC<
   // Playback state
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // History state for undo/redo
+  const [history, setHistory] = useState<BoundingBox[][]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Saving state
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null);
 
   // Annotation actions
   const addBoundingBox = useCallback((box: BoundingBox) => {
@@ -230,12 +276,73 @@ export const AnnotationEditorProvider: React.FC<
     [clearSelection],
   );
 
+  // History actions
+  const addToHistory = useCallback((boxes: BoundingBox[]) => {
+    setHistory((prev) => {
+      // Remove any redo states after current index
+      const newHistory = prev.slice(0, historyIndex + 1);
+      // Add new state
+      newHistory.push(JSON.parse(JSON.stringify(boxes)));
+      // Limit history size
+      if (newHistory.length > MAX_HISTORY_SIZE) {
+        newHistory.shift();
+      }
+      return newHistory;
+    });
+    setHistoryIndex((prev) => Math.min(prev + 1, MAX_HISTORY_SIZE - 1));
+    logger.debug("Added to history", "AnnotationEditorContext");
+  }, [historyIndex]);
+
+  const undo = useCallback((): BoundingBox[] | null => {
+    if (historyIndex <= 0) {
+      logger.debug("Nothing to undo", "AnnotationEditorContext");
+      return null;
+    }
+    const newIndex = historyIndex - 1;
+    setHistoryIndex(newIndex);
+    const previousState = history[newIndex];
+    if (previousState) {
+      setBoundingBoxes(JSON.parse(JSON.stringify(previousState)));
+      setHasUnsavedChanges(true);
+      logger.debug(`Undo to index ${newIndex}`, "AnnotationEditorContext");
+      return previousState;
+    }
+    return null;
+  }, [historyIndex, history]);
+
+  const redo = useCallback((): BoundingBox[] | null => {
+    if (historyIndex >= history.length - 1) {
+      logger.debug("Nothing to redo", "AnnotationEditorContext");
+      return null;
+    }
+    const newIndex = historyIndex + 1;
+    setHistoryIndex(newIndex);
+    const nextState = history[newIndex];
+    if (nextState) {
+      setBoundingBoxes(JSON.parse(JSON.stringify(nextState)));
+      setHasUnsavedChanges(true);
+      logger.debug(`Redo to index ${newIndex}`, "AnnotationEditorContext");
+      return nextState;
+    }
+    return null;
+  }, [historyIndex, history]);
+
+  const clearHistory = useCallback(() => {
+    setHistory([]);
+    setHistoryIndex(-1);
+    logger.debug("History cleared", "AnnotationEditorContext");
+  }, []);
+
   const state: AnnotationEditorState = {
     recording,
     duration,
+    projectRecordings,
+    currentRecordingIndex,
     spectrogramUrl,
     spectrogramDimensions,
+    baseSpectrogramDimensions,
     spectrogramStatus,
+    spectrogramError,
     boundingBoxes,
     selectedBoxes,
     isAnnotationMode,
@@ -246,14 +353,22 @@ export const AnnotationEditorProvider: React.FC<
     drawingBox,
     currentTime,
     isPlaying,
+    history,
+    historyIndex,
+    isSaving,
+    lastSaveTime,
   };
 
   const actions: AnnotationEditorActions = {
     setRecording,
     setDuration,
+    setProjectRecordings,
+    setCurrentRecordingIndex,
     setSpectrogramUrl,
     setSpectrogramDimensions,
+    setBaseSpectrogramDimensions,
     setSpectrogramStatus,
+    setSpectrogramError,
     setBoundingBoxes,
     addBoundingBox,
     updateBoundingBox,
@@ -271,6 +386,12 @@ export const AnnotationEditorProvider: React.FC<
     setDrawingBox,
     setCurrentTime,
     setIsPlaying,
+    addToHistory,
+    undo,
+    redo,
+    clearHistory,
+    setIsSaving,
+    setLastSaveTime,
   };
 
   const value: AnnotationEditorContextType = {
