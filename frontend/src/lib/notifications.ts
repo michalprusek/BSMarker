@@ -112,6 +112,17 @@ export const Messages = {
     PROCESSING: "Processing recording...",
     SPECTROGRAM_GENERATING: "Generating spectrogram...",
     SPECTROGRAM_ERROR: "Failed to generate spectrogram",
+    LOADED: "Recording loaded successfully",
+    NOT_FOUND: "Recording not found",
+    SPECTROGRAM_LOADED: "Spectrogram loaded successfully",
+    SPECTROGRAM_PROCESSING: "Processing spectrogram...",
+  },
+
+  // Navigation
+  NAVIGATION: {
+    FIRST_RECORDING: "This is the first recording",
+    LAST_RECORDING: "This is the last recording",
+    LOADING: (name: string) => `Loading ${name}...`,
   },
 
   // Annotation Management
@@ -128,6 +139,18 @@ export const Messages = {
     ADDED_CLIPPED: (label: string) =>
       `Annotation added with "${label}" label (clipped to bottom line). Right-click to edit label.`,
     BELOW_BOTTOM_LINE: "Cannot create bounding box below the bottom line",
+    COPIED: "Annotation copied to clipboard",
+    PASTED: "Annotation pasted",
+    NO_CLIPBOARD: "No annotation in clipboard",
+    LABEL_UPDATED: "Label updated successfully",
+    LABEL_REQUIRED: "Please enter a label",
+    UNDO_SUCCESS: "Action undone",
+    REDO_SUCCESS: "Action redone",
+    NO_UNDO: "Nothing to undo",
+    NO_REDO: "Nothing to redo",
+    MODE_ENABLED: "Annotation mode enabled",
+    MODE_DISABLED: "Annotation mode disabled",
+    SELECTION_MODE_ENABLED: "Selection mode enabled",
   },
 
   // Label Modes

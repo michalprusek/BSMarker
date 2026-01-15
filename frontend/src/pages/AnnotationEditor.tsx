@@ -44,13 +44,12 @@ import KeyboardShortcutsModal from "../components/KeyboardShortcutsModal";
 import BottomLineModal from "../components/BottomLineModal";
 import ConflictWarningModal from "../components/ConflictWarningModal";
 import ContrastModal from "../components/ContrastModal";
+import OptimizedWaveform, { OptimizedWaveformHandle } from "../components/OptimizedWaveform";
 import { CoordinateUtils, LAYOUT_CONSTANTS } from "../utils/coordinates";
 import {
   calculateTemporalDistance,
   findNearestBox,
   isPointInBox,
-  getBoxCenter,
-  boxArraysEqual,
   boxArraysChanged,
 } from "../utils/annotationUtils";
 import {
@@ -63,18 +62,15 @@ import { useMouseCoordinates } from "../hooks/useMouseCoordinates";
 import { useBoundingBoxTimeFrequency } from "../hooks/useBoundingBoxTimeFrequency";
 import { useBottomLine } from "../hooks/useBottomLine";
 import { useNavigationGuard } from "../hooks/useNavigationGuard";
+import { useModalManager } from "../hooks/useModalManager";
+import { useDrawingMode } from "../hooks/useDrawingMode";
+import { useConflictDetection } from "../hooks/useConflictDetection";
 import { ANNOTATION_CONSTANTS, LABEL_COLORS } from "../utils/constants";
 import {
-  detectConflicts,
-  resolveConflicts,
-  BoundingBoxConflict,
-  // New unified conflict system
   detectAllConflicts,
   resolveAllConflicts,
-  formatUnifiedConflictDescription,
   UnifiedConflict,
 } from "../utils/conflictDetection";
-// import { useSpectrogramZoom } from '../hooks/useSpectrogramZoom'; // Unused - replaced with custom throttled zoom
 import { throttle } from "lodash";
 
 // PERF: Limit pixel ratio for better performance on high-DPI displays
@@ -135,18 +131,9 @@ const AnnotationEditor: React.FC = () => {
     useState<boolean>(false);
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
   const [selectedBox, setSelectedBox] = useState<BoundingBox | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawingBox, setDrawingBox] = useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_currentTime, setCurrentTime] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [showLabelModal, setShowLabelModal] = useState(false);
   const [tempBox, setTempBox] = useState<BoundingBox | null>(null);
   const [spectrogramDimensions, setSpectrogramDimensions] = useState({
     width: 800,
@@ -157,24 +144,14 @@ const AnnotationEditor: React.FC = () => {
     width: 800,
     height: 400,
   });
-  const [showSidebar, setShowSidebar] = useState(false);
   const [sortMode, setSortMode] = useState<"time" | "alphabetical">("time");
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [verticalScrollOffset, setVerticalScrollOffset] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentSpeedIndex, setCurrentSpeedIndex] = useState(0);
-  const [isAnnotationMode, setIsAnnotationMode] = useState(false);
-  const [isRoiSelectionMode, setIsRoiSelectionMode] = useState(false);
   const [isRewindingLeft, setIsRewindingLeft] = useState(false);
   const [isRewindingRight, setIsRewindingRight] = useState(false);
   const [selectedBoxes, setSelectedBoxes] = useState<Set<number>>(new Set());
-  const [selectionRect, setSelectionRect] = useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
-  const [isSelecting, setIsSelecting] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -186,7 +163,6 @@ const AnnotationEditor: React.FC = () => {
   } | null>(null);
   const [defaultLabel, setDefaultLabel] = useState<string | null>(null);
   const [lastUsedLabel, setLastUsedLabel] = useState<string | null>(null);
-  const [showDefaultLabelInput, setShowDefaultLabelInput] = useState(false);
   const [defaultLabelInput, setDefaultLabelInput] = useState("");
   const [clipboardBox, setClipboardBox] = useState<
     BoundingBox | BoundingBox[] | null
@@ -245,10 +221,16 @@ const AnnotationEditor: React.FC = () => {
     x: 0,
     y: 0,
   });
-  const [isEditingZoom, setIsEditingZoom] = useState<boolean>(false);
   // PERF: Track active zooming to hide labels during zoom for smoother rendering
   const [isActivelyZooming, setIsActivelyZooming] = useState<boolean>(false);
   const zoomDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  // PERF: Refs for zoom values to avoid recreating throttled handlers on every zoom change
+  const zoomLevelRef = useRef<number>(zoomLevel);
+  const maxZoomLevelRef = useRef<number>(50);
+  // PERF: Ref for debouncing WaveSurfer redraw during zoom
+  const wavesurferZoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // PERF: Ref for boundingBoxes to avoid recreating scroll handler on every box change
+  const boundingBoxesRef = useRef<BoundingBox[]>(boundingBoxes);
   const [zoomInputValue, setZoomInputValue] = useState<string>("");
   const [scrollOffset, setScrollOffset] = useState<number>(0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -256,25 +238,16 @@ const AnnotationEditor: React.FC = () => {
   const [timelineCursorPosition, setTimelineCursorPosition] =
     useState<number>(0);
   const [customLabelInput, setCustomLabelInput] = useState<string>("");
-  const [showCustomLabelInput, setShowCustomLabelInput] =
-    useState<boolean>(false);
   const [lastClickTime, setLastClickTime] = useState<number>(0);
   const [lastClickedBox, setLastClickedBox] = useState<number | null>(null);
-  const [isPanning, setIsPanning] = useState<boolean>(false);
   const [panStartPos, setPanStartPos] = useState<{
     x: number;
     scrollX: number;
     y?: number;
     scrollY?: number;
   } | null>(null);
-  const [showKeyboardShortcuts, setShowKeyboardShortcuts] =
-    useState<boolean>(false);
-  const [showBottomLineModal, setShowBottomLineModal] = useState<boolean>(false);
-  const [showContrastModal, setShowContrastModal] = useState<boolean>(false);
   const [contrast, setContrast] = useState<number>(1.0);
   const [isDraggingBottomLine, setIsDraggingBottomLine] = useState<boolean>(false);
-  const [conflicts, setConflicts] = useState<UnifiedConflict[]>([]);
-  const [highlightConflicts, setHighlightConflicts] = useState<boolean>(false);
 
   // Distance measurement state (Alt key feature)
   const [isAltKeyPressed, setIsAltKeyPressed] = useState<boolean>(false);
@@ -292,11 +265,18 @@ const AnnotationEditor: React.FC = () => {
 
   const waveformRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
+  const optimizedWaveformRef = useRef<OptimizedWaveformHandle>(null);
   const stageRef = useRef<any>(null);
   const spectrogramImgRef = useRef<HTMLImageElement>(null);
   const audioUrlRef = useRef<string | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const unifiedScrollRef = useRef<HTMLDivElement>(null);
+
+  // PERF: Use optimized waveform rendering to avoid 4096px canvas limit
+  const useOptimizedWaveform = true;
+  const [viewportWidth, setViewportWidth] = useState(800);
+  // State to track audio URL for OptimizedWaveform (ref doesn't trigger re-render)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
   // Viewport culling for performance optimization
   const calculateVisibleBounds = useCallback(() => {
@@ -322,7 +302,11 @@ const AnnotationEditor: React.FC = () => {
   // Update visible boxes when viewport or boxes change
   // PERF: Now also updates during drag/resize for smoother rendering
   // The filtering is O(n) but faster than rendering all boxes
+  // PERF: Skip during active zooming - catches up after 150ms when zoom stops
   useEffect(() => {
+    // Skip recalculation during active zooming for smoother zoom experience
+    if (isActivelyZooming) return;
+
     const bounds = calculateVisibleBounds();
     const visible = boundingBoxes.filter((box) => {
       // Check if box intersects with viewport
@@ -334,7 +318,7 @@ const AnnotationEditor: React.FC = () => {
       );
     });
     setVisibleBoundingBoxes(visible);
-  }, [boundingBoxes, calculateVisibleBounds]);
+  }, [boundingBoxes, calculateVisibleBounds, isActivelyZooming]);
 
   // Get Nyquist frequency (sample_rate / 2) or fallback to 22050 Hz
   const getNyquistFrequency = useCallback(() => {
@@ -351,6 +335,19 @@ const AnnotationEditor: React.FC = () => {
     const calculated = duration / DIVISOR;
     return Math.min(MAX_MAX_ZOOM, Math.max(MIN_MAX_ZOOM, calculated));
   }, [duration]);
+
+  // PERF: Keep refs in sync for use in throttled handlers (avoids throttle recreation)
+  useEffect(() => {
+    zoomLevelRef.current = zoomLevel;
+  }, [zoomLevel]);
+
+  useEffect(() => {
+    maxZoomLevelRef.current = maxZoomLevel;
+  }, [maxZoomLevel]);
+
+  useEffect(() => {
+    boundingBoxesRef.current = boundingBoxes;
+  }, [boundingBoxes]);
 
   // Initialize custom hooks for coordinate transformations and time/frequency conversions
   const { transformMousePoint, clampSeekPosition, getMaxWorldX } =
@@ -386,6 +383,74 @@ const AnnotationEditor: React.FC = () => {
     boundingBoxes,
     enabled: true,
   });
+
+  // Centralized modal state management
+  const modals = useModalManager();
+
+  // Drawing mode state machine
+  const drawingMode = useDrawingMode();
+
+  // Conflict detection and resolution
+  const conflictDetection = useConflictDetection();
+
+  // Backward-compatible aliases for modal states
+  const showLabelModal = modals.isOpen('label');
+  const setShowLabelModal = useCallback((show: boolean) => show ? modals.open('label') : modals.close('label'), [modals]);
+  const showSidebar = modals.isOpen('sidebar');
+  const setShowSidebar = useCallback((show: boolean) => show ? modals.open('sidebar') : modals.close('sidebar'), [modals]);
+  const showDefaultLabelInput = modals.isOpen('defaultLabelInput');
+  const setShowDefaultLabelInput = useCallback((show: boolean) => show ? modals.open('defaultLabelInput') : modals.close('defaultLabelInput'), [modals]);
+  const showCustomLabelInput = modals.isOpen('customLabelInput');
+  const setShowCustomLabelInput = useCallback((show: boolean) => show ? modals.open('customLabelInput') : modals.close('customLabelInput'), [modals]);
+  const showKeyboardShortcuts = modals.isOpen('keyboardShortcuts');
+  const setShowKeyboardShortcuts = useCallback((show: boolean) => show ? modals.open('keyboardShortcuts') : modals.close('keyboardShortcuts'), [modals]);
+  const showBottomLineModal = modals.isOpen('bottomLine');
+  const setShowBottomLineModal = useCallback((show: boolean) => show ? modals.open('bottomLine') : modals.close('bottomLine'), [modals]);
+  const showContrastModal = modals.isOpen('contrast');
+  const setShowContrastModal = useCallback((show: boolean) => show ? modals.open('contrast') : modals.close('contrast'), [modals]);
+  const isEditingZoom = modals.isOpen('zoomInput');
+  const setIsEditingZoom = useCallback((editing: boolean) => editing ? modals.open('zoomInput') : modals.close('zoomInput'), [modals]);
+
+  // Backward-compatible aliases for drawing mode states
+  const isAnnotationMode = drawingMode.isAnnotationMode;
+  const setIsAnnotationMode = useCallback((enabled: boolean) => {
+    if (enabled) drawingMode.setMode('annotation');
+    else if (drawingMode.mode === 'annotation') drawingMode.setMode('none');
+  }, [drawingMode]);
+  const isRoiSelectionMode = drawingMode.isRoiSelectionMode;
+  const setIsRoiSelectionMode = useCallback((enabled: boolean) => {
+    if (enabled) drawingMode.setMode('roi_selection');
+    else if (drawingMode.mode === 'roi_selection') drawingMode.setMode('none');
+  }, [drawingMode]);
+  const isPanning = drawingMode.isPanning;
+  const setIsPanning = useCallback((enabled: boolean) => {
+    if (enabled) drawingMode.enablePanning();
+    else drawingMode.disablePanning();
+  }, [drawingMode]);
+  const isDrawing = drawingMode.isDrawing;
+  const drawingBox = drawingMode.drawingBox;
+  const setIsDrawing = useCallback((drawing: boolean) => {
+    if (!drawing) drawingMode.cancelDrawing();
+  }, [drawingMode]);
+  const setDrawingBox = useCallback((_box: { x: number; y: number; width: number; height: number } | null) => {
+    // Drawing box is managed by startDrawing/updateDrawing/endDrawing
+    // This setter is kept for compatibility but has limited use
+  }, []);
+  const isSelecting = drawingMode.isSelecting;
+  const selectionRect = drawingMode.selectionRect;
+  const setIsSelecting = useCallback((selecting: boolean) => {
+    if (!selecting) drawingMode.cancelSelection();
+  }, [drawingMode]);
+  const setSelectionRect = useCallback((_rect: { x: number; y: number; width: number; height: number } | null) => {
+    // Selection rect is managed by startSelection/updateSelection/endSelection
+    // This setter is kept for compatibility but has limited use
+  }, []);
+
+  // Backward-compatible aliases for conflict detection states
+  const conflicts = conflictDetection.conflicts;
+  const setConflicts = conflictDetection.setConflicts;
+  const highlightConflicts = conflictDetection.highlightConflicts;
+  const setHighlightConflicts = conflictDetection.setHighlightConflicts;
 
   // Memoized sorted bounding boxes with original indices preserved
   const sortedBoundingBoxes = useMemo(() => {
@@ -743,24 +808,36 @@ const AnnotationEditor: React.FC = () => {
   }, [recordingId]);
 
   // Cleanup blob URLs when component unmounts
+  // Note: Using refs to capture current values at cleanup time, not dependencies
+  // This ensures cleanup only happens on unmount, not on every spectrogramUrl change
+  const spectrogramUrlRef = useRef(spectrogramUrl);
+  spectrogramUrlRef.current = spectrogramUrl;
+
   useEffect(() => {
     return () => {
       // Clean up blob URLs when component unmounts
-      if (spectrogramUrl && spectrogramUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(spectrogramUrl);
+      if (spectrogramUrlRef.current && spectrogramUrlRef.current.startsWith("blob:")) {
+        URL.revokeObjectURL(spectrogramUrlRef.current);
       }
       if (audioUrlRef.current && audioUrlRef.current.startsWith("blob:")) {
         URL.revokeObjectURL(audioUrlRef.current);
       }
     };
-  }, [spectrogramUrl]);
+  }, []); // Empty deps = only run cleanup on unmount
 
   // Audio cleanup on component unmount only (beforeunload handled above)
   useEffect(() => {
+    // Capture refs at effect time for cleanup
+    const optimizedWaveform = optimizedWaveformRef.current;
+    const wavesurfer = wavesurferRef.current;
+
     return () => {
       // Pause audio when component unmounts (route change)
-      if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
-        wavesurferRef.current.pause();
+      // Note: useOptimizedWaveform is a constant (true), so this is always the first branch
+      if (optimizedWaveform?.isPlaying()) {
+        optimizedWaveform.pause();
+      } else if (wavesurfer?.isPlaying()) {
+        wavesurfer.pause();
       }
     };
   }, []); // Empty dependency array means this effect runs once on mount and cleanup on unmount
@@ -1091,6 +1168,7 @@ const AnnotationEditor: React.FC = () => {
   }, [spectrogramDimensions, zoomLevel, baseSpectrogramDimensions]);
 
   // Handle zoom changes for waveform - use WaveSurfer's zoom method
+  // PERF: Debounce the expensive redraw operation during continuous zoom
   useEffect(() => {
     if (wavesurferRef.current && waveformRef.current) {
       try {
@@ -1106,13 +1184,24 @@ const AnnotationEditor: React.FC = () => {
           // Use WaveSurfer's zoom method to set the pixels per second
           (wavesurferRef.current as any).zoom?.(zoomedPxPerSec);
 
-          // Force WaveSurfer to redraw with the new zoom
-          (wavesurferRef.current as any).drawer?.redraw?.();
+          // PERF: Debounce the expensive redraw - only after 100ms of zoom inactivity
+          if (wavesurferZoomTimeoutRef.current) {
+            clearTimeout(wavesurferZoomTimeoutRef.current);
+          }
+          wavesurferZoomTimeoutRef.current = setTimeout(() => {
+            (wavesurferRef.current as any).drawer?.redraw?.();
+          }, 100);
         }
       } catch (e) {
         // Audio not loaded yet, ignore
       }
     }
+
+    return () => {
+      if (wavesurferZoomTimeoutRef.current) {
+        clearTimeout(wavesurferZoomTimeoutRef.current);
+      }
+    };
   }, [zoomLevel, baseSpectrogramDimensions.width]);
 
   // Set initial base dimensions only once when spectrogram loads
@@ -1150,6 +1239,9 @@ const AnnotationEditor: React.FC = () => {
             width: containerWidth,
             height: containerHeight,
           });
+
+          // PERF: Update viewport width for OptimizedWaveform
+          setViewportWidth(containerWidth - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH);
 
           // Update base dimensions if container grew significantly (e.g., console closed)
           // This allows expansion but prevents unwanted shrinking of coordinate space
@@ -1522,7 +1614,74 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const initializeWavesurfer = async () => {
-    if (!recording || !waveformRef.current) return;
+    if (!recording) return;
+
+    // For OptimizedWaveform, we only need to fetch the audio URL
+    // and let the OptimizedWaveform component handle WaveSurfer internally
+    if (useOptimizedWaveform) {
+      // Cleanup old blob URL
+      if (audioUrlRef.current && audioUrlRef.current.startsWith("blob:")) {
+        URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
+        setAudioUrl(null);
+      }
+
+      const baseUrl = process.env.REACT_APP_API_URL || "";
+      const token = localStorage.getItem("token");
+
+      try {
+        const response = await fetch(
+          `${baseUrl}/recordings/${recording.id}/audio`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          audioUrlRef.current = url;
+          setAudioUrl(url); // Trigger re-render
+        } else {
+          console.error("Failed to fetch audio:", response.status);
+          // Provide specific error messages based on HTTP status
+          let errorMessage = "Failed to load audio";
+          switch (response.status) {
+            case 401:
+              errorMessage = "Session expired - please refresh the page";
+              break;
+            case 403:
+              errorMessage = "You don't have permission to access this recording";
+              break;
+            case 404:
+              errorMessage = "Audio file not found - it may have been deleted";
+              break;
+            case 500:
+            case 502:
+            case 503:
+              errorMessage = "Server error - please try again later";
+              break;
+          }
+          toast.error(errorMessage);
+        }
+      } catch (error: any) {
+        console.error("Failed to fetch audio:", error);
+        // Provide specific error messages for different error types
+        let errorMessage = "Failed to load audio";
+        if (error.name === "AbortError") {
+          errorMessage = "Audio loading was cancelled";
+        } else if (error.name === "TypeError" || error.message?.includes("network")) {
+          errorMessage = "Network error - check your connection";
+        }
+        toast.error(errorMessage);
+      }
+      return;
+    }
+
+    // Legacy WaveSurfer path (when useOptimizedWaveform is false)
+    if (!waveformRef.current) return;
 
     // Destroy existing instance if any
     if (wavesurferRef.current) {
@@ -1565,11 +1724,11 @@ const AnnotationEditor: React.FC = () => {
     const wavesurfer = WaveSurfer.create({
       container: waveformRef.current,
       waveColor: "#3B82F6", // Modern blue gradient
-      progressColor: "#1E40AF", // Deep blue for progress
-      cursorColor: "transparent", // Hide wavesurfer cursor since we have unified cursor
+      progressColor: "transparent", // Hide progress since we use red cursor line
+      cursorColor: "#EF4444", // Red cursor to match spectrogram
       barWidth: 3,
       barRadius: 3,
-      cursorWidth: 0, // Hide cursor
+      cursorWidth: 2, // Show red cursor
       height: waveformHeight, // 23% of total height
       barGap: 2,
       barHeight: 1, // Full height bars for better visibility
@@ -1719,7 +1878,14 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const handlePlayPause = () => {
-    if (wavesurferRef.current) {
+    // Use OptimizedWaveform if enabled, otherwise fall back to WaveSurfer
+    if (useOptimizedWaveform && optimizedWaveformRef.current) {
+      if (optimizedWaveformRef.current.isPlaying()) {
+        optimizedWaveformRef.current.pause();
+      } else {
+        optimizedWaveformRef.current.play();
+      }
+    } else if (wavesurferRef.current) {
       wavesurferRef.current.playPause();
     }
   };
@@ -1785,25 +1951,19 @@ const AnnotationEditor: React.FC = () => {
   };
 
   const toggleAnnotationMode = () => {
-    const newState = !isAnnotationMode;
-    setIsAnnotationMode(newState);
-    // Disable other modes when enabling annotation mode
-    if (newState) {
-      setIsRoiSelectionMode(false);
+    drawingMode.toggleAnnotationMode();
+    // Also disable bottom line mode
+    if (!isAnnotationMode) {
       setIsSettingBottomLine(false);
     }
   };
 
   const toggleRoiSelectionMode = () => {
-    setIsRoiSelectionMode((prev) => {
-      const newState = !prev;
-      // Disable other modes when enabling ROI selection mode
-      if (newState) {
-        setIsAnnotationMode(false);
-        setIsSettingBottomLine(false);
-      }
-      return newState;
-    });
+    drawingMode.toggleRoiSelectionMode();
+    // Also disable bottom line mode
+    if (!isRoiSelectionMode) {
+      setIsSettingBottomLine(false);
+    }
   };
 
   // Handle horizontal panning with arrow keys
@@ -1873,10 +2033,22 @@ const AnnotationEditor: React.FC = () => {
     const nextIndex = (currentSpeedIndex + 1) % PLAYBACK_SPEEDS.length;
     const nextSpeed = PLAYBACK_SPEEDS[nextIndex];
 
-    if (wavesurferRef.current) {
+    // Use OptimizedWaveform if enabled
+    if (useOptimizedWaveform && optimizedWaveformRef.current) {
+      const wasPlaying = optimizedWaveformRef.current.isPlaying();
+      if (wasPlaying) {
+        optimizedWaveformRef.current.pause();
+      }
+      optimizedWaveformRef.current.setPlaybackRate(nextSpeed);
+      if (wasPlaying) {
+        setTimeout(() => {
+          optimizedWaveformRef.current?.play();
+        }, 50);
+      }
+    } else if (wavesurferRef.current) {
       // Preserve current playback position and state
       const currentTime = wavesurferRef.current.getCurrentTime();
-      const duration = wavesurferRef.current.getDuration();
+      const dur = wavesurferRef.current.getDuration();
       const wasPlaying = wavesurferRef.current.isPlaying();
 
       // Pause if playing to prevent jump
@@ -1888,8 +2060,8 @@ const AnnotationEditor: React.FC = () => {
       wavesurferRef.current.setPlaybackRate(nextSpeed);
 
       // Restore position using relative position (prevents drift)
-      if (duration > 0) {
-        const relativePosition = currentTime / duration;
+      if (dur > 0) {
+        const relativePosition = currentTime / dur;
         wavesurferRef.current.seekTo(relativePosition);
       }
 
@@ -1911,7 +2083,9 @@ const AnnotationEditor: React.FC = () => {
   const pauseAndNavigate = (path: string) => {
     // Pause audio before navigating
     // Note: Conflict detection is handled by useNavigationGuard hook which shows the modal
-    if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
+    if (useOptimizedWaveform && optimizedWaveformRef.current?.isPlaying()) {
+      optimizedWaveformRef.current.pause();
+    } else if (wavesurferRef.current && wavesurferRef.current.isPlaying()) {
       wavesurferRef.current.pause();
     }
     navigate(path);
@@ -2057,7 +2231,7 @@ const AnnotationEditor: React.FC = () => {
         setShowLabelModal(true);
       }
     },
-    [boundingBoxes],
+    [boundingBoxes, setShowLabelModal],
   );
 
   const getResizeHandle = (box: BoundingBox, x: number, y: number) => {
@@ -2182,14 +2356,18 @@ const AnnotationEditor: React.FC = () => {
       !isAnnotationMode &&
       !isSettingBottomLine &&
       e.evt.button === 0 &&
-      wavesurferRef.current &&
       duration > 0 &&
       !e.evt.shiftKey &&
       !e.evt.ctrlKey &&
       !e.evt.metaKey
     ) {
       const clampedSeekPosition = clampSeekPosition(seekPosition);
-      wavesurferRef.current.seekTo(clampedSeekPosition);
+      // Use OptimizedWaveform if enabled
+      if (useOptimizedWaveform && optimizedWaveformRef.current) {
+        optimizedWaveformRef.current.seekTo(clampedSeekPosition);
+      } else if (wavesurferRef.current) {
+        wavesurferRef.current.seekTo(clampedSeekPosition);
+      }
     }
 
     // Check if clicking in waveform area (starts after spectrogram at 65%)
@@ -2393,7 +2571,8 @@ const AnnotationEditor: React.FC = () => {
     if (isSelecting) return "crosshair";
 
     // Check if mouse is over a bounding box
-    const isOverBox = boundingBoxes.some(
+    // PERF: Use visibleBoundingBoxes (~500) instead of boundingBoxes (51k) for O(n) check
+    const isOverBox = visibleBoundingBoxes.some(
       (box) =>
         mousePosition.x >= box.x &&
         mousePosition.x <= box.x + box.width &&
@@ -2415,7 +2594,7 @@ const AnnotationEditor: React.FC = () => {
     draggingBox,
     resizingBox,
     isSelecting,
-    boundingBoxes,
+    visibleBoundingBoxes,
     mousePosition,
     spectrogramDimensions.height,
   ]);
@@ -3233,16 +3412,16 @@ const AnnotationEditor: React.FC = () => {
       setHighlightConflicts(false);
 
       // CRITICAL FIX: Save the resolved boxes to the backend before navigating
-      toast.loading(`Saving ${activeConflicts.length} resolved conflict${activeConflicts.length > 1 ? "s" : ""}...`);
+      const loadingToastId = toast.loading(`Saving ${activeConflicts.length} resolved conflict${activeConflicts.length > 1 ? "s" : ""}...`);
 
       const saved = await saveAnnotations(recording?.id, resolvedBoxesWithPixelCoords, false);
 
       if (saved) {
-        toast.success(`Resolved and saved ${activeConflicts.length} conflict${activeConflicts.length > 1 ? "s" : ""}!`);
+        toast.success(`Resolved and saved ${activeConflicts.length} conflict${activeConflicts.length > 1 ? "s" : ""}!`, { id: loadingToastId });
         // Proceed with navigation after successfully saving
         proceedNavigation();
       } else {
-        toast.error("Failed to save resolved conflicts. Please try again.");
+        toast.error("Failed to save resolved conflicts. Please try again.", { id: loadingToastId });
         // Don't navigate if save failed
         cancelNavigation();
       }
@@ -3277,6 +3456,7 @@ const AnnotationEditor: React.FC = () => {
   };
 
   // Throttled mouse wheel zoom handler with cursor-centered zooming
+  // PERF: Uses refs instead of state to avoid recreating throttle function on every zoom change
   const handleWheelZoom = useMemo(
     () =>
       throttle((event: WheelEvent) => {
@@ -3298,15 +3478,19 @@ const AnnotationEditor: React.FC = () => {
 
         // Use requestAnimationFrame for smooth updates
         requestAnimationFrame(() => {
+          // PERF: Read current zoom values from refs to avoid closure over stale state
+          const currentZoom = zoomLevelRef.current;
+          const currentMaxZoom = maxZoomLevelRef.current;
+
           // Calculate zoom factor based on wheel delta
           const zoomSpeed = 0.002;
           const delta = -event.deltaY * zoomSpeed;
           const zoomFactor = Math.exp(delta);
 
           // Calculate new zoom level with limits (dynamic based on duration)
-          const newZoom = Math.max(1, Math.min(maxZoomLevel, zoomLevel * zoomFactor));
+          const newZoom = Math.max(1, Math.min(currentMaxZoom, currentZoom * zoomFactor));
 
-          if (newZoom === zoomLevel) return;
+          if (newZoom === currentZoom) return;
 
           // Get cursor position relative to spectrogram container
           const cursorX =
@@ -3319,7 +3503,7 @@ const AnnotationEditor: React.FC = () => {
 
           // Calculate world coordinates at cursor position (horizontal only)
           // World position = (cursor position in viewport + scroll offset) / current zoom
-          const worldX = (cursorX + currentScrollLeft) / zoomLevel;
+          const worldX = (cursorX + currentScrollLeft) / currentZoom;
 
           // Calculate new offset to keep cursor position fixed (horizontal only)
           // New scroll = world position * new zoom - cursor position in viewport
@@ -3349,7 +3533,7 @@ const AnnotationEditor: React.FC = () => {
           // WaveSurfer will automatically adjust to the new container width
         });
       }, 16), // 60 FPS throttle
-    [zoomLevel, spectrogramDimensions.width, maxZoomLevel],
+    [spectrogramDimensions.width], // PERF: Removed zoomLevel and maxZoomLevel - using refs instead
   );
 
   // Clean up throttled function and zoom debounce on unmount
@@ -3363,6 +3547,7 @@ const AnnotationEditor: React.FC = () => {
   }, [handleWheelZoom]);
 
   // Throttled scroll handler for performance
+  // PERF: Uses boundingBoxesRef to avoid recreating throttle function on every box change
   const handleScrollOptimized = useMemo(
     () =>
       throttle((e: React.UIEvent<HTMLDivElement>) => {
@@ -3382,13 +3567,14 @@ const AnnotationEditor: React.FC = () => {
         // Update visible bounds with requestAnimationFrame for smoothness
         requestAnimationFrame(() => {
           const bounds = calculateVisibleBounds();
-          const visible = boundingBoxes.filter((box) => {
+          // PERF: Use ref to avoid closure over stale boundingBoxes
+          const visible = boundingBoxesRef.current.filter((box) => {
             return box.x < bounds.right && box.x + box.width > bounds.left;
           });
           setVisibleBoundingBoxes(visible);
         });
       }, 16), // 60 FPS throttle
-    [boundingBoxes, calculateVisibleBounds],
+    [calculateVisibleBounds], // PERF: Removed boundingBoxes - using ref instead
   );
 
   // Clean up scroll throttled function
@@ -4073,16 +4259,84 @@ const AnnotationEditor: React.FC = () => {
                       display: "block",
                     }}
                   >
-                    {/* Waveform container - fixed width to prevent resize */}
-                    <div
-                      ref={waveformRef}
-                      id="waveform-container"
-                      style={{
-                        width: `${(baseSpectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,
-                        height: "100%",
-                        position: "relative",
-                      }}
-                    />
+                    {/* Waveform container - uses OptimizedWaveform for performance */}
+                    {useOptimizedWaveform && audioUrl ? (
+                      <div
+                        style={{
+                          width: `${(baseSpectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,
+                          height: "100%",
+                          position: "relative",
+                        }}
+                      >
+                        {/* OptimizedWaveform stays at viewport position via transform */}
+                        <div
+                          style={{
+                            width: viewportWidth,
+                            height: "100%",
+                            position: "absolute",
+                            left: 0,
+                            transform: `translateX(${scrollOffset}px)`,
+                            willChange: "transform",
+                          }}
+                        >
+                          <OptimizedWaveform
+                            ref={optimizedWaveformRef}
+                            audioUrl={audioUrl}
+                            width={viewportWidth}
+                            height={Math.max(50, spectrogramDimensions.height * 0.27)}
+                            zoomLevel={zoomLevel}
+                            scrollOffset={scrollOffset}
+                            waveColor="#3B82F6"
+                            onReady={(dur) => {
+                              setDuration(dur);
+                            }}
+                            onTimeUpdate={(time) => {
+                              setCurrentTime(time);
+                              // Update timeline cursor position
+                              if (duration > 0) {
+                                const relativePosition = time / duration;
+                                const position = relativePosition * CoordinateUtils.getZoomedContentWidth(
+                                  baseSpectrogramDimensions.width,
+                                  zoomLevel
+                                );
+                                setTimelineCursorPosition(position);
+                              }
+                            }}
+                            onPlay={() => setIsPlaying(true)}
+                            onPause={() => setIsPlaying(false)}
+                            onFinish={() => setIsPlaying(false)}
+                            onSeek={(time) => {
+                              setCurrentTime(time);
+                              if (duration > 0) {
+                                const relativePosition = time / duration;
+                                const position = relativePosition * CoordinateUtils.getZoomedContentWidth(
+                                  baseSpectrogramDimensions.width,
+                                  zoomLevel
+                                );
+                                setTimelineCursorPosition(position);
+                              }
+                            }}
+                            onClick={(time) => {
+                              // Seek when clicking waveform
+                              if (optimizedWaveformRef.current) {
+                                optimizedWaveformRef.current.seekTo(time / duration);
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      /* Fallback to original WaveSurfer when audio not loaded or optimized disabled */
+                      <div
+                        ref={waveformRef}
+                        id="waveform-container"
+                        style={{
+                          width: `${(baseSpectrogramDimensions.width - LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH) * zoomLevel}px`,
+                          height: "100%",
+                          position: "relative",
+                        }}
+                      />
+                    )}
 
                     {/* Bounding box projections on waveform - overlay on top of waveform */}
                     <svg
@@ -4651,12 +4905,13 @@ const AnnotationEditor: React.FC = () => {
                   )}
 
                   {/* Cursor line only for spectrogram area */}
-                  {duration > 0 && (
+                  {duration > 0 && currentTime >= 0 && (
                     <Line
                       points={[
-                        timelineCursorPosition, // Already in zoomed coordinates
+                        // Calculate position directly from currentTime to ensure it updates with zoom
+                        (currentTime / duration) * CoordinateUtils.getZoomedContentWidth(baseSpectrogramDimensions.width, zoomLevel),
                         0,
-                        timelineCursorPosition, // Already in zoomed coordinates
+                        (currentTime / duration) * CoordinateUtils.getZoomedContentWidth(baseSpectrogramDimensions.width, zoomLevel),
                         baseSpectrogramDimensions.height *
                           LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO, // World space height (will be scaled by Stage scaleY)
                       ]}

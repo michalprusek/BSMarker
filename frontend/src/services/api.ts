@@ -14,6 +14,7 @@ const API_URL = process.env.REACT_APP_API_URL || "";
 
 // Only log in development mode to prevent leaking sensitive info in production
 const IS_DEV = process.env.NODE_ENV === "development";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const debugLog = (...args: unknown[]) => {
   if (IS_DEV) {
     console.log(...args);
@@ -82,6 +83,18 @@ const scheduleTokenRefresh = () => {
           }
         } catch (error) {
           console.error("Token refresh failed:", error);
+          // Clear token and redirect to login on refresh failure
+          // This prevents users from continuing with an invalid/expired token
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+
+          // Only redirect if not already on login page
+          if (!window.location.pathname.includes("/login")) {
+            // Use a small delay to allow any pending operations to complete
+            setTimeout(() => {
+              window.location.href = "/login?reason=session_expired";
+            }, 100);
+          }
         }
       }, refreshTime);
     }
@@ -421,20 +434,60 @@ export const recordingService = {
     return response.data;
   },
 
-  getSpectrogramUrl: async (recordingId: number): Promise<string | null> => {
+  /**
+   * Get spectrogram URL for a recording
+   * @returns Object with url (if available), status, and optional error message
+   */
+  getSpectrogramUrl: async (recordingId: number): Promise<{
+    url: string | null;
+    status: "completed" | "processing" | "pending" | "failed" | "error";
+    error?: string;
+  }> => {
     try {
       const status = await recordingService.getSpectrogramStatus(recordingId);
 
       if (status.status === "completed" && status.available) {
         // Return direct API URL for completed spectrograms with cache-busting timestamp
         const timestamp = Date.now();
-        return `${API_URL}/recordings/${recordingId}/spectrogram?v=${timestamp}`;
+        return {
+          url: `${API_URL}/recordings/${recordingId}/spectrogram?v=${timestamp}`,
+          status: "completed",
+        };
       }
 
-      return null; // Spectrogram not ready yet
-    } catch (error) {
+      if (status.status === "failed") {
+        return {
+          url: null,
+          status: "failed",
+          error: status.error_message || "Spectrogram generation failed",
+        };
+      }
+
+      // Spectrogram not ready yet (processing or pending)
+      return {
+        url: null,
+        status: status.status as "processing" | "pending",
+      };
+    } catch (error: any) {
       console.error("Failed to get spectrogram URL:", error);
-      return null;
+
+      // Provide specific error messages based on error type
+      let errorMessage = "Failed to check spectrogram status";
+      if (error.response?.status === 401) {
+        errorMessage = "Session expired - please refresh the page";
+      } else if (error.response?.status === 403) {
+        errorMessage = "You don't have permission to access this recording";
+      } else if (error.response?.status === 404) {
+        errorMessage = "Recording not found";
+      } else if (error.code === "ECONNABORTED" || error.code === "ERR_NETWORK") {
+        errorMessage = "Network error - check your connection";
+      }
+
+      return {
+        url: null,
+        status: "error",
+        error: errorMessage,
+      };
     }
   },
 

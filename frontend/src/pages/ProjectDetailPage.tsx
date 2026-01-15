@@ -1,419 +1,222 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
-import {
-  ArrowLeftIcon,
-  CloudArrowUpIcon,
-  MusicalNoteIcon,
-  TrashIcon,
-  MagnifyingGlassIcon,
-  FunnelIcon,
-  ArrowDownTrayIcon,
-  CheckIcon,
-  PencilIcon,
-} from "@heroicons/react/24/outline";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { Project, Recording } from "../types";
+import { PaginatedResponse, PaginationMetadata } from "../types/pagination";
 import {
   projectService,
   recordingService,
-  annotationService,
 } from "../services/api";
 import toast from "react-hot-toast";
+import { VirtualizedRecordingList } from "../components/VirtualizedRecordingList";
 import UploadRecordingModal from "../components/UploadRecordingModal";
+import {
+  FunnelIcon,
+  PlusIcon,
+  TrashIcon,
+  CloudArrowDownIcon,
+  MagnifyingGlassIcon,
+  PencilIcon,
+} from "@heroicons/react/24/outline";
 import EditProjectModal from "../components/EditProjectModal";
-import { formatRecordingDuration } from "../utils/duration";
-import LoadingSpinner from "../components/LoadingSpinner";
-import JSZip from "jszip";
 
-const ProjectDetailPage: React.FC = () => {
+const ProjectDetailPageOptimized: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+
+  // State management
   const [project, setProject] = useState<Project | null>(null);
   const [recordings, setRecordings] = useState<Recording[]>([]);
+  const [pagination, setPagination] = useState<PaginationMetadata>({
+    total: 0,
+    page: 1,
+    page_size: 50,
+    total_pages: 0,
+    has_next: false,
+    has_prev: false,
+  });
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedRecordings, setSelectedRecordings] = useState<Set<number>>(
     new Set(),
   );
+
+  // Filters and search
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [minDuration, setMinDuration] = useState("");
   const [maxDuration, setMaxDuration] = useState("");
   const [sortBy, setSortBy] = useState("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [annotationStatus, setAnnotationStatus] = useState<
-    "all" | "annotated" | "unannotated"
+    "all" | "annotated" | "unannotated" | "finished"
   >("all");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isDownloadingFull, setIsDownloadingFull] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<number>(0); // bytes downloaded
 
-  const fetchProjectData = useCallback(async () => {
-    if (!projectId) return;
-    try {
-      const projectData = await projectService.getProject(parseInt(projectId));
-      setProject(projectData);
-
-      const params: any = {};
-      if (searchTerm) params.search = searchTerm;
-      if (minDuration) params.min_duration = parseFloat(minDuration);
-      if (maxDuration) params.max_duration = parseFloat(maxDuration);
-      if (annotationStatus !== "all")
-        params.annotation_status = annotationStatus;
-      params.sort_by = sortBy;
-      params.sort_order = sortOrder;
-
-      const recordingsData = await recordingService.getRecordings(
-        parseInt(projectId),
-        params,
-      );
-      setRecordings(recordingsData.items || recordingsData);
-    } catch (error) {
-      toast.error("Failed to fetch project data");
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    projectId,
-    searchTerm,
-    minDuration,
-    maxDuration,
-    annotationStatus,
-    sortBy,
-    sortOrder,
-  ]);
-
+  // Debounce search term
   useEffect(() => {
-    fetchProjectData();
-  }, [fetchProjectData]);
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
-  const handleRecordingUploaded = () => {
-    setShowUploadModal(false);
-    fetchProjectData();
-  };
+  // Fetch project data
+  const fetchProjectData = useCallback(
+    async (page: number = 1, append: boolean = false) => {
+      if (!projectId) return;
 
-  const handleProjectUpdated = () => {
-    setShowEditModal(false);
-    fetchProjectData();
-  };
-
-  const handleDeleteRecording = async (recordingId: number) => {
-    try {
-      await recordingService.deleteRecording(recordingId);
-      toast.success("Recording deleted");
-      fetchProjectData();
-    } catch (error) {
-      toast.error("Failed to delete recording");
-    }
-  };
-
-  const handleDownloadProject = async () => {
-    if (!projectId || recordings.length === 0) return;
-
-    setIsDownloading(true);
-
-    try {
-      // Create a zip file using JSZip
-      const zip = new JSZip();
-
-      // Create folders
-      const recordingsFolder = zip.folder("recordings");
-      const spectrogramsFolder = zip.folder("spectrograms");
-      const annotationsFolder = zip.folder("annotations");
-      const visualizationsFolder = zip.folder("visualizations");
-
-      // Process each recording
-      for (const recording of recordings) {
-        try {
-          // Download recording audio file
-          const audioBlob = await recordingService.downloadRecording(
-            recording.id,
-          );
-          if (recordingsFolder) {
-            recordingsFolder.file(`${recording.original_filename}`, audioBlob);
-          }
-
-          // Download spectrogram using authenticated API
-          try {
-            const spectrogramBlob = await recordingService.getSpectrogramBlob(
-              recording.id,
-            );
-            if (spectrogramBlob && spectrogramsFolder) {
-              spectrogramsFolder.file(
-                `${recording.original_filename.replace(/\.[^/.]+$/, "")}_spectrogram.png`,
-                spectrogramBlob,
-              );
-            }
-          } catch (spectrogramError) {
-            console.warn(
-              `Spectrogram not available for ${recording.original_filename}`,
-            );
-            // Continue processing even if spectrogram is not available
-          }
-
-          // Get annotations
-          const annotations = await annotationService.getAnnotations(
-            recording.id,
-          );
-
-          // Save annotations as JSON
-          if (annotationsFolder && annotations && annotations.length > 0) {
-            // Use the LATEST annotation (last in array), not the first one
-            const latestAnnotation = annotations[annotations.length - 1];
-            const annotationData = {
-              recording: {
-                id: recording.id,
-                filename: recording.original_filename,
-                duration: recording.duration,
-                sample_rate: recording.sample_rate,
-              },
-              annotations: latestAnnotation.bounding_boxes.map((box: any) => ({
-                label: box.label || "None",
-                start_time: box.start_time,
-                end_time: box.end_time,
-                min_frequency: box.min_frequency,
-                max_frequency: box.max_frequency,
-                x: box.x,
-                y: box.y,
-                width: box.width,
-                height: box.height,
-              })),
-            };
-
-            const jsonStr = JSON.stringify(annotationData, null, 2);
-            annotationsFolder.file(
-              `${recording.original_filename.replace(/\.[^/.]+$/, "")}_annotations.json`,
-              jsonStr,
-            );
-
-            // Generate visualization with bounding boxes
-            // Skip visualization if spectrogram is not available
-            try {
-              const spectrogramUrl = await recordingService.getSpectrogramUrl(
-                recording.id,
-              );
-              if (
-                spectrogramUrl &&
-                visualizationsFolder &&
-                latestAnnotation.bounding_boxes.length > 0
-              ) {
-                try {
-                  const visualizationBlob = await generateVisualization(
-                    spectrogramUrl,
-                    latestAnnotation.bounding_boxes,
-                    recording,
-                  );
-                  visualizationsFolder.file(
-                    `${recording.original_filename.replace(/\.[^/.]+$/, "")}_annotated.png`,
-                    visualizationBlob,
-                  );
-                } catch (err) {
-                  console.error(
-                    "Failed to generate visualization for",
-                    recording.original_filename,
-                    err,
-                  );
-                }
-              }
-            } catch (err) {
-              console.warn("Could not get spectrogram URL for visualization");
-            }
-          }
-        } catch (err) {
-          console.error(
-            `Failed to process recording ${recording.original_filename}:`,
-            err,
-          );
-          toast.error(`Failed to process ${recording.original_filename}`);
-        }
-      }
-
-      // Generate project summary
-      const summary = {
-        project: {
-          id: project?.id,
-          name: project?.name,
-          description: project?.description,
-          created_at: project?.created_at,
-        },
-        recordings_count: recordings.length,
-        total_duration: recordings.reduce(
-          (sum, r) => sum + (r.duration || 0),
-          0,
-        ),
-        export_date: new Date().toISOString(),
-      };
-
-      zip.file("project_summary.json", JSON.stringify(summary, null, 2));
-
-      // Generate and download zip
-      const content = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(content);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${project?.name.replace(/[^a-z0-9]/gi, "_")}_export_${new Date().toISOString().split("T")[0]}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      toast.success("Project exported successfully!");
-    } catch (error) {
-      console.error("Failed to export project:", error);
-      toast.error("Failed to export project");
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  // Generate visualization with bounding boxes drawn on spectrogram
-  const generateVisualization = async (
-    spectrogramUrl: string,
-    boundingBoxes: any[],
-    recording: Recording,
-  ): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-
-        if (!ctx) {
-          reject(new Error("Failed to get canvas context"));
-          return;
+      try {
+        if (!append) {
+          setLoading(true);
+        } else {
+          setLoadingMore(true);
         }
 
-        // Draw spectrogram
-        ctx.drawImage(img, 0, 0);
+        // Fetch project info if not loaded
+        if (!project) {
+          const projectData = await projectService.getProject(
+            parseInt(projectId),
+          );
+          setProject(projectData);
+        }
 
-        // Define colors for different labels
-        const labelColors: Record<string, string> = {
-          None: "rgba(107, 114, 128, 0.5)",
-          A: "rgba(239, 68, 68, 0.5)",
-          B: "rgba(245, 158, 11, 0.5)",
-          C: "rgba(16, 185, 129, 0.5)",
-          D: "rgba(59, 130, 246, 0.5)",
-          E: "rgba(139, 92, 246, 0.5)",
+        // Build query parameters
+        const params: any = {
+          skip: (page - 1) * 50,
+          limit: 50,
+          sort_by: sortBy,
+          sort_order: sortOrder,
         };
 
-        // Draw bounding boxes using time/frequency coordinates
-        boundingBoxes.forEach((box) => {
-          console.log("Processing box:", box); // Debug log
+        if (debouncedSearchTerm) params.search = debouncedSearchTerm;
+        if (minDuration) params.min_duration = parseFloat(minDuration);
+        if (maxDuration) params.max_duration = parseFloat(maxDuration);
+        if (annotationStatus !== "all")
+          params.annotation_status = annotationStatus;
 
-          let xStart, boxWidth, yTop, boxHeight;
+        // Fetch recordings with pagination
+        const response: PaginatedResponse<Recording> =
+          await recordingService.getRecordings(parseInt(projectId), params);
 
-          // Determine coordinate system and calculate positions
-          if (
-            recording.duration &&
-            box.start_time !== undefined &&
-            box.end_time !== undefined
-          ) {
-            // Time-based coordinates (preferred)
-            xStart = (box.start_time / recording.duration) * img.width;
-            const xEnd = (box.end_time / recording.duration) * img.width;
-            boxWidth = Math.max(1, xEnd - xStart);
+        if (append) {
+          // Append to existing recordings for infinite scroll
+          setRecordings((prev) => [...prev, ...response.items]);
+        } else {
+          // Replace recordings for new search/filter
+          setRecordings(response.items);
+        }
 
-            // Calculate y position based on frequency
-            const maxFreq = (recording.sample_rate || 44100) / 2; // Nyquist frequency
+        setPagination(response.pagination);
+      } catch (error) {
+        console.error("Failed to fetch project data:", error);
+        toast.error("Failed to fetch project data");
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [
+      projectId,
+      project,
+      debouncedSearchTerm,
+      minDuration,
+      maxDuration,
+      annotationStatus,
+      sortBy,
+      sortOrder,
+    ],
+  );
 
-            if (
-              box.max_frequency !== undefined &&
-              box.min_frequency !== undefined
-            ) {
-              // Frequency-based coordinates (Y-axis is inverted in spectrograms)
-              yTop = img.height - (box.max_frequency / maxFreq) * img.height;
-              const yBottom =
-                img.height - (box.min_frequency / maxFreq) * img.height;
-              boxHeight = Math.max(1, yBottom - yTop);
-            } else if (box.y !== undefined && box.height !== undefined) {
-              // Fallback to pixel coordinates with scaling
-              const scaleY = img.height / 400; // Original canvas height
-              yTop = box.y * scaleY;
-              boxHeight = Math.max(1, box.height * scaleY);
-            } else {
-              // Default to full height if no frequency/pixel data
-              yTop = 0;
-              boxHeight = img.height;
-            }
-          } else if (
-            box.x !== undefined &&
-            box.width !== undefined &&
-            box.y !== undefined &&
-            box.height !== undefined
-          ) {
-            // Pure pixel coordinates with scaling
-            const scaleX = img.width / 800; // Original canvas width
-            const scaleY = img.height / 400; // Original canvas height
-            xStart = box.x * scaleX;
-            boxWidth = Math.max(1, box.width * scaleX);
-            yTop = box.y * scaleY;
-            boxHeight = Math.max(1, box.height * scaleY);
-          } else {
-            // Skip boxes with insufficient data
-            console.warn("Box has insufficient coordinate data:", box);
-            return;
-          }
+  // Initial load and filter changes
+  useEffect(() => {
+    fetchProjectData(1, false);
+  }, [fetchProjectData]);
 
-          // Get color for label
-          const color = labelColors[box.label] || "rgba(59, 130, 246, 0.5)";
+  // Auto-polling for spectrogram generation progress
+  useEffect(() => {
+    const spectrogramGenerating = pagination.spectrogram_generating_count ?? 0;
+    const spectrogramQueued = pagination.spectrogram_queued_count ?? 0;
+    const shouldPoll = (spectrogramGenerating > 0) || (spectrogramQueued > 0);
 
-          console.log(
-            `Drawing box: x=${xStart}, y=${yTop}, w=${boxWidth}, h=${boxHeight}`,
-          ); // Debug log
+    if (!shouldPoll) {
+      return; // No polling needed
+    }
 
-          // Draw box with error handling
-          try {
-            ctx.strokeStyle = color.replace("0.5", "1");
-            ctx.lineWidth = 2;
-            ctx.strokeRect(xStart, yTop, boxWidth, boxHeight);
+    const pollInterval = setInterval(() => {
+      // Poll without showing loading indicator
+      fetchProjectData(pagination.page, false);
+    }, 10000); // Poll every 10 seconds
 
-            // Fill with semi-transparent color
-            ctx.fillStyle = color;
-            ctx.fillRect(xStart, yTop, boxWidth, boxHeight);
+    return () => clearInterval(pollInterval);
+  }, [pagination.spectrogram_generating_count, pagination.spectrogram_queued_count, pagination.page, fetchProjectData]);
 
-            // Draw label
-            if (box.label && box.label !== "None") {
-              // Set font before measuring text
-              ctx.font = "bold 14px Arial";
+  // Handle infinite scroll
+  const handleLoadMore = useCallback(
+    async (page: number) => {
+      if (!loadingMore && pagination.has_next) {
+        await fetchProjectData(page, true);
+      }
+    },
+    [fetchProjectData, loadingMore, pagination.has_next],
+  );
 
-              // Add background for label text
-              ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-              const labelWidth = ctx.measureText(box.label).width + 8;
-              ctx.fillRect(xStart, yTop, labelWidth, 20);
-
-              // Draw label text
-              ctx.fillStyle = "white";
-              ctx.fillText(box.label, xStart + 4, yTop + 16);
-            }
-          } catch (drawError) {
-            console.error("Error drawing box:", drawError);
-          }
-        });
-
-        // Convert to blob
-        canvas.toBlob((blob) => {
-          if (blob) {
-            resolve(blob);
-          } else {
-            reject(new Error("Failed to create blob"));
-          }
-        }, "image/png");
-      };
-
-      img.onerror = () => {
-        reject(new Error("Failed to load spectrogram image"));
-      };
-
-      img.src = spectrogramUrl;
+  // Handle recording selection
+  const handleSelectRecording = useCallback((id: number) => {
+    setSelectedRecordings((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
     });
-  };
+  }, []);
 
-  const handleBulkDelete = async () => {
-    if (selectedRecordings.size === 0) {
-      toast.error("No recordings selected");
+  // Handle select all
+  const handleToggleSelectAll = useCallback(() => {
+    if (
+      selectedRecordings.size === recordings.length &&
+      recordings.length > 0
+    ) {
+      setSelectedRecordings(new Set());
+    } else {
+      setSelectedRecordings(new Set(recordings.map((r) => r.id)));
+    }
+  }, [recordings, selectedRecordings.size]);
+
+  // Handle upload success
+  const handleRecordingUploaded = useCallback(() => {
+    setShowUploadModal(false);
+    fetchProjectData(1, false);
+    toast.success("Recording uploaded successfully");
+  }, [fetchProjectData]);
+
+  // Handle project edit success
+  const handleProjectUpdated = useCallback(async () => {
+    setShowEditModal(false);
+    // Refresh project data
+    if (projectId) {
+      const projectData = await projectService.getProject(parseInt(projectId));
+      setProject(projectData);
+    }
+  }, [projectId]);
+
+  // Handle bulk delete
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedRecordings.size === 0) return;
+
+    if (
+      !window.confirm(
+        `Are you sure you want to delete ${selectedRecordings.size} recordings?`,
+      )
+    ) {
       return;
     }
 
@@ -425,110 +228,314 @@ const ProjectDetailPage: React.FC = () => {
       );
       toast.success(`Deleted ${selectedRecordings.size} recordings`);
       setSelectedRecordings(new Set());
-      fetchProjectData();
-    } catch (error) {
-      toast.error("Failed to delete recordings");
+      fetchProjectData(1, false);
+    } catch (error: any) {
+      console.error("Failed to delete recordings:", error);
+      const errorDetail =
+        error.response?.data?.detail || error.message || "Unknown error";
+      toast.error(`Failed to delete recordings: ${errorDetail}`);
     } finally {
       setIsDeleting(false);
     }
-  };
+  }, [selectedRecordings, projectId, fetchProjectData]);
 
-  const toggleRecordingSelection = (recordingId: number) => {
-    const newSelection = new Set(selectedRecordings);
-    if (newSelection.has(recordingId)) {
-      newSelection.delete(recordingId);
-    } else {
-      newSelection.add(recordingId);
+  // Helper to check if filters are active
+  const hasActiveFilters = useCallback(() => {
+    return !!(
+      debouncedSearchTerm ||
+      minDuration ||
+      maxDuration ||
+      annotationStatus !== "all"
+    );
+  }, [debouncedSearchTerm, minDuration, maxDuration, annotationStatus]);
+
+  // Helper to build filter params
+  const getFilterParams = useCallback(() => {
+    const filters: any = {};
+    if (debouncedSearchTerm) filters.search = debouncedSearchTerm;
+    if (minDuration) filters.min_duration = parseFloat(minDuration);
+    if (maxDuration) filters.max_duration = parseFloat(maxDuration);
+    if (annotationStatus !== "all")
+      filters.annotation_status = annotationStatus;
+    return filters;
+  }, [debouncedSearchTerm, minDuration, maxDuration, annotationStatus]);
+
+  // Handle download annotations
+  const handleDownloadAnnotations = useCallback(async () => {
+    if (!projectId) return;
+
+    // Warn user if filters are active
+    if (hasActiveFilters()) {
+      const filterDescription = [];
+      if (debouncedSearchTerm)
+        filterDescription.push(`Search: "${debouncedSearchTerm}"`);
+      if (minDuration) filterDescription.push(`Min duration: ${minDuration}s`);
+      if (maxDuration) filterDescription.push(`Max duration: ${maxDuration}s`);
+      if (annotationStatus !== "all")
+        filterDescription.push(`Status: ${annotationStatus}`);
+
+      const confirmed = window.confirm(
+        `Active filters will be applied to the export:\n\n${filterDescription.join("\n")}\n\nOnly recordings matching these filters will be exported.\n\nDo you want to continue?`,
+      );
+      if (!confirmed) return;
     }
-    setSelectedRecordings(newSelection);
-  };
 
-  const toggleSelectAll = () => {
-    if (selectedRecordings.size === recordings.length) {
-      setSelectedRecordings(new Set());
-    } else {
-      setSelectedRecordings(new Set(recordings.map((r) => r.id)));
+    setIsDownloading(true);
+    setDownloadProgress(0);
+    try {
+      // Use the streaming export endpoint with progress tracking
+      const blob = await projectService.exportAnnotations(
+        parseInt(projectId),
+        getFilterParams(),
+        (loaded) => setDownloadProgress(loaded),
+      );
+
+      // Download the ZIP file
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `project_${projectId}_annotations.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success("Annotations downloaded successfully");
+    } catch (error) {
+      console.error("Failed to download annotations:", error);
+      toast.error("Failed to download annotations. The export may have timed out for large projects.");
+    } finally {
+      setIsDownloading(false);
+      setDownloadProgress(0);
     }
-  };
+  }, [
+    projectId,
+    hasActiveFilters,
+    getFilterParams,
+    debouncedSearchTerm,
+    minDuration,
+    maxDuration,
+    annotationStatus,
+  ]);
 
-  const handleRecordingClick = (recordingId: number) => {
-    navigate(`/recordings/${recordingId}/annotate`);
-  };
+  // Comprehensive download with all components
+  const handleDownloadAll = useCallback(async () => {
+    if (!projectId) return;
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+    // Warn user if filters are active
+    if (hasActiveFilters()) {
+      const filterDescription = [];
+      if (debouncedSearchTerm)
+        filterDescription.push(`Search: "${debouncedSearchTerm}"`);
+      if (minDuration) filterDescription.push(`Min duration: ${minDuration}s`);
+      if (maxDuration) filterDescription.push(`Max duration: ${maxDuration}s`);
+      if (annotationStatus !== "all")
+        filterDescription.push(`Status: ${annotationStatus}`);
 
-  if (loading) {
+      const confirmed = window.confirm(
+        `Active filters will be applied to the export:\n\n${filterDescription.join("\n")}\n\nOnly recordings matching these filters will be exported.\n\nDo you want to continue?`,
+      );
+      if (!confirmed) return;
+    }
+
+    setIsDownloadingFull(true);
+    setDownloadProgress(0);
+
+    try {
+      // Use the streaming export endpoint for full export with progress
+      const blob = await projectService.exportFull(
+        parseInt(projectId),
+        getFilterParams(),
+        (loaded) => setDownloadProgress(loaded),
+      );
+
+      // Download the ZIP file
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${project?.name.replace(/[^a-z0-9]/gi, "_")}_full_export_${new Date().toISOString().split("T")[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success("Full project exported successfully");
+    } catch (error) {
+      console.error("Failed to export project:", error);
+      toast.error("Failed to export project. Large exports may take several minutes.");
+    } finally {
+      setIsDownloadingFull(false);
+      setDownloadProgress(0);
+    }
+  }, [
+    projectId,
+    project,
+    hasActiveFilters,
+    getFilterParams,
+    debouncedSearchTerm,
+    minDuration,
+    maxDuration,
+    annotationStatus,
+  ]);
+
+  // Calculate stats
+  const stats = useMemo(() => {
+    // Use counts from pagination metadata (backend calculates these for all recordings)
+    const finishedCount = pagination.finished_count ?? 0;
+    const annotatedCount = pagination.annotated_count ?? 0;
+    const totalDuration = pagination.total_duration ?? 0;
+    const spectrogramReady = pagination.spectrogram_ready_count ?? 0;
+    const spectrogramGenerating = pagination.spectrogram_generating_count ?? 0;
+    const spectrogramQueued = pagination.spectrogram_queued_count ?? 0;
+    const spectrogramFailed = pagination.spectrogram_failed_count ?? 0;
+
+    return {
+      totalRecordings: pagination.total,
+      finishedRecordings: finishedCount,
+      annotatedRecordings: annotatedCount,
+      totalDuration: Math.round(totalDuration / 60), // in minutes
+      finishedProgress:
+        pagination.total > 0
+          ? Math.round((finishedCount / pagination.total) * 100)
+          : 0,
+      annotationProgress:
+        pagination.total > 0
+          ? Math.round((annotatedCount / pagination.total) * 100)
+          : 0,
+      spectrogramReady,
+      spectrogramGenerating,
+      spectrogramQueued,
+      spectrogramFailed,
+    };
+  }, [pagination]);
+
+  if (loading && recordings.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <LoadingSpinner size="md" />
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
-  if (!project) {
-    return <div>Project not found</div>;
-  }
-
   return (
-    <div className="px-4 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <Link
-          to="/projects"
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700"
+    <div className="container mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="mb-8">
+        <button
+          onClick={() => navigate("/projects")}
+          className="text-gray-600 hover:text-gray-900 mb-4 inline-flex items-center"
         >
-          <ArrowLeftIcon className="h-4 w-4 mr-1" />
-          Back to Projects
-        </Link>
-      </div>
+          ← Back to Projects
+        </button>
 
-      <div className="sm:flex sm:items-center">
-        <div className="sm:flex-auto">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold text-gray-900">
-              {project.name}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <h1 className="text-3xl font-bold text-gray-900">
+              {project?.name || "Loading..."}
             </h1>
-            <button
-              onClick={() => setShowEditModal(true)}
-              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-              title="Edit project name and description"
-            >
-              <PencilIcon className="h-5 w-5" />
-            </button>
+            {project && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                title="Edit project name and description"
+              >
+                <PencilIcon className="h-5 w-5" />
+              </button>
+            )}
           </div>
-          <p className="mt-2 text-sm text-gray-700">{project.description}</p>
-        </div>
-        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none flex gap-2">
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="inline-flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:w-auto"
-          >
-            <CloudArrowUpIcon className="h-5 w-5 mr-2" />
-            Upload Recording
-          </button>
-          <button
-            onClick={handleDownloadProject}
-            disabled={isDownloading || recordings.length === 0}
-            className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Download all recordings, spectrograms and annotations"
-          >
-            <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
-            {isDownloading ? "Downloading..." : "Download All"}
-          </button>
+          {project?.description && (
+            <p className="text-gray-600 mb-4">{project.description}</p>
+          )}
+
+          {/* Stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-6 gap-4 mt-4">
+            <div className="bg-gray-50 rounded p-3">
+              <p className="text-sm text-gray-600">Total Recordings</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {stats.totalRecordings}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded p-3">
+              <p className="text-sm text-gray-600">Finished</p>
+              <p className="text-2xl font-semibold text-green-600">
+                {stats.finishedRecordings}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded p-3">
+              <p className="text-sm text-gray-600">Annotated</p>
+              <p className="text-2xl font-semibold text-yellow-600">
+                {stats.annotatedRecordings}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded p-3">
+              <p className="text-sm text-gray-600">Spectrograms</p>
+              <div className="mt-1 space-y-1">
+                <p className="text-sm text-green-700">
+                  ✓ {stats.spectrogramReady} ready
+                </p>
+                {stats.spectrogramGenerating > 0 && (
+                  <p className="text-sm text-purple-700">
+                    ⟳ {stats.spectrogramGenerating} generating
+                  </p>
+                )}
+                {stats.spectrogramQueued > 0 && (
+                  <p className="text-sm text-blue-700">
+                    ⏱ {stats.spectrogramQueued} queued
+                  </p>
+                )}
+                {stats.spectrogramFailed > 0 && (
+                  <p className="text-sm text-red-700">
+                    ✗ {stats.spectrogramFailed} failed
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded p-3">
+              <p className="text-sm text-gray-600">Total Duration</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {stats.totalDuration} min
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded p-3">
+              <p className="text-sm text-gray-600">Progress</p>
+              <div className="mt-2 space-y-2">
+                {/* Finished progress */}
+                <div>
+                  <div className="flex justify-between text-xs text-gray-600 mb-1">
+                    <span>Finished</span>
+                    <span>{stats.finishedProgress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-green-600 h-2 rounded-full"
+                      style={{ width: `${stats.finishedProgress}%` }}
+                    />
+                  </div>
+                </div>
+                {/* Annotated progress */}
+                <div>
+                  <div className="flex justify-between text-xs text-gray-600 mb-1">
+                    <span>Annotated</span>
+                    <span>{stats.annotationProgress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-yellow-600 h-2 rounded-full"
+                      style={{ width: `${stats.annotationProgress}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Search and Filter Bar */}
-      <div className="mt-6 bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
+      {/* Toolbar */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Search */}
+          <div className="flex-1 min-w-[300px]">
             <div className="relative">
               <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
@@ -536,49 +543,83 @@ const ProjectDetailPage: React.FC = () => {
                 placeholder="Search recordings..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-3 py-2 w-full border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
+
+          {/* Actions */}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 flex items-center"
           >
             <FunnelIcon className="h-5 w-5 mr-2" />
             Filters
           </button>
+
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+          >
+            <PlusIcon className="h-5 w-5 mr-2" />
+            Upload Recording
+          </button>
+
           {selectedRecordings.size > 0 && (
-            <button
-              onClick={handleBulkDelete}
-              disabled={isDeleting}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
-            >
-              <TrashIcon className="h-5 w-5 mr-2" />
-              Delete Selected ({selectedRecordings.size})
-            </button>
+            <>
+              <button
+                onClick={handleBulkDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 flex items-center"
+              >
+                <TrashIcon className="h-5 w-5 mr-2" />
+                Delete Selected ({selectedRecordings.size})
+              </button>
+            </>
           )}
+
+          <button
+            onClick={handleDownloadAnnotations}
+            disabled={isDownloading || stats.annotatedRecordings === 0}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center min-w-[180px]"
+          >
+            <CloudArrowDownIcon className="h-5 w-5 mr-2" />
+            {isDownloading
+              ? `${(downloadProgress / 1024 / 1024).toFixed(1)} MB...`
+              : "Download Annotations"}
+          </button>
+
+          <button
+            onClick={handleDownloadAll}
+            disabled={isDownloadingFull || recordings.length === 0}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center min-w-[160px]"
+          >
+            <CloudArrowDownIcon className="h-5 w-5 mr-2" />
+            {isDownloadingFull
+              ? `${(downloadProgress / 1024 / 1024).toFixed(1)} MB...`
+              : "Download All"}
+          </button>
         </div>
 
+        {/* Filters */}
         {showFilters && (
           <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-5 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Annotation Status
+                Status
               </label>
               <select
                 value={annotationStatus}
-                onChange={(e) =>
-                  setAnnotationStatus(
-                    e.target.value as "all" | "annotated" | "unannotated",
-                  )
-                }
+                onChange={(e) => setAnnotationStatus(e.target.value as any)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="all">All Recordings</option>
-                <option value="annotated">Annotated Only</option>
-                <option value="unannotated">Unannotated Only</option>
+                <option value="all">All</option>
+                <option value="finished">Finished</option>
+                <option value="annotated">Annotated</option>
+                <option value="unannotated">Unannotated</option>
               </select>
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Min Duration (s)
@@ -591,6 +632,7 @@ const ProjectDetailPage: React.FC = () => {
                 placeholder="0"
               />
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Max Duration (s)
@@ -600,9 +642,10 @@ const ProjectDetailPage: React.FC = () => {
                 value={maxDuration}
                 onChange={(e) => setMaxDuration(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="3600"
+                placeholder="Any"
               />
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Sort By
@@ -612,11 +655,12 @@ const ProjectDetailPage: React.FC = () => {
                 onChange={(e) => setSortBy(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="created_at">Date Added</option>
+                <option value="created_at">Date Created</option>
                 <option value="filename">Filename</option>
                 <option value="duration">Duration</option>
               </select>
             </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Order
@@ -634,121 +678,19 @@ const ProjectDetailPage: React.FC = () => {
         )}
       </div>
 
-      <div className="mt-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">
-          Recordings ({recordings.length}) • Annotated (
-          {
-            recordings.filter(
-              (r) => r.annotation_count && r.annotation_count > 0,
-            ).length
-          }
-          )
-        </h2>
-        {recordings.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
-            <MusicalNoteIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">
-              No recordings found
-            </h3>
-            <p className="mt-1 text-sm text-gray-500">
-              {searchTerm
-                ? "Try adjusting your search criteria."
-                : "Upload your first bird song recording to get started."}
-            </p>
-            {!searchTerm && (
-              <div className="mt-6">
-                <button
-                  onClick={() => setShowUploadModal(true)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <CloudArrowUpIcon className="h-5 w-5 mr-2" />
-                  Upload Recording
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="bg-white shadow overflow-hidden sm:rounded-md">
-            <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={
-                    selectedRecordings.size === recordings.length &&
-                    recordings.length > 0
-                  }
-                  onChange={toggleSelectAll}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <span className="ml-3 text-sm font-medium text-gray-700">
-                  Select All
-                </span>
-              </div>
-            </div>
-            <ul className="divide-y divide-gray-200">
-              {recordings.map((recording) => (
-                <li
-                  key={recording.id}
-                  className="hover:bg-gray-50 transition-colors cursor-pointer"
-                  onClick={() => handleRecordingClick(recording.id)}
-                >
-                  <div className="px-4 py-4 sm:px-6 flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={selectedRecordings.has(recording.id)}
-                      onChange={() => toggleRecordingSelection(recording.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-4"
-                    />
-                    <div className="flex-1 flex items-center">
-                      <MusicalNoteIcon className="h-10 w-10 text-gray-400 mr-4" />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-gray-900">
-                            {recording.original_filename}
-                          </p>
-                          {(recording.annotation_count ?? 0) > 0 && (
-                            <span className="inline-flex items-center rounded-full px-2 text-xs font-semibold leading-5 bg-green-100 text-green-800">
-                              <CheckIcon className="h-3 w-3 mr-1" />
-                              Annotated
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          <span>
-                            Duration:{" "}
-                            {formatRecordingDuration(recording.duration)}
-                          </span>
-                          <span className="mx-2">•</span>
-                          <span>
-                            Sample Rate:{" "}
-                            {recording.sample_rate
-                              ? `${recording.sample_rate}Hz`
-                              : "Unknown"}
-                          </span>
-                          <span className="mx-2">•</span>
-                          <span>{formatDate(recording.created_at)}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteRecording(recording.id);
-                      }}
-                      className="ml-4 p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
-                      title="Delete recording"
-                    >
-                      <TrashIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
+      {/* Virtualized Recording List */}
+      <VirtualizedRecordingList
+        recordings={recordings}
+        pagination={pagination}
+        selectedRecordings={selectedRecordings}
+        onSelectRecording={handleSelectRecording}
+        onToggleSelectAll={handleToggleSelectAll}
+        onLoadMore={handleLoadMore}
+        isLoadingMore={loadingMore}
+        height={600}
+      />
 
+      {/* Upload Modal */}
       {showUploadModal && projectId && (
         <UploadRecordingModal
           projectId={parseInt(projectId)}
@@ -757,6 +699,7 @@ const ProjectDetailPage: React.FC = () => {
         />
       )}
 
+      {/* Edit Project Modal */}
       {showEditModal && project && (
         <EditProjectModal
           project={project}
@@ -768,4 +711,4 @@ const ProjectDetailPage: React.FC = () => {
   );
 };
 
-export default ProjectDetailPage;
+export default ProjectDetailPageOptimized;

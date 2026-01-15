@@ -4,10 +4,7 @@
  */
 
 import api, { annotationService, recordingService } from "./api";
-import {
-  notificationService,
-  NotificationMessages,
-} from "./notificationService";
+import { notification, Messages } from "../lib/notifications";
 import { BoundingBox, Recording } from "../types";
 
 export interface SaveAnnotationOptions {
@@ -41,7 +38,7 @@ class AnnotationApiService {
 
     if (this.saveInProgress) {
       if (showNotification) {
-        notificationService.warning("Save already in progress");
+        notification.warning("Save already in progress");
       }
       return { success: false, timestamp: new Date() };
     }
@@ -60,7 +57,7 @@ class AnnotationApiService {
           this.lastSaveTime = new Date();
 
           if (showNotification) {
-            notificationService.success(NotificationMessages.ANNOTATION_SAVED);
+            notification.success(Messages.ANNOTATION.SAVE_SUCCESS);
           }
 
           return { success: true, timestamp: this.lastSaveTime };
@@ -80,7 +77,7 @@ class AnnotationApiService {
 
       if (showNotification) {
         const errorMessage = this.getErrorMessage(error);
-        notificationService.error(errorMessage);
+        notification.error(errorMessage);
       }
 
       return { success: false, timestamp: new Date() };
@@ -106,9 +103,9 @@ class AnnotationApiService {
       const recording = await recordingService.getRecording(recordingId);
 
       if (!recording) {
-        const errorMsg = NotificationMessages.RECORDING_NOT_FOUND;
+        const errorMsg = Messages.RECORDING.NOT_FOUND;
         if (showNotification) {
-          notificationService.error(errorMsg);
+          notification.error(errorMsg);
         }
         return { recording: null, annotations: [], error: errorMsg };
       }
@@ -117,7 +114,7 @@ class AnnotationApiService {
       let annotations: BoundingBox[] = [];
 
       if (showNotification) {
-        notificationService.success(NotificationMessages.RECORDING_LOADED);
+        notification.success(Messages.RECORDING.LOADED);
       }
 
       return { recording, annotations, error: null };
@@ -126,7 +123,7 @@ class AnnotationApiService {
 
       const errorMsg = this.getErrorMessage(error);
       if (showNotification) {
-        notificationService.error(errorMsg);
+        notification.error(errorMsg);
       }
 
       return { recording: null, annotations: [], error: errorMsg };
@@ -161,7 +158,7 @@ class AnnotationApiService {
         onStatusUpdate?.(status);
 
         if (status === "completed" && spectrogramUrl) {
-          notificationService.success(NotificationMessages.SPECTROGRAM_LOADED);
+          notification.success(Messages.RECORDING.SPECTROGRAM_LOADED);
           return { url: spectrogramUrl, error: null };
         }
 
@@ -170,7 +167,7 @@ class AnnotationApiService {
         }
 
         if (status === "processing" && attempt === 0) {
-          notificationService.info(NotificationMessages.SPECTROGRAM_PROCESSING);
+          notification.info(Messages.RECORDING.SPECTROGRAM_PROCESSING);
         }
 
         await this.delay(pollInterval);
@@ -181,7 +178,7 @@ class AnnotationApiService {
       console.error("Failed to load spectrogram:", error);
 
       const errorMsg = this.getErrorMessage(error);
-      notificationService.error(errorMsg);
+      notification.error(errorMsg);
 
       return { url: null, error: errorMsg };
     }
@@ -192,7 +189,7 @@ class AnnotationApiService {
    */
   async generateSpectrogram(recordingId: number): Promise<boolean> {
     try {
-      notificationService.info(NotificationMessages.SPECTROGRAM_GENERATING);
+      notification.info(Messages.RECORDING.SPECTROGRAM_GENERATING);
 
       // Note: Need to add generateSpectrogram endpoint to recordingService
       // For now, we'll use the updateStatus endpoint or similar
@@ -203,7 +200,7 @@ class AnnotationApiService {
       console.error("Failed to generate spectrogram:", error);
 
       const errorMsg = this.getErrorMessage(error);
-      notificationService.error(errorMsg);
+      notification.error(errorMsg);
 
       return false;
     }
@@ -212,10 +209,15 @@ class AnnotationApiService {
   /**
    * Load project recordings for navigation
    */
-  async loadProjectRecordings(projectId: number): Promise<{
+  async loadProjectRecordings(
+    projectId: number,
+    options: { showNotification?: boolean } = {},
+  ): Promise<{
     recordings: Recording[];
     error: string | null;
   }> {
+    const { showNotification = true } = options;
+
     try {
       const recordingsResponse =
         await recordingService.getRecordings(projectId);
@@ -228,69 +230,52 @@ class AnnotationApiService {
 
       const errorMsg = this.getErrorMessage(error);
 
+      // Show notification to inform user about the failure
+      if (showNotification) {
+        notification.error(errorMsg);
+      }
+
       return { recordings: [], error: errorMsg };
     }
   }
 
   /**
    * Delete bounding boxes
+   *
+   * NOTE: This method is not implemented. Use saveAnnotations() with filtered boxes instead.
+   * The backend does not have a dedicated endpoint for batch box deletion.
+   *
+   * @throws Error always - method not implemented
+   * @deprecated Use saveAnnotations with filtered bounding_boxes array instead
    */
   async deleteBoundingBoxes(
-    annotationId: number,
-    boxIds: number[],
-    options: { showNotification?: boolean } = {},
+    _annotationId: number,
+    _boxIds: number[],
+    _options: { showNotification?: boolean } = {},
   ): Promise<boolean> {
-    const { showNotification = true } = options;
-
-    try {
-      // Note: This would require a backend endpoint for batch deletion
-      // For now, we'll update with the filtered list
-      if (showNotification) {
-        notificationService.success(NotificationMessages.ANNOTATION_DELETED);
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Failed to delete annotations:", error);
-
-      if (showNotification) {
-        const errorMsg = this.getErrorMessage(error);
-        notificationService.error(errorMsg);
-      }
-
-      return false;
-    }
+    throw new Error(
+      "deleteBoundingBoxes is not implemented. Use saveAnnotations() with filtered boxes instead."
+    );
   }
 
   /**
    * Update bounding box label
+   *
+   * NOTE: This method is not implemented. Use saveAnnotations() with updated boxes instead.
+   * The backend does not have a dedicated endpoint for single box updates.
+   *
+   * @throws Error always - method not implemented
+   * @deprecated Use saveAnnotations with updated bounding_boxes array instead
    */
   async updateBoundingBoxLabel(
-    annotationId: number,
-    boxId: number,
-    label: string,
-    options: { showNotification?: boolean } = {},
+    _annotationId: number,
+    _boxId: number,
+    _label: string,
+    _options: { showNotification?: boolean } = {},
   ): Promise<boolean> {
-    const { showNotification = true } = options;
-
-    try {
-      // Note: This would require a backend endpoint for single box update
-      // For now, we'll handle it through full annotation update
-      if (showNotification) {
-        notificationService.success(NotificationMessages.LABEL_UPDATED);
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Failed to update label:", error);
-
-      if (showNotification) {
-        const errorMsg = this.getErrorMessage(error);
-        notificationService.error(errorMsg);
-      }
-
-      return false;
-    }
+    throw new Error(
+      "updateBoundingBoxLabel is not implemented. Use saveAnnotations() with updated boxes instead."
+    );
   }
 
   /**
@@ -320,18 +305,18 @@ class AnnotationApiService {
     }
 
     if (error.response?.status === 403) {
-      return NotificationMessages.PERMISSION_DENIED;
+      return Messages.AUTH.UNAUTHORIZED;
     }
 
     if (error.response?.status === 401) {
-      return NotificationMessages.SESSION_EXPIRED;
+      return Messages.AUTH.SESSION_EXPIRED;
     }
 
     if (error.code === "ECONNABORTED" || error.code === "ERR_NETWORK") {
-      return NotificationMessages.NETWORK_ERROR;
+      return Messages.GENERAL.NETWORK_ERROR;
     }
 
-    return NotificationMessages.UNEXPECTED_ERROR;
+    return Messages.GENERAL.UNKNOWN_ERROR;
   }
 
   /**

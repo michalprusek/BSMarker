@@ -17,6 +17,23 @@ from app.schemas.annotation import Annotation as AnnotationSchema
 from app.schemas.annotation import AnnotationCreate, AnnotationUpdate
 
 
+def prepare_bounding_box_dict(box_data) -> dict:
+    """
+    Prepare bounding box data for database insertion.
+    - Maps 'metadata' from schema to 'extra_metadata' for database column
+    - Rounds pixel coordinates to prevent floating-point precision issues
+    """
+    box_dict = box_data.model_dump()
+    if "metadata" in box_dict:
+        box_dict["extra_metadata"] = box_dict.pop("metadata")
+
+    for coord_field in ["x", "y", "width", "height"]:
+        if coord_field in box_dict and box_dict[coord_field] is not None:
+            box_dict[coord_field] = round(float(box_dict[coord_field]))
+
+    return box_dict
+
+
 def convert_annotation_orm_to_dict(annotation_orm):
     """
     Convert an Annotation ORM object to a dictionary format that works with Pydantic schemas.
@@ -100,16 +117,7 @@ def create_annotation(
     db.flush()
 
     for box_data in annotation_in.bounding_boxes:
-        box_dict = box_data.model_dump()
-        # Map 'metadata' from schema to 'extra_metadata' for database column
-        if "metadata" in box_dict:
-            box_dict["extra_metadata"] = box_dict.pop("metadata")
-
-        # Round pixel coordinates to prevent floating-point precision issues
-        for coord_field in ["x", "y", "width", "height"]:
-            if coord_field in box_dict and box_dict[coord_field] is not None:
-                box_dict[coord_field] = round(float(box_dict[coord_field]))
-
+        box_dict = prepare_bounding_box_dict(box_data)
         box = BoundingBox(annotation_id=annotation.id, **box_dict)
         db.add(box)
 
@@ -194,16 +202,7 @@ def update_annotation(
         db.query(BoundingBox).filter(BoundingBox.annotation_id == annotation_id).delete()
 
         for box_data in annotation_in.bounding_boxes:
-            box_dict = box_data.model_dump()
-            # Map 'metadata' from schema to 'extra_metadata' for database column
-            if "metadata" in box_dict:
-                box_dict["extra_metadata"] = box_dict.pop("metadata")
-
-            # Round pixel coordinates to prevent floating-point precision issues
-            for coord_field in ["x", "y", "width", "height"]:
-                if coord_field in box_dict and box_dict[coord_field] is not None:
-                    box_dict[coord_field] = round(float(box_dict[coord_field]))
-
+            box_dict = prepare_bounding_box_dict(box_data)
             box = BoundingBox(annotation_id=annotation_id, **box_dict)
             db.add(box)
 

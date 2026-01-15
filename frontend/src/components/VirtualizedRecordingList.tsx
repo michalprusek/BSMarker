@@ -1,9 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { format } from "date-fns";
-import {
-  ChartBarIcon,
-  CheckIcon,
-} from "@heroicons/react/24/outline";
+import { ChartBarIcon } from "@heroicons/react/24/outline";
 import { useNavigate } from "react-router-dom";
 import { Recording } from "../types";
 import { PaginationMetadata } from "../types/pagination";
