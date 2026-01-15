@@ -12,6 +12,7 @@ import LoginPage from "./pages/LoginPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import ProjectDetailPageOptimized from "./pages/ProjectDetailPageOptimized";
 import AnnotationEditor from "./pages/AnnotationEditor";
+import { AnnotationEditorProvider } from "./contexts/AnnotationEditorContext";
 import AdminUsersPage from "./pages/AdminUsersPage";
 
 const router = createBrowserRouter(
@@ -40,7 +41,11 @@ const router = createBrowserRouter(
             },
             {
               path: "/recordings/:recordingId/annotate",
-              element: <AnnotationEditor />,
+              element: (
+                <AnnotationEditorProvider>
+                  <AnnotationEditor />
+                </AnnotationEditorProvider>
+              ),
             },
             {
               path: "/admin/users",

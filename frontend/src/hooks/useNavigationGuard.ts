@@ -10,9 +10,6 @@ import { useBlocker } from "react-router-dom";
 import toast from "react-hot-toast";
 import { BoundingBox } from "../types";
 import {
-  detectConflicts,
-  BoundingBoxConflict,
-  // New unified conflict system
   detectAllConflicts,
   UnifiedConflict,
 } from "../utils/conflictDetection";
