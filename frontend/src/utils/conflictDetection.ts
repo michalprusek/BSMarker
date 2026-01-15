@@ -12,18 +12,6 @@ export const MIN_TIME_GAP = 0.010; // 10 milliseconds
 const RESOLUTION_GAP = 0.006; // 6 milliseconds
 
 /**
- * Interface representing a conflict between two bounding boxes
- * @deprecated Use UnifiedConflict instead for new code
- */
-export interface BoundingBoxConflict {
-  box1Index: number;
-  box2Index: number;
-  box1: BoundingBox;
-  box2: BoundingBox;
-  overlapAmount: number; // in seconds
-}
-
-/**
  * Type of conflict between bounding boxes
  */
 export type ConflictType = 'gap' | 'nesting';
@@ -201,75 +189,7 @@ export function detectNestingConflicts(boxes: BoundingBox[]): UnifiedConflict[] 
 }
 
 /**
- * Detects conflicts between bounding boxes where the time gap is less than MIN_TIME_GAP
- * Optimized algorithm: O(n log n) due to sorting + O(n) for single pass = O(n log n)
- *
- * @param boxes Array of bounding boxes to check
- * @returns Array of conflicts found
- * @deprecated Use detectGapConflicts for UnifiedConflict support
- */
-export function detectConflicts(boxes: BoundingBox[]): BoundingBoxConflict[] {
-  const conflicts: BoundingBoxConflict[] = [];
-
-  if (boxes.length < 2) {
-    return conflicts; // No conflicts possible with 0 or 1 boxes
-  }
-
-  // Sort boxes by start time for efficient conflict detection - O(n log n)
-  const sortedBoxes = boxes
-    .map((box, index) => ({ box, index }))
-    .sort((a, b) => a.box.start_time - b.box.start_time);
-
-  // Single pass through sorted boxes to find conflicts - O(n)
-  // We maintain a set of "active" boxes (boxes that haven't ended yet)
-  // and check each new box against all active boxes
-  const activeBoxes: Array<{ box: BoundingBox; index: number }> = [];
-
-  for (let i = 0; i < sortedBoxes.length; i++) {
-    const current = sortedBoxes[i];
-
-    // Remove boxes from active set that have ended before current box starts
-    // (no need to check them anymore)
-    let activeIndex = 0;
-    while (activeIndex < activeBoxes.length) {
-      const active = activeBoxes[activeIndex];
-      if (active.box.end_time + MIN_TIME_GAP <= current.box.start_time) {
-        // This box is no longer active, remove it
-        activeBoxes.splice(activeIndex, 1);
-      } else {
-        activeIndex++;
-      }
-    }
-
-    // Check current box against all remaining active boxes
-    for (const active of activeBoxes) {
-      const gap = current.box.start_time - active.box.end_time;
-
-      // Detect gap conflicts for both overlaps and insufficient gaps
-      // Exclude nesting cases (where current box is completely inside active box)
-      // Use >= to include boxes with same end_time but insufficient gap
-      if (gap < MIN_TIME_GAP && current.box.end_time >= active.box.end_time) {
-        const overlapAmount = MIN_TIME_GAP - gap;
-        conflicts.push({
-          box1Index: active.index,
-          box2Index: current.index,
-          box1: active.box,
-          box2: current.box,
-          overlapAmount,
-        });
-      }
-    }
-
-    // Add current box to active set
-    activeBoxes.push(current);
-  }
-
-  return conflicts;
-}
-
-/**
  * Detects gap conflicts between bounding boxes (time gap less than MIN_TIME_GAP)
- * Returns UnifiedConflict for consistency with nesting detection
  * Optimized algorithm: O(n log n) due to sorting + O(n) for single pass
  *
  * @param boxes Array of bounding boxes to check
@@ -353,19 +273,23 @@ export function detectAllConflicts(boxes: BoundingBox[]): UnifiedConflict[] {
 }
 
 /**
- * Resolves conflicts by adjusting bounding box times
+ * Internal helper: Resolves gap conflicts by adjusting bounding box times
  * Algorithm:
  * 1. Find the midpoint of the overlap
- * 2. Shrink each box by 5ms towards the midpoint
- * 3. This creates a 10ms gap between the boxes
- *
- * @param boxes Array of bounding boxes
- * @param conflicts Array of conflicts to resolve
- * @returns New array of bounding boxes with conflicts resolved
+ * 2. Shrink each box by 6ms towards the midpoint
+ * 3. This creates a 12ms gap between the boxes
  */
-export function resolveConflicts(
+interface GapConflict {
+  box1Index: number;
+  box2Index: number;
+  box1: BoundingBox;
+  box2: BoundingBox;
+  overlapAmount: number;
+}
+
+function resolveGapConflicts(
   boxes: BoundingBox[],
-  conflicts: BoundingBoxConflict[]
+  conflicts: GapConflict[]
 ): BoundingBox[] {
   // Create a copy of the boxes array
   const resolvedBoxes = [...boxes];
@@ -384,10 +308,10 @@ export function resolveConflicts(
     const box1Mod = modifications.get(box1Index) || {};
     const box2Mod = modifications.get(box2Index) || {};
 
-    // Adjust box1's end time: midpoint - 5ms
+    // Adjust box1's end time: midpoint - 6ms
     const newBox1EndTime = midpoint - RESOLUTION_GAP;
 
-    // Adjust box2's start time: midpoint + 5ms
+    // Adjust box2's start time: midpoint + 6ms
     const newBox2StartTime = midpoint + RESOLUTION_GAP;
 
     // Only update if the new time is more restrictive (shrinks the box more)
@@ -452,15 +376,13 @@ export function resolveAllConflicts(
     }
   }
 
-  // Convert UnifiedConflict gap conflicts to BoundingBoxConflict with remapped indices
-  const remappedGapConflicts: BoundingBoxConflict[] = gapConflicts
+  // Convert UnifiedConflict gap conflicts to internal format with remapped indices
+  const remappedGapConflicts: GapConflict[] = gapConflicts
     .map((c) => {
       const newBox1Index = indexMapping.get(c.box1Index);
       const newBox2Index = indexMapping.get(c.box2Index);
 
       // Skip gap conflicts involving nested boxes (they were already removed in Step 1)
-      // This is expected behavior: if a nested box was part of a gap conflict,
-      // removing it makes that gap conflict irrelevant
       if (newBox1Index === undefined || newBox2Index === undefined) {
         return null;
       }
@@ -473,28 +395,14 @@ export function resolveAllConflicts(
         overlapAmount: c.overlapAmount!,
       };
     })
-    .filter((c): c is BoundingBoxConflict => c !== null);
+    .filter((c): c is GapConflict => c !== null);
 
   // Step 3: Apply gap resolution to remaining boxes
   if (remappedGapConflicts.length > 0) {
-    resolved = resolveConflicts(resolved, remappedGapConflicts);
+    resolved = resolveGapConflicts(resolved, remappedGapConflicts);
   }
 
   return resolved;
-}
-
-/**
- * Formats conflict information for display
- * @param conflict The conflict to format
- * @returns Human-readable conflict description
- * @deprecated Use formatUnifiedConflictDescription for UnifiedConflict
- */
-export function formatConflictDescription(conflict: BoundingBoxConflict): string {
-  const box1Label = conflict.box1.label || `Box ${conflict.box1Index + 1}`;
-  const box2Label = conflict.box2.label || `Box ${conflict.box2Index + 1}`;
-  const overlapMs = (conflict.overlapAmount * 1000).toFixed(1);
-
-  return `${box1Label} and ${box2Label} (gap shortage: ${overlapMs}ms)`;
 }
 
 /**
@@ -502,7 +410,7 @@ export function formatConflictDescription(conflict: BoundingBoxConflict): string
  * @param conflict The unified conflict to format
  * @returns Human-readable conflict description
  */
-export function formatUnifiedConflictDescription(conflict: UnifiedConflict): string {
+export function formatConflictDescription(conflict: UnifiedConflict): string {
   const box1Label = conflict.box1.label || `Box ${conflict.box1Index + 1}`;
   const box2Label = conflict.box2.label || `Box ${conflict.box2Index + 1}`;
 

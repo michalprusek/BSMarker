@@ -132,8 +132,7 @@ const AnnotationEditor: React.FC = () => {
   const [boundingBoxes, setBoundingBoxes] = useState<BoundingBox[]>([]);
   const [selectedBox, setSelectedBox] = useState<BoundingBox | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_currentTime, setCurrentTime] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [tempBox, setTempBox] = useState<BoundingBox | null>(null);
   const [spectrogramDimensions, setSpectrogramDimensions] = useState({
@@ -225,6 +224,13 @@ const AnnotationEditor: React.FC = () => {
   // PERF: Track active zooming to hide labels during zoom for smoother rendering
   const [isActivelyZooming, setIsActivelyZooming] = useState<boolean>(false);
   const zoomDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  // PERF: Refs for zoom values to avoid recreating throttled handlers on every zoom change
+  const zoomLevelRef = useRef<number>(zoomLevel);
+  const maxZoomLevelRef = useRef<number>(50);
+  // PERF: Ref for debouncing WaveSurfer redraw during zoom
+  const wavesurferZoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // PERF: Ref for boundingBoxes to avoid recreating scroll handler on every box change
+  const boundingBoxesRef = useRef<BoundingBox[]>(boundingBoxes);
   const [zoomInputValue, setZoomInputValue] = useState<string>("");
   const [scrollOffset, setScrollOffset] = useState<number>(0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -296,7 +302,11 @@ const AnnotationEditor: React.FC = () => {
   // Update visible boxes when viewport or boxes change
   // PERF: Now also updates during drag/resize for smoother rendering
   // The filtering is O(n) but faster than rendering all boxes
+  // PERF: Skip during active zooming - catches up after 150ms when zoom stops
   useEffect(() => {
+    // Skip recalculation during active zooming for smoother zoom experience
+    if (isActivelyZooming) return;
+
     const bounds = calculateVisibleBounds();
     const visible = boundingBoxes.filter((box) => {
       // Check if box intersects with viewport
@@ -308,7 +318,7 @@ const AnnotationEditor: React.FC = () => {
       );
     });
     setVisibleBoundingBoxes(visible);
-  }, [boundingBoxes, calculateVisibleBounds]);
+  }, [boundingBoxes, calculateVisibleBounds, isActivelyZooming]);
 
   // Get Nyquist frequency (sample_rate / 2) or fallback to 22050 Hz
   const getNyquistFrequency = useCallback(() => {
@@ -325,6 +335,19 @@ const AnnotationEditor: React.FC = () => {
     const calculated = duration / DIVISOR;
     return Math.min(MAX_MAX_ZOOM, Math.max(MIN_MAX_ZOOM, calculated));
   }, [duration]);
+
+  // PERF: Keep refs in sync for use in throttled handlers (avoids throttle recreation)
+  useEffect(() => {
+    zoomLevelRef.current = zoomLevel;
+  }, [zoomLevel]);
+
+  useEffect(() => {
+    maxZoomLevelRef.current = maxZoomLevel;
+  }, [maxZoomLevel]);
+
+  useEffect(() => {
+    boundingBoxesRef.current = boundingBoxes;
+  }, [boundingBoxes]);
 
   // Initialize custom hooks for coordinate transformations and time/frequency conversions
   const { transformMousePoint, clampSeekPosition, getMaxWorldX } =
@@ -1145,6 +1168,7 @@ const AnnotationEditor: React.FC = () => {
   }, [spectrogramDimensions, zoomLevel, baseSpectrogramDimensions]);
 
   // Handle zoom changes for waveform - use WaveSurfer's zoom method
+  // PERF: Debounce the expensive redraw operation during continuous zoom
   useEffect(() => {
     if (wavesurferRef.current && waveformRef.current) {
       try {
@@ -1160,13 +1184,24 @@ const AnnotationEditor: React.FC = () => {
           // Use WaveSurfer's zoom method to set the pixels per second
           (wavesurferRef.current as any).zoom?.(zoomedPxPerSec);
 
-          // Force WaveSurfer to redraw with the new zoom
-          (wavesurferRef.current as any).drawer?.redraw?.();
+          // PERF: Debounce the expensive redraw - only after 100ms of zoom inactivity
+          if (wavesurferZoomTimeoutRef.current) {
+            clearTimeout(wavesurferZoomTimeoutRef.current);
+          }
+          wavesurferZoomTimeoutRef.current = setTimeout(() => {
+            (wavesurferRef.current as any).drawer?.redraw?.();
+          }, 100);
         }
       } catch (e) {
         // Audio not loaded yet, ignore
       }
     }
+
+    return () => {
+      if (wavesurferZoomTimeoutRef.current) {
+        clearTimeout(wavesurferZoomTimeoutRef.current);
+      }
+    };
   }, [zoomLevel, baseSpectrogramDimensions.width]);
 
   // Set initial base dimensions only once when spectrogram loads
@@ -1689,11 +1724,11 @@ const AnnotationEditor: React.FC = () => {
     const wavesurfer = WaveSurfer.create({
       container: waveformRef.current,
       waveColor: "#3B82F6", // Modern blue gradient
-      progressColor: "#1E40AF", // Deep blue for progress
-      cursorColor: "transparent", // Hide wavesurfer cursor since we have unified cursor
+      progressColor: "transparent", // Hide progress since we use red cursor line
+      cursorColor: "#EF4444", // Red cursor to match spectrogram
       barWidth: 3,
       barRadius: 3,
-      cursorWidth: 0, // Hide cursor
+      cursorWidth: 2, // Show red cursor
       height: waveformHeight, // 23% of total height
       barGap: 2,
       barHeight: 1, // Full height bars for better visibility
@@ -2536,7 +2571,8 @@ const AnnotationEditor: React.FC = () => {
     if (isSelecting) return "crosshair";
 
     // Check if mouse is over a bounding box
-    const isOverBox = boundingBoxes.some(
+    // PERF: Use visibleBoundingBoxes (~500) instead of boundingBoxes (51k) for O(n) check
+    const isOverBox = visibleBoundingBoxes.some(
       (box) =>
         mousePosition.x >= box.x &&
         mousePosition.x <= box.x + box.width &&
@@ -2558,7 +2594,7 @@ const AnnotationEditor: React.FC = () => {
     draggingBox,
     resizingBox,
     isSelecting,
-    boundingBoxes,
+    visibleBoundingBoxes,
     mousePosition,
     spectrogramDimensions.height,
   ]);
@@ -3420,6 +3456,7 @@ const AnnotationEditor: React.FC = () => {
   };
 
   // Throttled mouse wheel zoom handler with cursor-centered zooming
+  // PERF: Uses refs instead of state to avoid recreating throttle function on every zoom change
   const handleWheelZoom = useMemo(
     () =>
       throttle((event: WheelEvent) => {
@@ -3441,15 +3478,19 @@ const AnnotationEditor: React.FC = () => {
 
         // Use requestAnimationFrame for smooth updates
         requestAnimationFrame(() => {
+          // PERF: Read current zoom values from refs to avoid closure over stale state
+          const currentZoom = zoomLevelRef.current;
+          const currentMaxZoom = maxZoomLevelRef.current;
+
           // Calculate zoom factor based on wheel delta
           const zoomSpeed = 0.002;
           const delta = -event.deltaY * zoomSpeed;
           const zoomFactor = Math.exp(delta);
 
           // Calculate new zoom level with limits (dynamic based on duration)
-          const newZoom = Math.max(1, Math.min(maxZoomLevel, zoomLevel * zoomFactor));
+          const newZoom = Math.max(1, Math.min(currentMaxZoom, currentZoom * zoomFactor));
 
-          if (newZoom === zoomLevel) return;
+          if (newZoom === currentZoom) return;
 
           // Get cursor position relative to spectrogram container
           const cursorX =
@@ -3462,7 +3503,7 @@ const AnnotationEditor: React.FC = () => {
 
           // Calculate world coordinates at cursor position (horizontal only)
           // World position = (cursor position in viewport + scroll offset) / current zoom
-          const worldX = (cursorX + currentScrollLeft) / zoomLevel;
+          const worldX = (cursorX + currentScrollLeft) / currentZoom;
 
           // Calculate new offset to keep cursor position fixed (horizontal only)
           // New scroll = world position * new zoom - cursor position in viewport
@@ -3492,7 +3533,7 @@ const AnnotationEditor: React.FC = () => {
           // WaveSurfer will automatically adjust to the new container width
         });
       }, 16), // 60 FPS throttle
-    [zoomLevel, spectrogramDimensions.width, maxZoomLevel],
+    [spectrogramDimensions.width], // PERF: Removed zoomLevel and maxZoomLevel - using refs instead
   );
 
   // Clean up throttled function and zoom debounce on unmount
@@ -3506,6 +3547,7 @@ const AnnotationEditor: React.FC = () => {
   }, [handleWheelZoom]);
 
   // Throttled scroll handler for performance
+  // PERF: Uses boundingBoxesRef to avoid recreating throttle function on every box change
   const handleScrollOptimized = useMemo(
     () =>
       throttle((e: React.UIEvent<HTMLDivElement>) => {
@@ -3525,13 +3567,14 @@ const AnnotationEditor: React.FC = () => {
         // Update visible bounds with requestAnimationFrame for smoothness
         requestAnimationFrame(() => {
           const bounds = calculateVisibleBounds();
-          const visible = boundingBoxes.filter((box) => {
+          // PERF: Use ref to avoid closure over stale boundingBoxes
+          const visible = boundingBoxesRef.current.filter((box) => {
             return box.x < bounds.right && box.x + box.width > bounds.left;
           });
           setVisibleBoundingBoxes(visible);
         });
       }, 16), // 60 FPS throttle
-    [boundingBoxes, calculateVisibleBounds],
+    [calculateVisibleBounds], // PERF: Removed boundingBoxes - using ref instead
   );
 
   // Clean up scroll throttled function
@@ -4244,7 +4287,6 @@ const AnnotationEditor: React.FC = () => {
                             zoomLevel={zoomLevel}
                             scrollOffset={scrollOffset}
                             waveColor="#3B82F6"
-                            progressColor="#1E40AF"
                             onReady={(dur) => {
                               setDuration(dur);
                             }}
@@ -4863,12 +4905,13 @@ const AnnotationEditor: React.FC = () => {
                   )}
 
                   {/* Cursor line only for spectrogram area */}
-                  {duration > 0 && (
+                  {duration > 0 && currentTime >= 0 && (
                     <Line
                       points={[
-                        timelineCursorPosition, // Already in zoomed coordinates
+                        // Calculate position directly from currentTime to ensure it updates with zoom
+                        (currentTime / duration) * CoordinateUtils.getZoomedContentWidth(baseSpectrogramDimensions.width, zoomLevel),
                         0,
-                        timelineCursorPosition, // Already in zoomed coordinates
+                        (currentTime / duration) * CoordinateUtils.getZoomedContentWidth(baseSpectrogramDimensions.width, zoomLevel),
                         baseSpectrogramDimensions.height *
                           LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO, // World space height (will be scaled by Stage scaleY)
                       ]}
