@@ -9,7 +9,7 @@ import React from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import {
   UnifiedConflict,
-  formatUnifiedConflictDescription,
+  formatConflictDescription,
 } from "../utils/conflictDetection";
 import BaseModal, { ModalBody, ModalFooter } from "./shared/BaseModal";
 
@@ -93,7 +93,7 @@ export const ConflictWarningModal: React.FC<ConflictWarningModalProps> = ({
                 Conflict #{index + 1}
               </div>
               <div className="text-xs text-gray-500">
-                {formatUnifiedConflictDescription(conflict)}
+                {formatConflictDescription(conflict)}
               </div>
               {conflict.type === 'gap' && conflict.overlapAmount !== undefined && (
                 <div className="text-xs text-orange-600 mt-1">

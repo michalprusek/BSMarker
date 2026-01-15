@@ -2,10 +2,11 @@ import logging
 import time
 from io import BytesIO
 
-from app.core.config import settings
 from minio import Minio
 from minio.error import S3Error
 from urllib3.exceptions import MaxRetryError, ResponseError
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,10 @@ class MinioClient:
         """Get file as a stream for use with StreamingResponse."""
         try:
             response = self.client.get_object(bucket_name, object_name)
-            return BytesIO(response.read())
+            data = BytesIO(response.read())
+            response.close()
+            response.release_conn()
+            return data
         except S3Error as e:
             logger.error(f"Error getting file: {e}")
             raise

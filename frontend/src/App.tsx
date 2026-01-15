@@ -10,7 +10,7 @@ import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LoginPage from "./pages/LoginPage";
 import ProjectsPage from "./pages/ProjectsPage";
-import ProjectDetailPageOptimized from "./pages/ProjectDetailPageOptimized";
+import ProjectDetailPage from "./pages/ProjectDetailPage";
 import AnnotationEditor from "./pages/AnnotationEditor";
 import { AnnotationEditorProvider } from "./contexts/AnnotationEditorContext";
 import AdminUsersPage from "./pages/AdminUsersPage";
@@ -37,7 +37,7 @@ const router = createBrowserRouter(
             },
             {
               path: "/projects/:projectId",
-              element: <ProjectDetailPageOptimized />,
+              element: <ProjectDetailPage />,
             },
             {
               path: "/recordings/:recordingId/annotate",

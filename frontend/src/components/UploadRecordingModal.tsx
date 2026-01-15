@@ -65,7 +65,6 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
   };
 
   const handleUpload = async () => {
-    console.log("Upload: Starting upload process");
     if (!files || files.length === 0) {
       toast.error("Please select at least one file");
       return;
@@ -80,7 +79,6 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
       return;
     }
 
-    console.log(`Upload: Processing ${files.length} file(s)`);
     setUploading(true);
     let successCount = 0;
     let failCount = 0;
@@ -89,29 +87,18 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
       // Upload files sequentially to avoid overwhelming the server
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        console.log(
-          `Upload: Starting upload for file ${i + 1}/${files.length}: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`,
-        );
 
         try {
           setUploadProgress((prev) => ({ ...prev, [file.name]: 0 }));
-          console.log(`Upload: Calling uploadRecording for ${file.name}...`);
 
-          const startTime = Date.now();
           await recordingService.uploadRecording(projectId, file, (percent) => {
             setUploadProgress((prev) => ({ ...prev, [file.name]: percent }));
           });
-          const uploadTime = Date.now() - startTime;
 
-          console.log(
-            `Upload: Successfully uploaded ${file.name} in ${uploadTime}ms`,
-          );
           setUploadProgress((prev) => ({ ...prev, [file.name]: 100 }));
           successCount++;
         } catch (error: any) {
-          console.error(`Upload: Failed to upload ${file.name}:`, error);
-          console.error("Upload: Error response:", error.response);
-          console.error("Upload: Error data:", error.response?.data);
+          console.error(`Failed to upload ${file.name}:`, error);
           failCount++;
 
           // Use the error message from the service or fallback
@@ -120,10 +107,6 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
           toast.error(`Failed to upload ${file.name}: ${errorMessage}`);
         }
       }
-
-      console.log(
-        `Upload: Finished. Success: ${successCount}, Failed: ${failCount}`,
-      );
 
       if (successCount > 0) {
         toast.success(`Successfully uploaded ${successCount} file(s)`);
@@ -140,10 +123,9 @@ const UploadRecordingModal: React.FC<UploadRecordingModalProps> = ({
         toast.error(`Failed to upload ${failCount} file(s)`);
       }
     } catch (error) {
-      console.error("Upload: Unexpected error in upload process:", error);
+      console.error("Unexpected error in upload process:", error);
       toast.error("Unexpected error during upload");
     } finally {
-      console.log("Upload: Cleaning up...");
       setUploading(false);
 
       // Don't clear progress immediately to show completion status
