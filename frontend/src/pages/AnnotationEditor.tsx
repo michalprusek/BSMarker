@@ -1610,12 +1610,37 @@ const AnnotationEditor: React.FC = () => {
           audioUrlRef.current = url;
           setAudioUrl(url); // Trigger re-render
         } else {
-          console.error("Failed to fetch audio");
-          toast.error("Failed to load audio");
+          console.error("Failed to fetch audio:", response.status);
+          // Provide specific error messages based on HTTP status
+          let errorMessage = "Failed to load audio";
+          switch (response.status) {
+            case 401:
+              errorMessage = "Session expired - please refresh the page";
+              break;
+            case 403:
+              errorMessage = "You don't have permission to access this recording";
+              break;
+            case 404:
+              errorMessage = "Audio file not found - it may have been deleted";
+              break;
+            case 500:
+            case 502:
+            case 503:
+              errorMessage = "Server error - please try again later";
+              break;
+          }
+          toast.error(errorMessage);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to fetch audio:", error);
-        toast.error("Failed to load audio");
+        // Provide specific error messages for different error types
+        let errorMessage = "Failed to load audio";
+        if (error.name === "AbortError") {
+          errorMessage = "Audio loading was cancelled";
+        } else if (error.name === "TypeError" || error.message?.includes("network")) {
+          errorMessage = "Network error - check your connection";
+        }
+        toast.error(errorMessage);
       }
       return;
     }

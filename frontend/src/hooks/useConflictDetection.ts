@@ -2,8 +2,8 @@
  * useConflictDetection - Bounding box conflict management
  *
  * Extracts conflict detection and resolution logic from AnnotationEditor.
- * Handles both nesting conflicts (overlapping boxes) and gap conflicts
- * (boxes closer than 10ms minimum gap).
+ * Handles both nesting conflicts (boxes temporally contained within another)
+ * and gap conflicts (boxes closer than 10ms minimum gap).
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -12,6 +12,7 @@ import {
   resolveAllConflicts,
   UnifiedConflict,
 } from '../utils/conflictDetection';
+import { CoordinateUtils } from '../utils/coordinates';
 import { BoundingBox } from '../types';
 
 interface UseConflictDetectionOptions {
@@ -35,11 +36,12 @@ interface ConflictDetectionReturn {
 
   /** Detect conflicts in the given boxes */
   detectConflicts: (boxes: BoundingBox[]) => UnifiedConflict[];
-  /** Resolve all conflicts and return updated boxes */
+  /** Resolve all conflicts and return updated boxes with corrected pixel coordinates */
   resolveConflicts: (
     boxes: BoundingBox[],
     duration: number,
-    dimensions: { width: number; height: number }
+    dimensions: { width: number; height: number },
+    zoomLevel?: number
   ) => BoundingBox[] | null;
   /** Enable/disable conflict highlighting */
   setHighlightConflicts: (highlight: boolean) => void;
@@ -82,7 +84,8 @@ export function useConflictDetection(
     (
       boxes: BoundingBox[],
       duration: number,
-      dimensions: { width: number; height: number }
+      dimensions: { width: number; height: number },
+      zoomLevel: number = 1
     ): BoundingBox[] | null => {
       if (conflicts.length === 0) {
         return null;
@@ -91,14 +94,28 @@ export function useConflictDetection(
       const resolved = resolveAllConflicts(boxes, conflicts);
 
       // Recalculate pixel coordinates from resolved times
-      const timeToPixelX = (time: number): number =>
-        (time / duration) * dimensions.width;
-
-      const resolvedWithPixelCoords = resolved.map((box) => ({
-        ...box,
-        x: timeToPixelX(box.start_time),
-        width: timeToPixelX(box.end_time - box.start_time),
-      }));
+      // CRITICAL: Use CoordinateUtils to account for frequency scale offset (76px)
+      const resolvedWithPixelCoords = resolved.map((box) => {
+        const startX = CoordinateUtils.timeToPixel(
+          box.start_time,
+          duration,
+          dimensions.width,
+          zoomLevel,
+          false // Don't include frequency scale offset in x coordinate
+        );
+        const endX = CoordinateUtils.timeToPixel(
+          box.end_time,
+          duration,
+          dimensions.width,
+          zoomLevel,
+          false
+        );
+        return {
+          ...box,
+          x: startX,
+          width: endX - startX,
+        };
+      });
 
       setConflicts([]);
       setHighlightConflicts(false);
