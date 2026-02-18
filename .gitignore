@@ -1,3 +1,6 @@
+# Test data (large audio/spectrogram files)
+test/
+
 # Environment variables
 .env
 .env.*
