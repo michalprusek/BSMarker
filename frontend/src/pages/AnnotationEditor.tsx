@@ -1252,9 +1252,6 @@ const AnnotationEditor: React.FC = () => {
           const widthGrowth = containerWidth - baseSpectrogramDimensions.width;
 
           if (heightGrowth > RESIZE_THRESHOLD || widthGrowth > RESIZE_THRESHOLD) {
-            console.log(
-              `📐 Container significantly expanded (height: +${heightGrowth}px, width: +${widthGrowth}px), updating base dimensions`
-            );
             setBaseSpectrogramDimensions({
               width: containerWidth,
               height: containerHeight,
@@ -1367,8 +1364,6 @@ const AnnotationEditor: React.FC = () => {
 
   const loadSpectrogramImage = async (recordingId: number) => {
     try {
-      console.log(`Loading spectrogram for recording ${recordingId}`);
-
       const blob = await recordingService.getSpectrogramBlob(recordingId);
       if (blob) {
         // Clean up previous URL
@@ -1377,10 +1372,6 @@ const AnnotationEditor: React.FC = () => {
         }
 
         const objectUrl = URL.createObjectURL(blob);
-        console.log(
-          `Created blob URL for recording ${recordingId}:`,
-          objectUrl,
-        );
         setSpectrogramUrl(objectUrl);
         setSpectrogramError(null);
       }
@@ -4052,12 +4043,7 @@ const AnnotationEditor: React.FC = () => {
                         );
                         toast.error("Failed to load spectrogram image");
                       }}
-                      onLoad={() => {
-                        console.log(
-                          "Spectrogram loaded successfully:",
-                          spectrogramUrl,
-                        );
-                      }}
+                      onLoad={() => {}}
                       style={{
                         top: "0",
                         left: `${LAYOUT_CONSTANTS.FREQUENCY_SCALE_WIDTH}px`, // Offset for frequency scale

@@ -12,14 +12,15 @@ from typing import Dict, Optional
 
 import librosa
 import numpy as np
+from celery.exceptions import SoftTimeLimitExceeded
+from PIL import Image
+
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models import Recording, Spectrogram
 from app.models.spectrogram import SpectrogramStatus
 from app.services.minio_client import minio_client
-from celery.exceptions import SoftTimeLimitExceeded
-from PIL import Image
 
 # Set cache directory for numba/librosa to avoid permission issues in Docker
 os.environ["NUMBA_CACHE_DIR"] = "/tmp"
@@ -273,47 +274,6 @@ def generate_spectrogram_task(self, recording_id: int) -> Dict:
             spectrogram.error_message = str(e)[:500]  # Limit error message length
             db.commit()
         raise
-
-    finally:
-        db.close()
-
-
-@celery_app.task(bind=True, name="app.tasks.spectrogram_tasks.regenerate_all_spectrograms")
-def regenerate_all_spectrograms(self) -> Dict:
-    """
-    Regenerate spectrograms for all recordings that don't have them yet.
-    Useful for migration or batch processing.
-    """
-    db = SessionLocal()
-
-    try:
-        # Get all recordings without completed spectrograms
-        recordings = (
-            db.query(Recording)
-            .outerjoin(Spectrogram)
-            .filter((Spectrogram.id == None) | (Spectrogram.status != SpectrogramStatus.COMPLETED))
-            .all()
-        )
-
-        total = len(recordings)
-        logger.info(f"Found {total} recordings to process")
-
-        results = []
-        for idx, recording in enumerate(recordings):
-            self.update_state(
-                state="PROCESSING",
-                meta={"current": idx + 1, "total": total, "recording_id": recording.id},
-            )
-
-            try:
-                result = generate_spectrogram_task.delay(recording.id)
-                results.append(
-                    {"recording_id": recording.id, "task_id": result.id, "status": "queued"}
-                )
-            except Exception as e:
-                results.append({"recording_id": recording.id, "status": "error", "error": str(e)})
-
-        return {"status": "completed", "total_processed": total, "results": results}
 
     finally:
         db.close()
