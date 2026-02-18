@@ -24,8 +24,8 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Domain configuration
-DOMAIN="your-domain.example.com"
-EMAIL="admin@utia.cas.cz"  # Change this to your email
+DOMAIN="${DOMAIN:-your-domain.example.com}"
+EMAIL="${SSL_EMAIL:-admin@your-domain.example.com}"  # Set via SSL_EMAIL env var
 
 echo -e "${BLUE}📋 Configuration:${NC}"
 echo -e "   Domain: $DOMAIN"
@@ -56,10 +56,10 @@ fi
 echo -e "${BLUE}🚀 Starting temporary nginx for ACME challenge...${NC}"
 
 # Create temporary nginx config for HTTP-only
-cat > ./nginx/nginx-letsencrypt.conf <<'EOF'
+cat > ./nginx/nginx-letsencrypt.conf <<EOF
 server {
     listen 80;
-    server_name your-domain.example.com;
+    server_name ${DOMAIN};
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;

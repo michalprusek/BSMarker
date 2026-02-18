@@ -22,7 +22,7 @@ This interactive script will:
 - Docker 20.10+
 - Docker Compose 1.29+
 - Root/sudo access
-- Domain: your-domain.example.com
+- Domain pointing to your server
 
 ### Step 1: Pre-Deployment Check
 
@@ -250,9 +250,7 @@ docker stats --no-stream
 
 ## 📚 Additional Resources
 
-- **Full Deployment Guide:** [DEPLOYMENT.md](DEPLOYMENT.md)
-- **Build Optimization Details:** [BUILD_OPTIMIZATION_SUMMARY.md](BUILD_OPTIMIZATION_SUMMARY.md)
-- **Architecture Documentation:** [CLAUDE.md](CLAUDE.md)
+- **README:** [README.md](README.md)
 
 ---
 
@@ -296,4 +294,4 @@ docker stats --no-stream
 **Last Updated:** 2025-10-08
 **Version:** 1.0.0
 
-Need help? Check the full documentation in [DEPLOYMENT.md](DEPLOYMENT.md)
+Need help? Check the full documentation in [README.md](README.md)

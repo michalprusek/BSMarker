@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""
-Generate and upload test recordings for performance testing.
-This script creates synthetic audio files and uploads them to test the system with 1000+ recordings.
+"""Generate and upload test recordings for performance testing.
+
+Create synthetic audio files and upload them to test the system with 1000+ recordings.
 """
 
 import asyncio
+import contextlib
 import os
 import random
 import sys
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -22,9 +22,9 @@ import soundfile as sf
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Configuration
-API_URL = os.getenv("API_URL", "https://your-domain.example.com/api/v1")
+API_URL = os.getenv("API_URL", "http://localhost:8000/api/v1")
 USERNAME = os.getenv("TEST_USERNAME", "admin@example.com")
-PASSWORD = os.getenv("TEST_PASSWORD", "bsmarker")
+PASSWORD = os.getenv("TEST_PASSWORD", "changeme")
 PROJECT_ID = int(os.getenv("TEST_PROJECT_ID", "1"))
 NUM_RECORDINGS = int(os.getenv("NUM_RECORDINGS", "1000"))
 BATCH_SIZE = 10  # Upload in batches to avoid overwhelming the server
@@ -264,7 +264,7 @@ async def test_pagination_performance(session: aiohttp.ClientSession, token: str
 
 
 async def main():
-    """Main execution function."""
+    """Run the main execution flow."""
     print("🚀 BSMarker Performance Test Script")
     print("=" * 60)
     print(f"Target: {API_URL}")
@@ -334,7 +334,7 @@ async def main():
 
         if successful_uploads:
             upload_times = [r["upload_time"] for r in successful_uploads]
-            print(f"\n⏱️  Upload Time Statistics:")
+            print("\n⏱️  Upload Time Statistics:")
             print(f"  Min: {np.min(upload_times):.2f}s")
             print(f"  Max: {np.max(upload_times):.2f}s")
             print(f"  Mean: {np.mean(upload_times):.2f}s")
@@ -344,7 +344,7 @@ async def main():
         print(f"  Average throughput: {NUM_RECORDINGS / total_time:.2f} recordings/second")
 
         if failed_uploads:
-            print(f"\n❌ Failed uploads:")
+            print("\n❌ Failed uploads:")
             for r in failed_uploads[:10]:  # Show first 10 failures
                 print(f"  File {r['file_num']}: {r['error']}")
 
@@ -354,10 +354,8 @@ async def main():
         # Cleanup
         print("\n🧹 Cleaning up temporary files...")
         for file_path, _ in temp_files:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(file_path)
-            except:
-                pass
 
     print("\n✅ Test completed!")
     print(f"   You can now test the application with {len(successful_uploads)} recordings")

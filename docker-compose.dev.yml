@@ -8,7 +8,7 @@ services:
     image: postgres:14-alpine
     environment:
       POSTGRES_USER: bsmarker
-      POSTGRES_PASSWORD: bsmarker_dev  # pragma: allowlist secret
+      POSTGRES_PASSWORD: bsmarker_dev
       POSTGRES_DB: bsmarker_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -34,7 +34,7 @@ services:
     image: minio/minio:latest
     environment:
       MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin  # pragma: allowlist secret
+      MINIO_ROOT_PASSWORD: minioadmin
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
@@ -52,18 +52,15 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_dev@postgres:5432/bsmarker_db  # pragma: allowlist secret
+      DATABASE_URL: postgresql://bsmarker:bsmarker_dev@postgres:5432/bsmarker_db
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin  # pragma: allowlist secret
+      MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET_NAME: bsmarker
-      # Development secrets - not used in production
-      SECRET_KEY: REDACTED_SECRET_KEY  # pragma: allowlist secret
-      JWT_SECRET_KEY: REDACTED_SECRET_KEY  # pragma: allowlist secret
-      CORS_ORIGINS: >-
-        ["http://localhost:3000", "http://127.0.0.1:3000",
-        "https://your-domain.example.com", "http://your-domain.example.com"]
+      SECRET_KEY: dev-secret-key-change-in-production
+      JWT_SECRET_KEY: dev-jwt-secret-change-in-production
+      CORS_ORIGINS: '["http://localhost:3000", "http://127.0.0.1:3000"]'
       LOG_LEVEL: DEBUG
     volumes:
       - ./backend:/app  # Hot reload
@@ -81,11 +78,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_dev@postgres:5432/bsmarker_db  # pragma: allowlist secret
+      DATABASE_URL: postgresql://bsmarker:bsmarker_dev@postgres:5432/bsmarker_db
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin  # pragma: allowlist secret
+      MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET_NAME: bsmarker
       LOG_LEVEL: DEBUG
     volumes:
@@ -104,7 +101,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_dev@postgres:5432/bsmarker_db  # pragma: allowlist secret
+      DATABASE_URL: postgresql://bsmarker:bsmarker_dev@postgres:5432/bsmarker_db
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: DEBUG
     volumes:
@@ -122,11 +119,11 @@ services:
       dockerfile: Dockerfile
       target: development
     environment:
-      REACT_APP_API_URL: https://your-domain.example.com/api/v1
-      REACT_APP_MINIO_URL: https://your-domain.example.com
-      VITE_API_BASE_URL: https://your-domain.example.com/api
-      VITE_ML_SERVICE_URL: https://your-domain.example.com/api/ml
-      WDS_SOCKET_URL: wss://your-domain.example.com:443/ws  # Full WebSocket URL for HMR
+      REACT_APP_API_URL: ${API_URL:-http://localhost/api/v1}
+      REACT_APP_MINIO_URL: ${SITE_URL:-http://localhost}
+      VITE_API_BASE_URL: ${API_URL:-http://localhost/api}
+      VITE_ML_SERVICE_URL: ${API_URL:-http://localhost/api/ml}
+      WDS_SOCKET_URL: ${WDS_SOCKET_URL:-ws://localhost/ws}
       DANGEROUSLY_DISABLE_HOST_CHECK: true  # Allow any host (dev mode only)
       WATCHPACK_POLLING: true  # Enable file watching in Docker
     volumes:

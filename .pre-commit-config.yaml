@@ -25,10 +25,9 @@ repos:
     rev: 7.0.0
     hooks:
       - id: flake8
-        args: [
-          --max-line-length=100,
-          --extend-ignore=E203, W503, B008, D103, D100, D101, D104, D400, F401
-        ]
+        args:
+          - --max-line-length=100
+          - --extend-ignore=E203,W503,B008,D103,D100,D101,D104,D400,F401
         exclude: ^(migrations/|alembic/)
         additional_dependencies:
           - flake8-docstrings
@@ -41,8 +40,8 @@ repos:
     rev: v1.9.0
     hooks:
       - id: mypy
-        args: [--ignore-missing-imports, --strict-optional, --disallow-untyped-defs]
-        exclude: ^(migrations/|alembic/|tests/)
+        args: [--ignore-missing-imports, --strict-optional, --disallow-untyped-defs, --follow-imports=silent]
+        exclude: ^(migrations/|alembic/|tests/|backend/scripts/)
         additional_dependencies:
           - types-requests
           - types-python-dateutil
@@ -53,8 +52,8 @@ repos:
     rev: 1.7.8
     hooks:
       - id: bandit
-        args: [-r, app/, --skip, B101]
-        exclude: ^tests/
+        args: [--skip, B101]
+        exclude: ^(tests/|backend/scripts/)
 
   # Check for security vulnerabilities in Python dependencies
   - repo: https://github.com/pypa/pip-audit
@@ -78,12 +77,13 @@ repos:
           --disable=R0801,  # duplicate-code
           --disable=W0613,  # unused-argument
           --disable=W0212,  # protected-access
+          --disable=E0401,  # import-error (can't resolve in pre-commit venv)
           --load-plugins=pylint.extensions.docparams,
           --accept-no-param-doc=yes,
           --accept-no-return-doc=yes,
           --accept-no-yields-doc=yes,
         ]
-        exclude: ^(migrations/|alembic/|tests/)
+        exclude: ^(migrations/|alembic/|tests/|backend/scripts/)
 
   # YAML linting
   - repo: https://github.com/adrienverge/yamllint
@@ -118,7 +118,7 @@ repos:
     hooks:
       - id: detect-secrets
         args: [--baseline, .secrets.baseline]
-        exclude: ^(.*\.lock|package-lock\.json|poetry\.lock)
+        exclude: ^(.*\.lock|package-lock\.json|poetry\.lock|\.secrets\.baseline)$
 
   # Dockerfile linting
   - repo: https://github.com/hadolint/hadolint

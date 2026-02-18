@@ -62,13 +62,14 @@ else
 fi
 
 # Check 4: SSL certificates
+DOMAIN="${DOMAIN:-your-domain.example.com}"
 echo -n "🔒 Checking SSL certificates... "
-if [ -d "certbot/conf/live/your-domain.example.com" ]; then
+if [ -d "certbot/conf/live/${DOMAIN}" ]; then
     echo -e "${GREEN}✓ Present${NC}"
 
     # Check expiry
-    if [ -f "certbot/conf/live/your-domain.example.com/fullchain.pem" ]; then
-        EXPIRY=$(openssl x509 -in certbot/conf/live/your-domain.example.com/fullchain.pem -noout -enddate | cut -d= -f2)
+    if [ -f "certbot/conf/live/${DOMAIN}/fullchain.pem" ]; then
+        EXPIRY=$(openssl x509 -in "certbot/conf/live/${DOMAIN}/fullchain.pem" -noout -enddate | cut -d= -f2)
         echo -e "   ${BLUE}Expires: $EXPIRY${NC}"
     fi
 else

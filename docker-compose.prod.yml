@@ -51,7 +51,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
-      MINIO_BROWSER_REDIRECT_URL: https://your-domain.example.com/minio-console
+      MINIO_BROWSER_REDIRECT_URL: https://${DOMAIN:-localhost}/minio-console
     volumes:
       - minio_data:/data
     networks:
@@ -81,7 +81,7 @@ services:
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
-      CORS_ORIGINS: '["https://your-domain.example.com"]'
+      CORS_ORIGINS: '["https://${DOMAIN:-localhost}"]'
       LIBROSA_CACHE_DIR: /tmp/librosa_cache
       MPLCONFIGDIR: /tmp/matplotlib_cache
       NUMBA_CACHE_DIR: /tmp
@@ -220,7 +220,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
       args:
-        REACT_APP_API_URL: https://your-domain.example.com/api/v1
+        REACT_APP_API_URL: https://${DOMAIN:-localhost}/api/v1
     image: bsmarker/frontend:${VERSION:-latest}
     restart: unless-stopped
     depends_on:

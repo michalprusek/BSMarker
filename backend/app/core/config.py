@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     REDIRECT_HOST: str = Field(
-        default="your-domain.example.com", description="Host to use in redirect location headers"
+        default="localhost", description="Host to use in redirect location headers"
     )
 
     # Security Settings - NO HARDCODED DEFAULTS FOR PRODUCTION SECRETS
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
 
     # CORS Settings - Environment-specific
     CORS_ORIGINS: List[str] = Field(
-        default_factory=lambda: ["https://your-domain.example.com"],
+        default_factory=lambda: ["http://localhost:3000"],
         description="List of allowed CORS origins",
     )
 

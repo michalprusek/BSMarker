@@ -429,12 +429,14 @@ const AnnotationEditor: React.FC = () => {
   }, [drawingMode]);
   const isDrawing = drawingMode.isDrawing;
   const drawingBox = drawingMode.drawingBox;
+  // Backward-compatible alias - ONLY works for setIsDrawing(false)
+  // For starting drawing, use drawingMode.startDrawing() directly
   const setIsDrawing = useCallback((drawing: boolean) => {
     if (!drawing) drawingMode.cancelDrawing();
   }, [drawingMode]);
+  // @deprecated - No longer used, drawing box is managed by drawingMode hook
   const setDrawingBox = useCallback((_box: { x: number; y: number; width: number; height: number } | null) => {
-    // Drawing box is managed by startDrawing/updateDrawing/endDrawing
-    // This setter is kept for compatibility but has limited use
+    // Use drawingMode.startDrawing/updateDrawing/cancelDrawing instead
   }, []);
   const isSelecting = drawingMode.isSelecting;
   const selectionRect = drawingMode.selectionRect;
@@ -2540,8 +2542,7 @@ const AnnotationEditor: React.FC = () => {
     } else {
       // Annotation mode - start drawing (only in spectrogram area)
       if (point.y <= spectrogramHeight) {
-        setIsDrawing(true);
-        setDrawingBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
+        drawingMode.startDrawing({ x: pos.x, y: pos.y });
       }
     }
   };
@@ -2848,19 +2849,10 @@ const AnnotationEditor: React.FC = () => {
     if (isDrawing && drawingBox) {
       const maxY = getMaxSpectrogramY();
       const constrainedY = Math.min(pos.y, maxY);
-
-      // Ensure drawing width is constrained to max boundary (pos.x is already constrained but ensure drawing box width doesn't exceed)
       const maxWorldX = getMaxWorldX();
-      const constrainedWidth = Math.min(
-        pos.x - drawingBox.x,
-        maxWorldX - drawingBox.x,
-      );
+      const constrainedX = Math.min(pos.x, maxWorldX);
 
-      setDrawingBox({
-        ...drawingBox,
-        width: constrainedWidth,
-        height: constrainedY - drawingBox.y,
-      });
+      drawingMode.updateDrawing({ x: constrainedX, y: constrainedY });
       return;
     }
 
@@ -3006,7 +2998,7 @@ const AnnotationEditor: React.FC = () => {
               clippedBox.height = newHeight;
             } else {
               // Box is entirely below the line, don't create it
-              setDrawingBox(null);
+              drawingMode.cancelDrawing();
               notification.error(Messages.ANNOTATION.BELOW_BOTTOM_LINE);
               return;
             }
@@ -3039,7 +3031,8 @@ const AnnotationEditor: React.FC = () => {
         }
       }
 
-      setDrawingBox(null);
+      // Clear drawing state (setIsDrawing(false) above already calls cancelDrawing via alias)
+      drawingMode.cancelDrawing();
     }
   };
 
@@ -3326,6 +3319,7 @@ const AnnotationEditor: React.FC = () => {
     });
 
     setBoundingBoxes(resolvedBoxesWithPixelCoords);
+    setHasUnsavedChanges(true);
 
     // Add to history for undo
     const newHistory = history.slice(0, historyIndex + 1);
@@ -3397,6 +3391,7 @@ const AnnotationEditor: React.FC = () => {
 
       // Update local state
       setBoundingBoxes(resolvedBoxesWithPixelCoords);
+      setHasUnsavedChanges(true);
 
       // Add to history for undo
       const newHistory = history.slice(0, historyIndex + 1);
@@ -3411,7 +3406,7 @@ const AnnotationEditor: React.FC = () => {
       setConflicts([]);
       setHighlightConflicts(false);
 
-      // CRITICAL FIX: Save the resolved boxes to the backend before navigating
+      // Save the resolved boxes to the backend before navigating
       const loadingToastId = toast.loading(`Saving ${activeConflicts.length} resolved conflict${activeConflicts.length > 1 ? "s" : ""}...`);
 
       const saved = await saveAnnotations(recording?.id, resolvedBoxesWithPixelCoords, false);
@@ -3516,6 +3511,11 @@ const AnnotationEditor: React.FC = () => {
           setZoomOffset({ x: 0, y: 0 }); // Reset zoom offset, use scroll only
 
           // Update horizontal scroll to keep cursor position fixed
+          // IMPORTANT: Update scrollOffset state synchronously with zoom to prevent
+          // waveform/spectrogram desync during rapid zoom. Without this, scrollOffset
+          // only updates via throttled scroll event, causing the waveform (which uses
+          // scrollOffset state) to lag behind the spectrogram (which uses DOM scrollLeft).
+          setScrollOffset(newOffsetX);
           if (unifiedScrollRef.current) {
             unifiedScrollRef.current.scrollLeft = newOffsetX;
           }

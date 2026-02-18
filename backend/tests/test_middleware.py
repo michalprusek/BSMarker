@@ -38,8 +38,8 @@ def test_proxy_headers_middleware_updates_scheme(client: Any, test_user: Any) ->
     # Login endpoint should work with proper headers
     response = client.post(
         "/api/v1/auth/login",
-        json={"username": test_user.email, "password": "testpassword"},  # pragma: allowlist secret
-        headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "your-domain.example.com"},
+        json={"username": test_user.email, "password": "testpassword"},
+        headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "example.com"},
     )
     assert response.status_code == status.HTTP_200_OK
     assert "access_token" in response.json()
@@ -49,7 +49,7 @@ def test_proxy_headers_middleware_handles_host_with_port(client: Any) -> None:
     """Test that middleware correctly strips port from forwarded host."""
     response = client.get(
         "/api/v1/health",
-        headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "your-domain.example.com:443"},
+        headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "example.com:443"},
     )
     assert response.status_code == status.HTTP_200_OK
 

@@ -16,9 +16,9 @@ on:
   workflow_dispatch:
     inputs:
       deploy_type:
-        description: 'Deployment type'
+        description: Deployment type
         required: true
-        default: 'rolling'
+        default: rolling
         type: choice
         options:
           - rolling
@@ -145,7 +145,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment:
       name: production
-      url: https://your-domain.example.com
+      url: ${{ secrets.PRODUCTION_URL }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -208,14 +208,14 @@ jobs:
       - name: Verify deployment
         run: |
           sleep 10
-          curl -f https://your-domain.example.com/health || exit 1
+          curl -f "${{ secrets.PRODUCTION_URL }}/health" || exit 1
 
       - name: Notify on success
         if: success()
         uses: 8398a7/action-slack@v3
         with:
           status: success
-          text: 'BSMarker deployed successfully to production!'
+          text: BSMarker deployed successfully to production!
           webhook_url: ${{ secrets.SLACK_WEBHOOK }}
         continue-on-error: true
 
@@ -224,7 +224,7 @@ jobs:
         uses: 8398a7/action-slack@v3
         with:
           status: failure
-          text: 'BSMarker deployment to production failed!'
+          text: BSMarker deployment to production failed!
           webhook_url: ${{ secrets.SLACK_WEBHOOK }}
         continue-on-error: true
 

@@ -1,10 +1,7 @@
 # Environment variables
 .env
-.env.local
-.env.production
-.env.blue
-.env.green
 .env.*
+!.env.example
 
 # Python
 __pycache__/
@@ -16,9 +13,7 @@ env/
 venv/
 .venv/
 ENV/
-.env*/
 virtualenv/
-.virtualenv/
 build/
 develop-eggs/
 dist/
@@ -34,7 +29,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
+.mypy_cache/
 
 # Node
 node_modules/
@@ -51,18 +46,22 @@ frontend/build/
 *.swp
 *.swo
 *~
+*.code-workspace
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Docker volumes
 postgres_data/
 minio_data/
 minio-data/
+redis_data/
 
 # Logs
 *.log
+*.log.*
 
 # Testing
 .coverage
@@ -70,6 +69,11 @@ minio-data/
 htmlcov/
 .tox/
 .hypothesis/
+
+# Playwright test artifacts
+playwright-report/
+test-results/
+.playwright-mcp/
 
 # Celery
 celerybeat-schedule
@@ -80,28 +84,27 @@ celerybeat.pid
 .hookconfig
 *.orig
 
-# Package lock files (if not tracking)
-package-lock.json.backup
-
 # Temporary files
 *.tmp
 *.bak
-*~
-.*.swp
-.*.swo
 
 # SSL Certificates and sensitive keys
-certbot/conf/live/
-certbot/conf/archive/
-certbot/conf/renewal/
+certbot/
 *.pem
 *.key
 *.crt
 *.csr
-ssl-dhparams.pem
 
-# Claude Code configuration
+# Claude Code / AI tooling
 CLAUDE.md
 .claude/
 .serena/
+
+# Backups
 backups/
+
+# Research projects
+birds_research_project/
+
+# Husky internal
+.husky/_/

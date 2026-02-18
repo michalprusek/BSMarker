@@ -167,8 +167,9 @@ for i in $(seq 1 $VERIFICATION_ATTEMPTS); do
     # Check if containers are healthy
     if docker-compose -f "$COMPOSE_FILE" ps | grep -q "Up.*healthy"; then
         # Test HTTP endpoint
-        if curl -f -k --connect-timeout 5 --max-time 10 https://your-domain.example.com/health > /dev/null 2>&1; then
-            log "Deployment successful! Application is running at https://your-domain.example.com"
+        DOMAIN="${DOMAIN:-your-domain.example.com}"
+        if curl -f -k --connect-timeout 5 --max-time 10 "https://${DOMAIN}/health" > /dev/null 2>&1; then
+            log "Deployment successful! Application is running at https://${DOMAIN}"
             break
         fi
     fi

@@ -2,13 +2,13 @@ services:
   postgres:
     image: postgres:14-alpine
     environment:
-      POSTGRES_USER: bsmarker
-      POSTGRES_PASSWORD: bsmarker_local  # pragma: allowlist secret
-      POSTGRES_DB: bsmarker_db
+      POSTGRES_USER: ${DB_USER:-bsmarker}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-bsmarker_dev}
+      POSTGRES_DB: ${DB_NAME:-bsmarker_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [CMD-SHELL, pg_isready -U bsmarker]
+      test: [CMD-SHELL, "pg_isready -U ${DB_USER:-bsmarker}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,13 +26,13 @@ services:
   minio:
     image: minio/minio:latest
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin123  # pragma: allowlist secret
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
     ports:
-      - 9001:9001  # MinIO Console for debugging
+      - 9001:9001
     healthcheck:
       test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
       interval: 30s
@@ -45,16 +45,16 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_local@postgres:5432/bsmarker_db  # pragma: allowlist secret
+      DATABASE_URL: postgresql://${DB_USER:-bsmarker}:${DB_PASSWORD:-bsmarker_dev}@postgres:5432/${DB_NAME:-bsmarker_db}
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin123  # pragma: allowlist secret
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET_NAME: bsmarker
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-only-for-development-bsmarker-app-2024-secure-key}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-key-only-for-development-2024-secure}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-production}
       FIRST_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
-      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin_password_2024}  # pragma: allowlist secret
+      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       CORS_ORIGINS: '["http://localhost"]'
       LOG_LEVEL: INFO
     depends_on:
@@ -72,16 +72,16 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_local@postgres:5432/bsmarker_db  # pragma: allowlist secret
+      DATABASE_URL: postgresql://${DB_USER:-bsmarker}:${DB_PASSWORD:-bsmarker_dev}@postgres:5432/${DB_NAME:-bsmarker_db}
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin123  # pragma: allowlist secret
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET_NAME: bsmarker
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-only-for-development-bsmarker-app-2024-secure-key}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-key-only-for-development-2024-secure}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-production}
       FIRST_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
-      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin_password_2024}  # pragma: allowlist secret
+      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       LOG_LEVEL: INFO
     depends_on:
       postgres:
@@ -98,16 +98,16 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_local@postgres:5432/bsmarker_db  # pragma: allowlist secret
+      DATABASE_URL: postgresql://${DB_USER:-bsmarker}:${DB_PASSWORD:-bsmarker_dev}@postgres:5432/${DB_NAME:-bsmarker_db}
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin123  # pragma: allowlist secret
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET_NAME: bsmarker
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-only-for-development-bsmarker-app-2024-secure-key}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-key-only-for-development-2024-secure}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-production}
       FIRST_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
-      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin_password_2024}  # pragma: allowlist secret
+      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       LOG_LEVEL: INFO
     depends_on:
       postgres:

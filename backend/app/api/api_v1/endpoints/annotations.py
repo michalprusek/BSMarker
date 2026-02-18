@@ -17,9 +17,9 @@ from app.schemas.annotation import Annotation as AnnotationSchema
 from app.schemas.annotation import AnnotationCreate, AnnotationUpdate
 
 
-def prepare_bounding_box_dict(box_data) -> dict:
-    """
-    Prepare bounding box data for database insertion.
+def prepare_bounding_box_dict(box_data: Any) -> dict:
+    """Prepare bounding box data for database insertion.
+
     - Maps 'metadata' from schema to 'extra_metadata' for database column
     - Rounds pixel coordinates to prevent floating-point precision issues
     """
@@ -34,10 +34,10 @@ def prepare_bounding_box_dict(box_data) -> dict:
     return box_dict
 
 
-def convert_annotation_orm_to_dict(annotation_orm):
-    """
-    Convert an Annotation ORM object to a dictionary format that works with Pydantic schemas.
-    This handles the SQLAlchemy metadata conflict by properly mapping extra_metadata to metadata.
+def convert_annotation_orm_to_dict(annotation_orm: Any) -> Any:
+    """Convert an Annotation ORM object to a dict for Pydantic schemas.
+
+    Handles the SQLAlchemy metadata conflict by mapping extra_metadata to metadata.
     """
     if not annotation_orm:
         return None
@@ -81,8 +81,8 @@ def create_annotation(
     request: Request,
     recording_id: int,
     annotation_in: AnnotationCreate,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_active_user),
+    db: Session = Depends(deps.get_db),  # noqa: B008
+    current_user: User = Depends(deps.get_current_active_user),  # noqa: B008
 ) -> Any:
     """Create a new annotation or update existing one for a recording."""
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
@@ -110,7 +110,9 @@ def create_annotation(
         annotation.updated_at = datetime.utcnow()
     else:
         # Create new annotation
-        annotation = Annotation(recording_id=recording_id, user_id=current_user.id)
+        annotation = Annotation(  # type: ignore[call-arg]
+            recording_id=recording_id, user_id=current_user.id
+        )
 
     if not existing_annotation:
         db.add(annotation)
@@ -118,7 +120,7 @@ def create_annotation(
 
     for box_data in annotation_in.bounding_boxes:
         box_dict = prepare_bounding_box_dict(box_data)
-        box = BoundingBox(annotation_id=annotation.id, **box_dict)
+        box = BoundingBox(annotation_id=annotation.id, **box_dict)  # type: ignore[call-arg]
         db.add(box)
 
     db.commit()
@@ -140,8 +142,8 @@ def create_annotation(
 def read_annotations(
     request: Request,
     recording_id: int,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_active_user),
+    db: Session = Depends(deps.get_db),  # noqa: B008
+    current_user: User = Depends(deps.get_current_active_user),  # noqa: B008
 ) -> Any:
     """Get all annotations for a recording."""
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
@@ -159,10 +161,13 @@ def read_annotations(
     annotations = (
         db.query(Annotation)
         .options(joinedload(Annotation.bounding_boxes))
-        .filter(Annotation.recording_id == recording_id)
+        .filter(
+            Annotation.recording_id == recording_id,
+            Annotation.user_id == current_user.id,
+        )
         .order_by(Annotation.created_at.asc())
         .all()
-    )  # Order by creation date ascending
+    )  # Order by creation date ascending, filtered by current user
 
     # Convert all annotations to dict format to avoid SQLAlchemy metadata conflict
     annotation_dicts = [convert_annotation_orm_to_dict(ann) for ann in annotations]
@@ -175,8 +180,8 @@ def update_annotation(
     request: Request,
     annotation_id: int,
     annotation_in: AnnotationUpdate,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_active_user),
+    db: Session = Depends(deps.get_db),  # noqa: B008
+    current_user: User = Depends(deps.get_current_active_user),  # noqa: B008
 ) -> Any:
     """Update an existing annotation with new bounding boxes."""
     annotation = db.query(Annotation).filter(Annotation.id == annotation_id).first()
@@ -203,7 +208,7 @@ def update_annotation(
 
         for box_data in annotation_in.bounding_boxes:
             box_dict = prepare_bounding_box_dict(box_data)
-            box = BoundingBox(annotation_id=annotation_id, **box_dict)
+            box = BoundingBox(annotation_id=annotation_id, **box_dict)  # type: ignore[call-arg]
             db.add(box)
 
     db.commit()
@@ -225,8 +230,8 @@ def update_annotation(
 def delete_annotation(
     request: Request,
     annotation_id: int,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_active_user),
+    db: Session = Depends(deps.get_db),  # noqa: B008
+    current_user: User = Depends(deps.get_current_active_user),  # noqa: B008
 ) -> Any:
     """Delete an annotation and all its bounding boxes."""
     annotation = db.query(Annotation).filter(Annotation.id == annotation_id).first()

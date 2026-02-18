@@ -82,12 +82,13 @@ echo ""
 
 # Step 3: SSL Certificates
 echo -e "${BLUE}═══ Step 3/5: SSL Certificate Setup ═══${NC}"
-if [ -d "certbot/conf/live/your-domain.example.com" ]; then
+DOMAIN="${DOMAIN:-your-domain.example.com}"
+if [ -d "certbot/conf/live/${DOMAIN}" ]; then
     echo -e "${GREEN}✓ SSL certificates already exist${NC}"
 
     # Check expiry
-    if [ -f "certbot/conf/live/your-domain.example.com/fullchain.pem" ]; then
-        EXPIRY=$(openssl x509 -in certbot/conf/live/your-domain.example.com/fullchain.pem -noout -enddate | cut -d= -f2)
+    if [ -f "certbot/conf/live/${DOMAIN}/fullchain.pem" ]; then
+        EXPIRY=$(openssl x509 -in "certbot/conf/live/${DOMAIN}/fullchain.pem" -noout -enddate | cut -d= -f2)
         echo -e "${BLUE}  Expires: $EXPIRY${NC}"
     fi
 
@@ -136,7 +137,7 @@ if [[ "$response" =~ ^([yY][eE][sS]|[yY]| )$ ]] || [ -z "$response" ]; then
     echo -e "${GREEN}╚════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${BLUE}🌐 Your application is now running at:${NC}"
-    echo -e "${MAGENTA}   https://your-domain.example.com${NC}"
+    echo -e "${MAGENTA}   https://${DOMAIN}${NC}"
     echo ""
     echo -e "${BLUE}📊 Useful commands:${NC}"
     echo -e "   View logs:        ${YELLOW}docker-compose -f docker-compose.prod.yml logs -f${NC}"
@@ -145,8 +146,8 @@ if [[ "$response" =~ ^([yY][eE][sS]|[yY]| )$ ]] || [ -z "$response" ]; then
     echo -e "   View resources:   ${YELLOW}docker stats${NC}"
     echo ""
     echo -e "${BLUE}🧪 Test your deployment:${NC}"
-    echo -e "   Health check:     ${YELLOW}curl https://your-domain.example.com/health${NC}"
-    echo -e "   API health:       ${YELLOW}curl https://your-domain.example.com/api/v1/health${NC}"
+    echo -e "   Health check:     ${YELLOW}curl https://${DOMAIN}/health${NC}"
+    echo -e "   API health:       ${YELLOW}curl https://${DOMAIN}/api/v1/health${NC}"
     echo ""
 else
     echo -e "${YELLOW}⚠️  Skipping deployment (you can run ./scripts/deploy-prod.sh later)${NC}"

@@ -11,10 +11,10 @@
 
 import { test, expect, Page } from '@playwright/test';
 
-// Test credentials from CLAUDE.md
-const TEST_URL = 'https://your-domain.example.com';
-const TEST_EMAIL = 'admin@example.com';
-const TEST_PASSWORD = 'REDACTED_PASSWORD';
+// Test credentials - set via environment variables
+const TEST_URL = process.env.TEST_URL || 'http://localhost:3000';
+const TEST_EMAIL = process.env.TEST_EMAIL || 'test@example.com';
+const TEST_PASSWORD = process.env.TEST_PASSWORD || 'testpassword';
 
 // Helper to login
 async function login(page: Page) {
