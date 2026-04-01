@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 100 * 1024 * 1024
     ALLOWED_AUDIO_EXTENSIONS: List[str] = [".mp3", ".wav", ".m4a", ".flac"]
 
+    # OpenAPI schema (disable in production to hide API structure)
+    OPENAPI_ENABLED: bool = Field(
+        default=True, description="Enable OpenAPI schema endpoint (/docs, /redoc, openapi.json)"
+    )
+
     # Admin Permission Settings
     ADMIN_CAN_EDIT_USER_PROJECTS: bool = Field(
         default=False,

@@ -28,13 +28,13 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     # Increased memory for better cache hit ratio with 1000+ recordings
-    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     networks:
       - internal
     healthcheck:
-      test: [CMD, redis-cli, ping]
+      test: [CMD, redis-cli, -a, "${REDIS_PASSWORD}", ping]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -77,7 +77,7 @@ services:
       - .env.production
     environment:
       DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
@@ -129,13 +129,13 @@ services:
       - worker
       - --loglevel=info
       - --queues=spectrogram,default
-      # Increased from 2 to 6 for faster spectrogram generation (3x throughput)
-      - --concurrency=6
+      # Reduced from 6 to 3: 6 idle workers wasted ~450 MB swap (2026-02-21)
+      - --concurrency=3
     env_file:
       - .env.production
     environment:
       DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
@@ -161,7 +161,7 @@ services:
     deploy:
       resources:
         limits:
-          # Max available on 2-CPU server, supports 6 concurrent workers
+          # Max available on 2-CPU server, supports 3 concurrent workers
           cpus: '2'
           memory: 2G
       restart_policy:
@@ -186,7 +186,7 @@ services:
       - .env.production
     environment:
       DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}

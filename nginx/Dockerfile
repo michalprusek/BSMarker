@@ -9,6 +9,7 @@ RUN rm /etc/nginx/conf.d/default.conf
 # Copy configuration files
 COPY nginx.conf /etc/nginx/conf.d/
 COPY proxy_params.conf /etc/nginx/
+COPY security_headers.conf /etc/nginx/
 
 # Create directories for SSL certificates
 RUN mkdir -p /etc/letsencrypt /var/www/certbot

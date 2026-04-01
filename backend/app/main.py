@@ -30,7 +30,9 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    openapi_url=f"{settings.API_V1_STR}/openapi.json" if settings.OPENAPI_ENABLED else None,
+    docs_url="/docs" if settings.OPENAPI_ENABLED else None,
+    redoc_url="/redoc" if settings.OPENAPI_ENABLED else None,
 )
 
 # Add rate limiter to app state
