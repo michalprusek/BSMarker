@@ -322,3 +322,39 @@ describe("conflicts", () => {
     expect(detectConflicts(doc.boxes)).toHaveLength(3);
   });
 });
+
+describe("read-only and refused saves", () => {
+  it("a read-only document ignores every edit", () => {
+    const doc = new AnnotationDocument([box("1", 1, 2)], true);
+    expect(doc.add({ start: 3, end: 4, fLow: null, fHigh: null })).toBeNull();
+    doc.update(["1"], (b) => ({ ...b, start: 0 }));
+    doc.remove(["1"]);
+    doc.setLabel(["1"], "Z");
+    doc.replaceAll([]);
+    expect(doc.boxes).toEqual([box("1", 1, 2)]);
+    expect(doc.isDirty).toBe(false);
+    expect(doc.canUndo).toBe(false);
+  });
+
+  it("does not retry a save the server refused (403)", async () => {
+    jest.useFakeTimers();
+    const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    const doc = new AnnotationDocument([]);
+    const statuses: SaveStatus[] = [];
+    const save = jest.fn(async () => {
+      throw Object.assign(new Error("Forbidden"), { response: { status: 403 } });
+    });
+    const saver = new Autosaver(doc, save, (s) => statuses.push(s));
+    doc.add({ start: 1, end: 2, fLow: null, fHigh: null });
+    jest.advanceTimersByTime(1600);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    doc.add({ start: 3, end: 4, fLow: null, fHigh: null }); // further edits don't hide the problem
+    jest.advanceTimersByTime(60000);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(statuses[statuses.length - 1]).toBe("rejected");
+    await expect(saver.detach()).resolves.toBe(false);
+    spy.mockRestore();
+    jest.useRealTimers();
+  });
+});

@@ -65,7 +65,7 @@ export const BoxList: React.FC<BoxListProps> = ({ engine, snap, onClose }) => {
             {conflicts.length} conflict{conflicts.length === 1 ? "" : "s"}
           </button>
           <div className="flex-1" />
-          {gapCount > 0 && (
+          {gapCount > 0 && !snap.readOnly && (
             <button className="px-2 py-0.5 rounded border border-red-300 bg-white text-red-700 hover:bg-red-100" onMouseDown={keepFocus} onClick={() => fixAllGapsWithReport(engine)}>
               Fix all gaps
             </button>

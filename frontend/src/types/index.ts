@@ -32,6 +32,8 @@ export interface Recording {
   created_at: string;
   annotation_count?: number;
   spectrogram_status?: SpectrogramStatus | null;
+  /** Whether the current user may save annotations (only on single-recording responses). */
+  can_edit?: boolean | null;
 }
 
 export interface Spectrogram {

@@ -69,6 +69,8 @@ const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.m
  */
 export class EditorInput {
   private gesture: Gesture | null = null;
+  /** Last pointer position in client coordinates (to start a pan mid-gesture). */
+  private lastClient: Point = { x: 0, y: 0 };
   private minimapDrag: { id: number; grabOffset: number } | null = null;
   private readonly actions: EditActions;
   private readonly listeners: [EventTarget, string, EventListener, AddEventListenerOptions?][] = [];
@@ -249,6 +251,7 @@ export class EditorInput {
   };
 
   private onPointerMove = (e: PointerEvent): void => {
+    this.lastClient = { x: e.clientX, y: e.clientY };
     const g = this.gesture;
     if (!g || g.id !== e.pointerId) {
       if (e.currentTarget === this.el.plotArea) this.updateHover(e);
@@ -330,7 +333,8 @@ export class EditorInput {
     const p = this.locate(e);
     const hit = this.hitAt(p, p.zone);
     this.engine.setHover(p.x, p.y, p.zone === "spectrogram", hit ? hit.box.id : null);
-    if (hit?.kind === "handle") this.setCursor(CURSOR_FOR_HANDLE[hit.handle]);
+    if (this.doc.readOnly) this.setCursor(hit ? "pointer" : "default");
+    else if (hit?.kind === "handle") this.setCursor(CURSOR_FOR_HANDLE[hit.handle]);
     else if (hit?.kind === "body") this.setCursor("move");
     else this.setCursor("crosshair");
   }
@@ -356,6 +360,12 @@ export class EditorInput {
 
   private startDrag(g: Extract<Gesture, { type: "pending" }>, e: PointerEvent): void {
     const { id, start, zone, hit } = g;
+    if (this.doc.readOnly) {
+      // Nothing to edit: every drag just pans the view.
+      this.gesture = { type: "pan", id, last: this.lastClient, zone };
+      this.setCursor("grabbing");
+      return;
+    }
     if (hit?.kind === "handle") {
       if (!this.doc.isSelected(hit.box.id)) this.doc.select([hit.box.id]);
       this.doc.begin();

@@ -25,6 +25,8 @@ class RecordingInDBBase(RecordingBase):
     spectrogram_status: Optional[str] = (
         None  # pending | processing | failed | completed (None if no spectrogram)
     )
+    # Whether the current user may save annotations for it (single-recording endpoint only)
+    can_edit: Optional[bool] = None
 
     class Config:
         from_attributes = True

@@ -1,7 +1,8 @@
 import { EditorBox } from "../core/boxes";
 import { AnnotationDocument } from "./AnnotationDocument";
 
-export type SaveStatus = "saved" | "unsaved" | "saving" | "error";
+/** "rejected": the server refused the save (e.g. no permission) — retrying won't help. */
+export type SaveStatus = "saved" | "unsaved" | "saving" | "error" | "rejected";
 
 /** Save shortly after the user stops editing. */
 const DEBOUNCE_MS = 1500;
@@ -11,6 +12,12 @@ const RETRY_MS = [2000, 5000, 15000, 30000];
 const BACKGROUND_ATTEMPTS = 6;
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Client errors that repeat on every retry (permission, validation, missing recording). */
+export function isPermanentFailure(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  return status !== undefined && status >= 400 && status < 500 && ![401, 408, 429].includes(status);
+}
 
 /**
  * Saves the document automatically: debounced after edits, strictly one
@@ -27,6 +34,7 @@ export class Autosaver {
   private status: SaveStatus = "saved";
   private unsubscribe: () => void;
   private detached = false;
+  private rejected = false;
 
   constructor(
     private readonly doc: AnnotationDocument,
@@ -34,7 +42,8 @@ export class Autosaver {
     private onStatus: (status: SaveStatus) => void,
   ) {
     this.unsubscribe = doc.subscribe((contentChanged) => {
-      if (!contentChanged || doc.inTransaction) return;
+      // After a refused save, keep saying so — new edits can't be saved either.
+      if (!contentChanged || doc.inTransaction || this.rejected) return;
       if (doc.isDirty) {
         this.setStatus(this.inFlight ? "saving" : "unsaved");
         this.schedule(DEBOUNCE_MS);
@@ -54,7 +63,7 @@ export class Autosaver {
     this.clearTimer();
     // Several callers may be waiting for the same request; only one may start the next.
     while (this.inFlight) await this.inFlight;
-    if (!this.doc.isDirty) return;
+    if (!this.doc.isDirty || this.rejected) return;
 
     const snapshot = this.doc.committed;
     this.setStatus("saving");
@@ -72,6 +81,11 @@ export class Autosaver {
       })
       .catch((error) => {
         console.error("Saving annotations failed:", error);
+        if (isPermanentFailure(error)) {
+          this.rejected = true;
+          this.setStatus("rejected");
+          return;
+        }
         this.setStatus("error");
         this.schedule(RETRY_MS[Math.min(this.failures, RETRY_MS.length - 1)]);
         this.failures++;
@@ -97,6 +111,7 @@ export class Autosaver {
       await this.flush();
       this.clearTimer(); // we drive the retries ourselves now
       if (!this.doc.isDirty) return true;
+      if (this.rejected) return false;
       await delay(RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)]);
     }
     return false;

@@ -30,7 +30,11 @@ export class AnnotationDocument {
   /** Label assigned to newly drawn boxes (the last label the user chose). */
   activeLabel = NO_LABEL;
 
-  constructor(boxes: EditorBox[]) {
+  /**
+   * @param readOnly no edits at all (e.g. no permission to save) — every
+   *   editing method becomes a no-op, whatever part of the UI calls it.
+   */
+  constructor(boxes: EditorBox[], readonly readOnly = false) {
     this.boxesValue = [...boxes].sort(byStart);
     this.savedBoxes = this.boxesValue;
   }
@@ -68,6 +72,7 @@ export class AnnotationDocument {
 
   /** Replace everything (e.g. restoring a local backup); one undo step. */
   replaceAll(boxes: EditorBox[]): void {
+    if (this.readOnly) return;
     this.setBoxes([...boxes]);
     this.pruneSelection();
   }
@@ -107,7 +112,7 @@ export class AnnotationDocument {
   }
 
   setActiveLabel(label: string): void {
-    if (this.activeLabel === label) return;
+    if (this.readOnly || this.activeLabel === label) return;
     this.activeLabel = label;
     this.emit(false);
   }
@@ -115,7 +120,8 @@ export class AnnotationDocument {
   // ------------------------------------------------------------------ editing
 
   /** Adds a box with the active label and selects it. Returns its id. */
-  add(geometry: BoxGeometry, label = this.activeLabel): string {
+  add(geometry: BoxGeometry, label = this.activeLabel): string | null {
+    if (this.readOnly) return null;
     const id = this.newId();
     this.setBoxes([...this.boxesValue, { ...geometry, id, label, confidence: null, extraMetadata: null }]);
     this.selected = new Set([id]);
@@ -125,6 +131,7 @@ export class AnnotationDocument {
 
   /** Adds copies of boxes (new ids) and selects them. */
   addCopies(boxes: EditorBox[]): string[] {
+    if (this.readOnly) return [];
     const copies = boxes.map((b) => ({ ...b, id: this.newId() }));
     this.setBoxes([...this.boxesValue, ...copies]);
     this.selected = new Set(copies.map((b) => b.id));
@@ -134,6 +141,7 @@ export class AnnotationDocument {
 
   /** Replaces the given boxes with `fn(box)`. */
   update(ids: Iterable<string>, fn: (box: EditorBox) => EditorBox): void {
+    if (this.readOnly) return;
     const set = new Set(ids);
     let changed = false;
     const next = this.boxesValue.map((b) => {
@@ -146,6 +154,7 @@ export class AnnotationDocument {
   }
 
   remove(ids: Iterable<string>): void {
+    if (this.readOnly) return;
     const set = new Set(ids);
     if (set.size === 0) return;
     this.setBoxes(this.boxesValue.filter((b) => !set.has(b.id)));

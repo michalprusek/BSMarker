@@ -62,6 +62,8 @@ export interface EditorSnapshot {
   labels: string[];
   canUndo: boolean;
   canRedo: boolean;
+  /** Viewing only (no permission to save). */
+  readOnly: boolean;
   pendingTiles: number;
   workers: number;
   /** Time resolution of the displayed columns (s) */
@@ -644,6 +646,7 @@ export class EditorEngine {
       activeLabel: this.doc.activeLabel,
       labels,
       canUndo: this.doc.canUndo,
+      readOnly: this.doc.readOnly,
       canRedo: this.doc.canRedo,
       pendingTiles: this.scheduler.pendingCount,
       workers: this.scheduler.workerCount,

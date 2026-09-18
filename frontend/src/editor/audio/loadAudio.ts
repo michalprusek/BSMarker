@@ -21,16 +21,15 @@ const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 export async function loadRecordingAudio(
   recordingId: number,
   nativeSampleRate: number | undefined,
-  onProgress?: (fraction: number) => void,
+  /** `fraction` is null when the server doesn't send the size. */
+  onProgress?: (loadedBytes: number, fraction: number | null) => void,
   signal?: AbortSignal,
 ): Promise<DecodedAudio> {
   const response = await api.get<ArrayBuffer>(`/recordings/${recordingId}/audio`, {
     responseType: "arraybuffer",
     timeout: DOWNLOAD_TIMEOUT_MS,
     signal,
-    onDownloadProgress: (e) => {
-      if (onProgress && e.total) onProgress(e.loaded / e.total);
-    },
+    onDownloadProgress: (e) => onProgress?.(e.loaded, e.total ? e.loaded / e.total : null),
   });
 
   // The backend stores the native rate for every processed recording; the

@@ -20,7 +20,11 @@ import {
   toApiBoxes,
 } from "../editor/core/boxes";
 import { AnnotationDocument } from "../editor/edit/AnnotationDocument";
-import { Autosaver, SaveStatus } from "../editor/edit/Autosaver";
+import {
+  Autosaver,
+  SaveStatus,
+  isPermanentFailure,
+} from "../editor/edit/Autosaver";
 import {
   clearBackup,
   readBackup,
@@ -39,7 +43,8 @@ import { ConflictCard } from "../editor/ui/ConflictCard";
 const FREQ_AXIS_WIDTH = "w-14";
 
 type LoadState =
-  | { phase: "loading"; message: string; progress?: number }
+  /** progress: 0..1, or null when the size is unknown (indeterminate bar). */
+  | { phase: "loading"; message: string; progress?: number | null }
   | { phase: "error"; message: string }
   | { phase: "ready" };
 
@@ -132,11 +137,12 @@ const AnnotationEditorV2: React.FC = () => {
         setRecording(rec);
         const latest = annotations[annotations.length - 1];
         const loaded = fromApiBoxes(latest?.bounding_boxes ?? []);
-        const document = new AnnotationDocument(loaded);
+        // No permission to save (someone else's project): open for viewing only.
+        const document = new AnnotationDocument(loaded, rec.can_edit === false);
         doc = document;
 
         // Changes that could not be saved last time come back (Ctrl+Z discards them).
-        const backup = readBackup(id);
+        const backup = document.readOnly ? null : readBackup(id);
         if (backup) {
           const restored = fromApiBoxes(backup.boxes);
           if (sameContent(restored, loaded)) {
@@ -153,20 +159,27 @@ const AnnotationEditorV2: React.FC = () => {
         setLoad({
           phase: "loading",
           message: "Downloading audio…",
-          progress: 0,
+          progress: null,
         });
         const audio = await loadRecordingAudio(
           id,
           rec.sample_rate,
-          (progress) => {
+          (loadedBytes, fraction) => {
             if (cancelled) return;
-            if (progress < 1)
+            const mb = `${(loadedBytes / 1e6).toFixed(1)} MB`;
+            if (fraction === null || fraction < 1) {
               setLoad({
                 phase: "loading",
-                message: "Downloading audio…",
-                progress,
+                message: `Downloading audio… ${mb}`,
+                progress: fraction,
               });
-            else setLoad({ phase: "loading", message: "Decoding audio…" });
+            } else {
+              setLoad({
+                phase: "loading",
+                message: "Decoding audio…",
+                progress: null,
+              });
+            }
           },
           abort.signal,
         );
@@ -207,10 +220,16 @@ const AnnotationEditorV2: React.FC = () => {
         const saver = new Autosaver(
           document,
           async (boxes) => {
-            await api.post(annotationUrl(id), {
-              recording_id: id,
-              bounding_boxes: toPayload(boxes),
-            });
+            try {
+              await api.post(annotationUrl(id), {
+                recording_id: id,
+                bounding_boxes: toPayload(boxes),
+              });
+            } catch (error) {
+              // Refused for good (e.g. no permission): keep the work in this browser.
+              if (isPermanentFailure(error)) writeBackup(id, toPayload(boxes));
+              throw error;
+            }
             clearBackup(id);
           },
           setSaveStatus,
@@ -489,14 +508,17 @@ const LoadingOverlay: React.FC<{ state: LoadState }> = ({ state }) => (
       ) : state.phase === "loading" ? (
         <>
           <p className="text-sm text-gray-600">{state.message}</p>
-          {state.progress !== undefined && (
-            <div className="mt-2 w-64 h-1.5 bg-gray-200 rounded">
+          {/* Always show a bar: exact when the size is known, pulsing otherwise. */}
+          <div className="mt-2 w-64 h-1.5 bg-gray-200 rounded overflow-hidden">
+            {typeof state.progress === "number" ? (
               <div
-                className="h-full bg-blue-500 rounded"
+                className="h-full bg-blue-500 rounded transition-[width]"
                 style={{ width: `${Math.round(state.progress * 100)}%` }}
               />
-            </div>
-          )}
+            ) : (
+              <div className="h-full w-full bg-blue-400 rounded animate-pulse" />
+            )}
+          </div>
         </>
       ) : null}
     </div>

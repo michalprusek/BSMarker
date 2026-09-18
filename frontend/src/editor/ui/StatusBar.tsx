@@ -37,7 +37,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ snap, onEditLabel, onNextC
         </span>
       ) : (
         <span>
-          {snap.boxCount} boxes · drag on the spectrogram to add one · Tab to step through
+          {snap.boxCount} boxes · {snap.readOnly ? "read-only" : "drag on the spectrogram to add one"} · Tab to step through
         </span>
       )}
 
