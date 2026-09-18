@@ -9,6 +9,7 @@ import {
   ArrowsPointingOutIcon,
   CheckIcon,
   ExclamationTriangleIcon,
+  ListBulletIcon,
   PauseIcon,
   PlayIcon,
   QuestionMarkCircleIcon,
@@ -42,9 +43,13 @@ interface ToolbarProps {
   navigation: React.ReactNode;
   onHelp: () => void;
   onEditActiveLabel: () => void;
+  listOpen: boolean;
+  onToggleList: () => void;
 }
 
-export const Toolbar: React.FC<ToolbarProps> = ({ recording, engine, snap, saveStatus, navigation, onHelp, onEditActiveLabel }) => {
+export const Toolbar: React.FC<ToolbarProps> = ({
+  recording, engine, snap, saveStatus, navigation, onHelp, onEditActiveLabel, listOpen, onToggleList,
+}) => {
   const disabled = !engine || !snap;
   const [showDisplay, setShowDisplay] = useState(false);
 
@@ -139,6 +144,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({ recording, engine, snap, saveS
         title="Display settings (FFT, colours, contrast)"
       >
         <AdjustmentsHorizontalIcon className="h-5 w-5 text-gray-600" />
+      </button>
+      <button
+        className={`${BUTTON} ${listOpen ? "bg-gray-100" : ""}`}
+        onMouseDown={keepFocus}
+        onClick={onToggleList}
+        title="List of boxes and conflicts"
+      >
+        <ListBulletIcon className="h-5 w-5 text-gray-600" />
       </button>
       <button className={BUTTON} onMouseDown={keepFocus} onClick={onHelp} title="Keyboard & mouse controls">
         <QuestionMarkCircleIcon className="h-5 w-5 text-gray-500" />

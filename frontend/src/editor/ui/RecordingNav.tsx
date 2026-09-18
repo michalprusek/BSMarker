@@ -67,15 +67,21 @@ interface RecordingNavProps {
   recording: Recording;
   neighbours: Neighbours | null;
   onNavigate: (recordingId: number) => void;
+  /** Conflicts left in the recording — marking it finished asks first. */
+  conflictCount: number;
 }
 
 /** "‹ 28 / 1011 ›" and the Finished switch. */
-export const RecordingNav: React.FC<RecordingNavProps> = ({ recording, neighbours, onNavigate }) => {
+export const RecordingNav: React.FC<RecordingNavProps> = ({ recording, neighbours, onNavigate, conflictCount }) => {
   const [finished, setFinished] = useState(!!recording.is_finished);
   const [busy, setBusy] = useState(false);
   useEffect(() => setFinished(!!recording.is_finished), [recording]);
 
   const toggleFinished = async () => {
+    if (!finished && conflictCount > 0) {
+      const plural = conflictCount === 1 ? "conflict" : "conflicts";
+      if (!window.confirm(`This recording still has ${conflictCount} ${plural} (F8 shows them). Mark it as finished anyway?`)) return;
+    }
     setBusy(true);
     try {
       const updated = await recordingService.toggleFinished(recording.id);

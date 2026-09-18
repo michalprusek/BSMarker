@@ -1,7 +1,7 @@
 import type { EditorEngine } from "../EditorEngine";
 import { EditorBox, isTimeSegment } from "../core/boxes";
 import { EditActions, moveBoxes } from "../edit/EditActions";
-import { CURSOR_FOR_HANDLE, Handle, Hit, hitTest, snapTime } from "../edit/geometry";
+import { CURSOR_FOR_HANDLE, EdgeSide, Handle, Hit, hitTest, snapTime } from "../edit/geometry";
 import { Draft } from "../edit/draft";
 
 export type Zone = "spectrogram" | "lane" | "waveform";
@@ -159,10 +159,15 @@ export class EditorInput {
     return clamp(this.view.yToFreq(y), 0, this.view.nyquist);
   }
 
-  /** Snap a time to nearby box edges unless Alt is held. */
-  private snap(t: number, e: MouseEvent, exclude: ReadonlySet<string> = new Set()) {
+  /** Snap an edge next to neighbouring boxes (leaving the minimum gap) unless Alt is held. */
+  private snap(t: number, e: MouseEvent, side: EdgeSide, exclude: ReadonlySet<string> = new Set()) {
     if (e.altKey) return { time: t, guide: null };
-    return snapTime(this.view, this.engine.index, t, exclude);
+    return snapTime(this.view, this.engine.index, t, exclude, side);
+  }
+
+  /** While drawing, the moving edge is the start if it is left of the anchor. */
+  private drawnEdge(g: Extract<Gesture, { type: "draw" }>, t: number): EdgeSide {
+    return t < g.startTime ? "start" : "end";
   }
 
   private setCursor(cursor: string): void {
@@ -364,7 +369,7 @@ export class EditorInput {
     } else if (g.shift && !g.forceDraw) {
       this.gesture = { type: "marquee", id, start, zone, additive: true };
     } else {
-      const snapped = this.snap(this.timeAt(start.x), e);
+      const snapped = this.snap(this.timeAt(start.x), e, "any");
       this.gesture = { type: "draw", id, start, zone, startTime: snapped.time };
     }
   }
@@ -374,7 +379,8 @@ export class EditorInput {
     if (!g) return;
     switch (g.type) {
       case "draw": {
-        const snapped = this.snap(this.timeAt(p.x), e);
+        const t = this.timeAt(p.x);
+        const snapped = this.snap(t, e, this.drawnEdge(g, t));
         this.engine.setDraft(this.drawDraft(g, p, snapped.time), snapped.guide);
         break;
       }
@@ -420,7 +426,8 @@ export class EditorInput {
 
   private finishDraw(g: Extract<Gesture, { type: "draw" }>, p: Point, e: PointerEvent): void {
     this.engine.setDraft(null);
-    const draft = this.drawDraft(g, p, this.snap(this.timeAt(p.x), e).time);
+    const t = this.timeAt(p.x);
+    const draft = this.drawDraft(g, p, this.snap(t, e, this.drawnEdge(g, t)).time);
     const wide = this.view.timeToX(draft.end) - this.view.timeToX(draft.start) >= MIN_DRAW_PX;
     const tall = draft.fLow === null || this.view.freqToY(draft.fLow) - this.view.freqToY(draft.fHigh!) >= MIN_DRAW_PX;
     if (wide && tall) this.doc.add(draft);
@@ -454,8 +461,8 @@ export class EditorInput {
       const ids = new Set(g.originals.map((b) => b.id));
       const start = Math.min(...g.originals.map((b) => b.start)) + dt;
       const end = Math.max(...g.originals.map((b) => b.end)) + dt;
-      const a = snapTime(this.view, this.engine.index, start, ids);
-      const b = snapTime(this.view, this.engine.index, end, ids);
+      const a = snapTime(this.view, this.engine.index, start, ids, "start");
+      const b = snapTime(this.view, this.engine.index, end, ids, "end");
       const da = a.guide === null ? Infinity : Math.abs(a.time - start);
       const db = b.guide === null ? Infinity : Math.abs(b.time - end);
       if (da <= db && a.guide !== null) {
@@ -480,7 +487,7 @@ export class EditorInput {
     let guide: number | null = null;
 
     if (g.handle.includes("w") || g.handle.includes("e")) {
-      const snapped = this.snap(this.timeAt(p.x), e, new Set([o.id]));
+      const snapped = this.snap(this.timeAt(p.x), e, g.handle.includes("w") ? "start" : "end", new Set([o.id]));
       guide = snapped.guide;
       if (g.handle.includes("w")) start = snapped.time;
       else end = snapped.time;
@@ -637,6 +644,9 @@ export class EditorInput {
         return true;
       case "F2":
         if (hasSelection) this.callbacks.editLabel();
+        return true;
+      case "F8":
+        engine.focusConflict(e.shiftKey ? -1 : 1);
         return true;
       case "Digit0":
         engine.fitAll();

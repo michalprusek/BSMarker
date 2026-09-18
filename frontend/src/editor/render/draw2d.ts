@@ -2,6 +2,7 @@ import { Viewport } from "../core/Viewport";
 import { BoxIndex, EditorBox, colorIndexForLabel } from "../core/boxes";
 import { Draft } from "../edit/draft";
 import { Rect, boxRect } from "../edit/geometry";
+import { Conflict } from "../edit/conflicts";
 import { WaveformPeaks } from "../dsp/WaveformPeaks";
 import { LABEL_COLORS } from "../../utils/constants";
 import { formatFrequency, formatTime, niceStep } from "./ticks";
@@ -119,7 +120,11 @@ export interface OverlayState {
   hoveredId: string | null;
   draft: Draft | null;
   snapGuide: number | null;
+  conflicts: Conflict[];
+  conflicted: ReadonlySet<string>;
 }
+
+const CONFLICT = "#DC2626";
 
 const HANDLE_SIZE = 7;
 
@@ -140,6 +145,15 @@ export function drawBoxes(ctx: CanvasRenderingContext2D, view: Viewport, state: 
     ctx.lineWidth = selected ? 2 : hovered ? 2 : 1.25;
     ctx.strokeStyle = selected ? SELECTED : color.stroke;
     ctx.strokeRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+    if (state.conflicted.has(box.id)) {
+      // Red dashed inner outline: breaks the time-axis rules.
+      ctx.save();
+      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = CONFLICT;
+      ctx.strokeRect(r.x0 + 2, r.y0 + 2, Math.max(0, r.x1 - r.x0 - 4), Math.max(0, r.y1 - r.y0 - 4));
+      ctx.restore();
+    }
     if (selected) selectedRects.push(r);
     drawLabel(ctx, box.label, r.x0, r.y0, Math.max(r.x1 - r.x0, 14), selected ? SELECTED : color.stroke);
   });
@@ -221,6 +235,24 @@ export function drawTimeLane(ctx: CanvasRenderingContext2D, view: Viewport, stat
     ctx.fillRect(x0, 2, Math.max(1, x1 - x0), height - 4);
   });
   ctx.globalAlpha = 1;
+
+  // Conflicts on the time axis: the overlap / too-small gap in solid red,
+  // nested boxes outlined.
+  for (const c of state.conflicts) {
+    if (c.end < view.t0 || c.start > view.t1) continue;
+    const x0 = view.timeToX(c.start);
+    const x1 = view.timeToX(c.end);
+    if (c.kind === "gap") {
+      const w = Math.max(3, x1 - x0);
+      ctx.fillStyle = CONFLICT;
+      ctx.fillRect((x0 + x1) / 2 - w / 2, 0, w, height);
+    } else {
+      ctx.strokeStyle = CONFLICT;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x0 + 1, 1, Math.max(1, x1 - x0 - 2), height - 2);
+    }
+  }
+
   if (state.draft) {
     const x0 = view.timeToX(state.draft.start);
     const x1 = view.timeToX(state.draft.end);

@@ -3,6 +3,7 @@ import { BoxIndex, colorIndexForLabel, toApiBoxes } from "../core/boxes";
 import { AnnotationDocument } from "../edit/AnnotationDocument";
 import { Autosaver, SaveStatus } from "../edit/Autosaver";
 import { EditActions, moveBoxes } from "../edit/EditActions";
+import { detectConflicts, fixAllGaps, fixGap } from "../edit/conflicts";
 import { hitTest, snapTime } from "../edit/geometry";
 import { letterOf, zoomKey } from "../input/EditorInput";
 import { box } from "../testFixtures";
@@ -207,9 +208,13 @@ describe("geometry", () => {
     expect(hitTest(view, nested, new Set(["b"]), 270, 380, false)?.box.id).toBe("b"); // selected wins
   });
 
-  it("snaps to nearby edges of other boxes only", () => {
+  it("snaps next to other boxes, leaving the minimum gap", () => {
     const index = new BoxIndex([box("a", 1, 2), box("b", 5, 6)]);
-    expect(snapTime(view, index, 2.04, new Set())).toEqual({ time: 2, guide: 2 });
+    // A start edge near a's end lands 12 ms after it; an end edge near b's start 12 ms before it.
+    expect(snapTime(view, index, 2.04, new Set(), "start")).toEqual({ time: 2.012, guide: 2 });
+    expect(snapTime(view, index, 4.97, new Set(), "end")).toEqual({ time: 4.988, guide: 5 });
+    // An end edge is never snapped onto the far side of a neighbour's end.
+    expect(snapTime(view, index, 2.04, new Set(), "end").guide).toBeNull();
     expect(snapTime(view, index, 2.2, new Set()).guide).toBeNull();
     expect(snapTime(view, index, 2.04, new Set(["a"])).guide).toBeNull();
   });
@@ -278,5 +283,42 @@ describe("keyboard layouts", () => {
     expect(zoomKey(key("=", "Minus"))).toBe(1);
     expect(zoomKey(key("-", "Slash"))).toBe(-1); // Czech: - next to the dot
     expect(zoomKey(key("é", "Digit0"))).toBe(0);
+  });
+});
+
+describe("conflicts", () => {
+  const kinds = (boxes: ReturnType<typeof box>[]) =>
+    detectConflicts(boxes).map((c) => (c.kind === "gap" ? `gap:${c.a.id}-${c.b.id}` : `nested:${c.inner.id}<${c.outer.id}`));
+
+  it("finds overlaps, too-small gaps and nested boxes on the time axis", () => {
+    expect(kinds([box("a", 1, 2), box("b", 2.02, 3)])).toEqual([]); // 20 ms gap is fine
+    expect(kinds([box("a", 1, 2), box("b", 2.005, 3)])).toEqual(["gap:a-b"]); // 5 ms
+    expect(kinds([box("a", 1, 2), box("b", 1.5, 3)])).toEqual(["gap:a-b"]); // overlap
+    expect(kinds([box("a", 1, 3), box("b", 1.5, 2)])).toEqual(["nested:b<a"]);
+    // Frequency does not matter — it's about the time axis.
+    expect(kinds([box("a", 1, 2, 1000, 2000), box("b", 1.5, 3, 8000, 9000)])).toEqual(["gap:a-b"]);
+    // Same length: the lower box (higher minimum frequency) counts as nested, like the classic editor.
+    expect(kinds([box("hi", 1, 2, 1000, 2000), box("lo", 1, 2, 5000, 6000)])).toEqual(["nested:lo<hi"]);
+  });
+
+  it("fixes a gap by moving both edges to the midpoint, leaving 12 ms", () => {
+    const doc = new AnnotationDocument([box("a", 1, 2), box("b", 1.9, 3)]);
+    const [c] = detectConflicts(doc.boxes);
+    expect(c.kind).toBe("gap");
+    expect(fixGap(doc, c as Extract<typeof c, { kind: "gap" }>)).toBe(true);
+    const [a, b] = doc.boxes;
+    expect(a.end).toBeCloseTo(1.944, 9);
+    expect(b.start).toBeCloseTo(1.956, 9);
+    expect(detectConflicts(doc.boxes)).toEqual([]);
+  });
+
+  it("fixes all gaps in one undo step and leaves nested boxes to the user", () => {
+    const doc = new AnnotationDocument([box("a", 1, 2), box("b", 1.99, 3), box("c", 3.001, 4), box("x", 5, 8), box("in", 6, 7)]);
+    const { fixed, remaining } = fixAllGaps(doc);
+    expect(fixed).toBe(2);
+    expect(remaining).toBe(1); // the nested box
+    expect(doc.boxes).toHaveLength(5);
+    doc.undo();
+    expect(detectConflicts(doc.boxes)).toHaveLength(3);
   });
 });

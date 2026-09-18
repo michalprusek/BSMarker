@@ -17,6 +17,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["Ctrl+Z / Ctrl+Shift+Z", "Undo / redo"],
       ["Ctrl+C / X / V / D", "Copy / cut / paste at cursor / duplicate"],
       ["Esc", "Cancel drag · stop · deselect"],
+      ["F8 / Shift+F8", "Next / previous conflict (overlap, gap < 10 ms, nested box)"],
     ],
   },
   {

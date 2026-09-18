@@ -6,7 +6,13 @@ import { LabelChip } from "./LabelChip";
 
 const khz = (hz: number) => `${(hz / 1000).toFixed(2)} kHz`;
 
-export const StatusBar: React.FC<{ snap: EditorSnapshot | null; onEditLabel: () => void }> = ({ snap, onEditLabel }) => {
+interface StatusBarProps {
+  snap: EditorSnapshot | null;
+  onEditLabel: () => void;
+  onNextConflict: () => void;
+}
+
+export const StatusBar: React.FC<StatusBarProps> = ({ snap, onEditLabel, onNextConflict }) => {
   if (!snap) return <div className="h-8 border-t border-gray-200 shrink-0" />;
   const { hover, selection } = snap;
 
@@ -36,6 +42,18 @@ export const StatusBar: React.FC<{ snap: EditorSnapshot | null; onEditLabel: () 
       )}
 
       <div className="flex-1" />
+      {snap.conflicts.length > 0 ? (
+        <button
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onNextConflict}
+          className="text-red-700 font-medium hover:underline"
+          title="Overlaps, gaps under 10 ms and nested boxes — click or press F8 to go to the next one"
+        >
+          ⚠ {snap.conflicts.length} conflict{snap.conflicts.length === 1 ? "" : "s"}
+        </button>
+      ) : (
+        snap.boxCount > 0 && <span className="text-green-700" title="No overlaps, gaps under 10 ms or nested boxes">✓ no conflicts</span>
+      )}
       <span title="Time between spectrogram columns at this zoom / frequency bin width">
         column {formatDuration(snap.columnHop)} · Δf {(snap.sampleRate / snap.settings.fftSize).toFixed(0)} Hz
       </span>

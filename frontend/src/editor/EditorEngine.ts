@@ -4,6 +4,7 @@ import { AudioPlayer } from "./audio/AudioPlayer";
 import { DecodedAudio } from "./audio/loadAudio";
 import { AnnotationDocument } from "./edit/AnnotationDocument";
 import { Draft } from "./edit/draft";
+import { Conflict, conflictedIds, detectConflicts } from "./edit/conflicts";
 import { TileScheduler, ReadyTile } from "./dsp/TileScheduler";
 import { WaveformPeaks } from "./dsp/WaveformPeaks";
 import { DbLevels, autoLevels } from "./dsp/levels";
@@ -48,8 +49,13 @@ export interface EditorSnapshot {
   playbackRate: number;
   loop: boolean;
   hover: { time: number; freq: number | null } | null;
-  /** Selected boxes, in time order. */
+  /** All boxes (sorted by start) and the selected ones, in time order. */
+  boxes: EditorBox[];
   selection: EditorBox[];
+  /** Time-axis rule violations, ordered by time. */
+  conflicts: Conflict[];
+  /** The conflict involving the current selection, if any (shown with fix actions). */
+  focusedConflict: Conflict | null;
   boxCount: number;
   activeLabel: string;
   /** Labels used in this recording, sorted. */
@@ -92,6 +98,8 @@ export class EditorEngine {
   private readonly unsubscribeDoc: () => void;
 
   private indexValue: BoxIndex;
+  private conflicts: Conflict[] = [];
+  private conflicted: ReadonlySet<string> = new Set();
   private hoveredId: string | null = null;
   private hover: { time: number; freq: number | null } | null = null;
   private draft: Draft | null = null;
@@ -129,6 +137,7 @@ export class EditorEngine {
     this.player.onStateChange = () => this.invalidate("playback");
     this.peaks = new WaveformPeaks(audio.pcm);
     this.indexValue = new BoxIndex(doc.boxes);
+    this.updateConflicts();
     this.settings = {
       fftSize: 1024,
       palette: "inverted-gray",
@@ -138,7 +147,10 @@ export class EditorEngine {
     };
 
     this.unsubscribeDoc = doc.subscribe((contentChanged) => {
-      if (contentChanged) this.indexValue = new BoxIndex(doc.boxes);
+      if (contentChanged) {
+        this.indexValue = new BoxIndex(doc.boxes);
+        this.updateConflicts();
+      }
       this.dirtyOverlay = true;
       this.schedule();
       // Live drag updates only need throttled readouts; discrete edits update at once.
@@ -346,6 +358,27 @@ export class EditorEngine {
     this.reveal(box.start, box.end);
   }
 
+  /**
+   * Jump to the next (+1) or previous (−1) conflict after the playhead or
+   * selection, select the boxes involved and bring them into view.
+   */
+  focusConflict(direction: 1 | -1): void {
+    if (this.conflicts.length === 0) return;
+    const focused = this.focusedConflictFor(this.doc.selectedIds);
+    const ref = focused ? focused.start : this.player.position;
+    const list = this.conflicts;
+    let target = direction > 0
+      ? list.find((c) => c.start > ref + 1e-9)
+      : [...list].reverse().find((c) => c.start < ref - 1e-9);
+    if (!target) target = direction > 0 ? list[0] : list[list.length - 1]; // wrap around
+    this.doc.select(target.kind === "gap" ? [target.a.id, target.b.id] : [target.inner.id, target.outer.id]);
+    this.player.seek(target.start);
+    // Zoom so the boxes involved fill about the middle third — close enough to fix.
+    const [s, e] = target.kind === "gap" ? [target.a.start, target.b.end] : [target.outer.start, target.outer.end];
+    this.view.setTimeRange(s - (e - s), e + (e - s));
+    this.userNavigated();
+  }
+
   // ------------------------------------------------- gesture feedback (input)
 
   setHover(x: number | null, y: number | null, overSpectrogram: boolean, hoveredId: string | null): void {
@@ -388,6 +421,22 @@ export class EditorEngine {
   }
 
   // --------------------------------------------------------------- internals
+
+  private updateConflicts(): void {
+    this.conflicts = detectConflicts(this.doc.boxes);
+    this.conflicted = conflictedIds(this.conflicts);
+  }
+
+  /** First conflict whose boxes are all selected (e.g. after F8), else one touching the selection. */
+  private focusedConflictFor(selected: ReadonlySet<string>): Conflict | null {
+    if (selected.size === 0) return null;
+    const ids = (c: Conflict) => (c.kind === "gap" ? [c.a.id, c.b.id] : [c.inner.id, c.outer.id]);
+    return (
+      this.conflicts.find((c) => ids(c).every((id) => selected.has(id))) ??
+      this.conflicts.find((c) => ids(c).some((id) => selected.has(id))) ??
+      null
+    );
+  }
 
   private userNavigated(): void {
     // Stop following playback when the user deliberately looks elsewhere.
@@ -534,6 +583,8 @@ export class EditorEngine {
       hoveredId: this.hoveredId,
       draft: this.draft,
       snapGuide: this.snapGuide,
+      conflicts: this.conflicts,
+      conflicted: this.conflicted,
     };
     const overlay = prepareCanvas(el.overlay, dpr);
     if (overlay) drawBoxes(overlay, view, state);
@@ -585,7 +636,10 @@ export class EditorEngine {
       playbackRate: this.player.playbackRate,
       loop: this.loop,
       hover: this.hover,
+      boxes: this.doc.boxes,
       selection: this.doc.selection,
+      conflicts: this.conflicts,
+      focusedConflict: this.focusedConflictFor(this.doc.selectedIds),
       boxCount: this.doc.boxes.length,
       activeLabel: this.doc.activeLabel,
       labels,

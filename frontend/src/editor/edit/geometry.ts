@@ -1,5 +1,6 @@
 import { Viewport } from "../core/Viewport";
 import { BoxIndex, EditorBox, isTimeSegment } from "../core/boxes";
+import { FIX_GAP } from "./conflicts";
 
 /** Distance (CSS px) within which an edge or corner can be grabbed. */
 export const GRAB_PX = 5;
@@ -101,23 +102,32 @@ export const CURSOR_FOR_HANDLE: Record<Handle, string> = {
   se: "nwse-resize",
 };
 
+/** Which edge of a box is being placed: its start, its end, or not known yet. */
+export type EdgeSide = "start" | "end" | "any";
+
 /**
- * Snaps `t` to the nearest start/end of another box within SNAP_PX.
- * Returns the (possibly unchanged) time and the snapped-to time, if any.
+ * Snaps an edge near a neighbouring box to the closest *valid* position:
+ * a start edge goes FIX_GAP after the neighbour's end, an end edge FIX_GAP
+ * before the neighbour's start — so snapping never creates a conflict.
+ * Returns the (possibly unchanged) time and the neighbour edge to highlight.
  */
 export function snapTime(
   view: Viewport,
   index: BoxIndex,
   t: number,
   exclude: ReadonlySet<string>,
+  side: EdgeSide = "any",
 ): { time: number; guide: number | null } {
   const tol = SNAP_PX / view.pxPerSec;
-  let best: number | null = null;
-  index.forEachInRange(t - tol, t + tol, (box) => {
+  let best: { time: number; guide: number } | null = null;
+  const consider = (time: number, guide: number) => {
+    if (Math.abs(time - t) <= tol && (!best || Math.abs(time - t) < Math.abs(best.time - t))) best = { time, guide };
+  };
+  index.forEachInRange(t - tol - FIX_GAP, t + tol + FIX_GAP, (box) => {
     if (exclude.has(box.id)) return;
-    for (const edge of [box.start, box.end]) {
-      if (Math.abs(edge - t) <= tol && (best === null || Math.abs(edge - t) < Math.abs(best - t))) best = edge;
-    }
+    if (side !== "end") consider(box.end + FIX_GAP, box.end);
+    if (side !== "start") consider(box.start - FIX_GAP, box.start);
   });
-  return best === null ? { time: t, guide: null } : { time: best, guide: best };
+  const found = best as { time: number; guide: number } | null;
+  return found ? found : { time: t, guide: null };
 }
