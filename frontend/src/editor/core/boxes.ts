@@ -9,32 +9,91 @@ export interface EditorBox {
   id: string;
   start: number; // s
   end: number; // s
-  /** null = the box spans the full frequency range */
+  /** null = the box spans the full frequency range (a time segment) */
   fLow: number | null; // Hz
   fHigh: number | null; // Hz
   label: string;
-  colorIndex: number;
+  /** Passed through unchanged so saving never drops them. */
+  confidence: number | null;
+  extraMetadata: Record<string, unknown> | null;
 }
 
 export const NO_LABEL = "None";
 
-export function fromApiBoxes(apiBoxes: BoundingBox[]): EditorBox[] {
-  const sorted = apiBoxes
-    .filter((b) => Number.isFinite(b.start_time) && Number.isFinite(b.end_time) && b.end_time > b.start_time)
-    .sort((a, b) => a.start_time - b.start_time);
+/**
+ * Stable colour per label: letters A–Z (the syllable-type convention used
+ * in this project) cycle through the palette in alphabetical order, so the
+ * same letter has the same colour in every recording.
+ */
+export function colorIndexForLabel(label: string): number {
+  if (!label || label === NO_LABEL) return 0;
+  const slots = LABEL_COLORS.length - 1;
+  if (/^[A-Z]$/.test(label)) return 1 + ((label.charCodeAt(0) - 65) % slots);
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) hash = (hash * 31 + label.charCodeAt(i)) >>> 0;
+  return 1 + (hash % slots);
+}
 
-  const colors = new Map<string, number>([[NO_LABEL, 0]]);
-  return sorted.map((b, i) => {
-    const label = b.label || NO_LABEL;
-    if (!colors.has(label)) colors.set(label, 1 + ((colors.size - 1) % (LABEL_COLORS.length - 1)));
-    return {
-      id: b.id !== undefined ? String(b.id) : `new-${i}`,
+export const isTimeSegment = (box: EditorBox): boolean => box.fLow === null || box.fHigh === null;
+
+export const byStart = (a: EditorBox, b: EditorBox): number => a.start - b.start || a.end - b.end;
+
+export function fromApiBoxes(apiBoxes: BoundingBox[]): EditorBox[] {
+  return apiBoxes
+    .filter((b) => Number.isFinite(b.start_time) && Number.isFinite(b.end_time) && b.end_time > b.start_time)
+    .map((b, i) => ({
+      id: b.id !== undefined ? String(b.id) : `api-${i}`,
       start: b.start_time,
       end: b.end_time,
       fLow: b.min_frequency ?? null,
       fHigh: b.max_frequency ?? null,
-      label,
-      colorIndex: colors.get(label)!,
+      label: b.label || NO_LABEL,
+      confidence: b.confidence ?? null,
+      extraMetadata: (b.metadata as Record<string, unknown> | null | undefined) ?? null,
+    }))
+    .sort(byStart);
+}
+
+/**
+ * Legacy pixel fields are still required by the API. They are written in a
+ * fixed reference frame (whole recording = 1000 px wide, 0 Hz–Nyquist = 400 px
+ * high) so they are at least deterministic; time and frequency are authoritative.
+ */
+const LEGACY_WIDTH = 1000;
+const LEGACY_HEIGHT = 400;
+
+export interface ApiBoxPayload {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  start_time: number;
+  end_time: number;
+  min_frequency: number | null;
+  max_frequency: number | null;
+  label: string;
+  confidence: number | null;
+  extra_metadata: Record<string, unknown> | null;
+}
+
+export function toApiBoxes(boxes: EditorBox[], duration: number, nyquist: number): ApiBoxPayload[] {
+  const px = (t: number) => (t / duration) * LEGACY_WIDTH;
+  const py = (f: number) => (1 - f / nyquist) * LEGACY_HEIGHT;
+  return boxes.map((b) => {
+    const fLow = b.fLow ?? 0;
+    const fHigh = b.fHigh ?? nyquist;
+    return {
+      x: px(b.start),
+      y: py(fHigh),
+      width: px(b.end) - px(b.start),
+      height: py(fLow) - py(fHigh),
+      start_time: b.start,
+      end_time: b.end,
+      min_frequency: b.fLow,
+      max_frequency: b.fHigh,
+      label: b.label,
+      confidence: b.confidence,
+      extra_metadata: b.extraMetadata,
     };
   });
 }
@@ -64,18 +123,6 @@ export class BoxIndex {
     for (let i = lo; i < boxes.length && boxes[i].start <= t1; i++) {
       if (boxes[i].end >= t0) fn(boxes[i], i);
     }
-  }
-
-  /** Topmost (latest-starting, shortest) box containing the point; `freq` null ignores frequency. */
-  hitTest(time: number, freq: number | null, timeTolerance = 0): EditorBox | null {
-    let best: EditorBox | null = null;
-    this.forEachInRange(time - timeTolerance, time + timeTolerance, (box) => {
-      if (freq !== null && box.fLow !== null && box.fHigh !== null) {
-        if (freq < box.fLow || freq > box.fHigh) return;
-      }
-      if (!best || box.end - box.start < best.end - best.start) best = box;
-    });
-    return best;
   }
 
   indexOf(id: string): number {

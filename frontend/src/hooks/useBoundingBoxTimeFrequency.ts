@@ -13,6 +13,13 @@ interface SpectrogramDimensions {
   height: number;
 }
 
+interface TimeFrequencyInput {
+  start_time: number;
+  end_time: number;
+  min_frequency?: number | null;
+  max_frequency?: number | null;
+}
+
 interface BoundingBoxCoords {
   x: number;
   y: number;
@@ -129,6 +136,37 @@ export const useBoundingBoxTimeFrequency = (
   );
 
   /**
+   * Inverse of convertBoxToTimeFrequency: time/frequency are the source of
+   * truth, pixels are derived for the current canvas size. Boxes without a
+   * frequency range (time segments from editor v2) span the full height.
+   */
+  const convertTimeFrequencyToBox = useCallback(
+    (box: TimeFrequencyInput): BoundingBoxCoords & TimeFrequencyResult => {
+      const nyquistFreq = getNyquistFrequency();
+      const spectrogramHeight =
+        spectrogramDimensions.height *
+        LAYOUT_CONSTANTS.SPECTROGRAM_HEIGHT_RATIO;
+      const minFrequency = box.min_frequency ?? 0;
+      const maxFrequency = box.max_frequency ?? nyquistFreq;
+      const x = CoordinateUtils.timeToPixel(box.start_time, duration, spectrogramDimensions.width, 1, false);
+      const xEnd = CoordinateUtils.timeToPixel(box.end_time, duration, spectrogramDimensions.width, 1, false);
+      const y = CoordinateUtils.frequencyToPixel(maxFrequency, nyquistFreq, spectrogramHeight);
+      const yEnd = CoordinateUtils.frequencyToPixel(minFrequency, nyquistFreq, spectrogramHeight);
+      return {
+        x,
+        y,
+        width: xEnd - x,
+        height: yEnd - y,
+        start_time: box.start_time,
+        end_time: box.end_time,
+        min_frequency: minFrequency,
+        max_frequency: maxFrequency,
+      };
+    },
+    [spectrogramDimensions, duration, getNyquistFrequency],
+  );
+
+  /**
    * Get the maximum Y coordinate for spectrogram area constraints
    */
   const getMaxSpectrogramY = useCallback((): number => {
@@ -139,6 +177,7 @@ export const useBoundingBoxTimeFrequency = (
 
   return {
     convertBoxToTimeFrequency,
+    convertTimeFrequencyToBox,
     convertNormalizedBoxToTimeFrequency,
     getMaxSpectrogramY,
   };

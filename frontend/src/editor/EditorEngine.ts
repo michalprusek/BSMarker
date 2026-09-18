@@ -2,16 +2,16 @@ import { Viewport } from "./core/Viewport";
 import { BoxIndex, EditorBox } from "./core/boxes";
 import { AudioPlayer } from "./audio/AudioPlayer";
 import { DecodedAudio } from "./audio/loadAudio";
+import { AnnotationDocument } from "./edit/AnnotationDocument";
+import { Draft } from "./edit/draft";
 import { TileScheduler, ReadyTile } from "./dsp/TileScheduler";
 import { WaveformPeaks } from "./dsp/WaveformPeaks";
 import { DbLevels, autoLevels } from "./dsp/levels";
-import {
-  FftSize, TileId, chooseLevel, hopForLevel, maxLevel, tileIndexRange,
-} from "./dsp/tiles";
+import { FftSize, TileId, chooseLevel, hopForLevel, maxLevel, tileIndexRange } from "./dsp/tiles";
 import { SpectrogramRenderer } from "./render/SpectrogramRenderer";
 import { PaletteName, backgroundColor } from "./render/palettes";
 import {
-  EnvelopeBuffers, drawBoxes, drawFreqAxis, drawMinimap, drawTimeLane, drawTimeRuler,
+  EnvelopeBuffers, OverlayState, drawBoxes, drawFreqAxis, drawMinimap, drawTimeLane, drawTimeRuler,
   drawWaveform, prepareCanvas, renderMinimapCache,
 } from "./render/draw2d";
 
@@ -41,17 +41,21 @@ export interface EditorSnapshot {
   sampleRate: number;
   t0: number;
   t1: number;
-  pxPerSec: number;
   f0: number;
   f1: number;
-  isFreqZoomed: boolean;
   playing: boolean;
   position: number;
   playbackRate: number;
   loop: boolean;
   hover: { time: number; freq: number | null } | null;
-  selectedBox: EditorBox | null;
+  /** Selected boxes, in time order. */
+  selection: EditorBox[];
   boxCount: number;
+  activeLabel: string;
+  /** Labels used in this recording, sorted. */
+  labels: string[];
+  canUndo: boolean;
+  canRedo: boolean;
   pendingTiles: number;
   workers: number;
   /** Time resolution of the displayed columns (s) */
@@ -70,9 +74,10 @@ const AUTO_LEVEL_SAMPLE_TILES = 8;
 const SNAPSHOT_INTERVAL_MS = 80;
 
 /**
- * Imperative core of the annotation editor. React only mounts it and renders
- * controls; all per-frame work (drawing, playhead, input) happens here, off
- * the React render path.
+ * Imperative core of the annotation editor: viewport, spectrogram, audio and
+ * drawing. Boxes and selection live in the AnnotationDocument; the engine
+ * renders them plus the preview of the gesture in progress (draft, snap
+ * guide). React only mounts it and renders controls.
  */
 export class EditorEngine {
   readonly view: Viewport;
@@ -84,36 +89,38 @@ export class EditorEngine {
   private readonly minimapCache = document.createElement("canvas");
   private readonly resizeObserver: ResizeObserver;
   private readonly totalSamples: number;
+  private readonly unsubscribeDoc: () => void;
 
-  private boxes: BoxIndex;
-  private selectedId: string | null = null;
+  private indexValue: BoxIndex;
   private hoveredId: string | null = null;
   private hover: { time: number; freq: number | null } | null = null;
+  private draft: Draft | null = null;
+  private snapGuide: number | null = null;
   private loop = false;
   private settings: EditorSettings;
   /** Most recent tile data, kept for automatic contrast. */
   private recentTiles: Uint8Array[] = [];
   private levelsChosen = false;
+  private error: string | null = null;
 
   private dpr = window.devicePixelRatio || 1;
   private rafId = 0;
   private dirtyView = true; // everything that depends on the viewport
   private dirtySpectrogram = true;
-  private dirtyOverlay = true; // boxes / selection / hover
+  private dirtyOverlay = true; // boxes / selection / hover / draft
   private dirtyMinimap = true;
   private lastVersion = -1;
   private listeners = new Set<() => void>();
   private snapshot: EditorSnapshot;
   private lastSnapshotAt = 0;
   private snapshotTimer: ReturnType<typeof setTimeout> | null = null;
-  private destroyed = false;
   private slowestFrameMs = 0;
-  private error: string | null = null;
+  private destroyed = false;
 
   constructor(
     private readonly el: EditorElements,
     audio: DecodedAudio,
-    boxes: EditorBox[],
+    readonly doc: AnnotationDocument,
     settings: Partial<EditorSettings> = {},
   ) {
     this.totalSamples = audio.pcm.length;
@@ -121,7 +128,7 @@ export class EditorEngine {
     this.player = new AudioPlayer(audio.buffer);
     this.player.onStateChange = () => this.invalidate("playback");
     this.peaks = new WaveformPeaks(audio.pcm);
-    this.boxes = new BoxIndex(boxes);
+    this.indexValue = new BoxIndex(doc.boxes);
     this.settings = {
       fftSize: 1024,
       palette: "inverted-gray",
@@ -129,6 +136,15 @@ export class EditorEngine {
       followPlayback: true,
       ...settings,
     };
+
+    this.unsubscribeDoc = doc.subscribe((contentChanged) => {
+      if (contentChanged) this.indexValue = new BoxIndex(doc.boxes);
+      this.dirtyOverlay = true;
+      this.schedule();
+      // Live drag updates only need throttled readouts; discrete edits update at once.
+      if (doc.inTransaction) this.scheduleSnapshot();
+      else this.publishSnapshot();
+    });
 
     this.spectrogram = new SpectrogramRenderer(el.spectrogram, () => {
       this.dirtySpectrogram = true;
@@ -166,7 +182,11 @@ export class EditorEngine {
 
   getSnapshot = (): EditorSnapshot => this.snapshot;
 
-  // ------------------------------------------------------------------ commands
+  get index(): BoxIndex {
+    return this.indexValue;
+  }
+
+  // ------------------------------------------------------------ view settings
 
   setFftSize(fftSize: FftSize): void {
     this.settings = { ...this.settings, fftSize };
@@ -199,6 +219,8 @@ export class EditorEngine {
     this.invalidate("playback");
   }
 
+  // ----------------------------------------------------------------- playback
+
   toggleLoop(): void {
     this.loop = !this.loop;
     this.invalidate("playback");
@@ -208,23 +230,29 @@ export class EditorEngine {
     this.player.setPlaybackRate(rate);
   }
 
+  /** Time range covered by the selected boxes, or null. */
+  get selectionRange(): [number, number] | null {
+    const selection = this.doc.selection;
+    if (selection.length === 0) return null;
+    return [Math.min(...selection.map((b) => b.start)), Math.max(...selection.map((b) => b.end))];
+  }
+
   togglePlay(): void {
     if (this.player.isPlaying) {
       this.player.pause();
       return;
     }
-    const box = this.selectedBox;
+    const range = this.selectionRange;
     const from = this.player.position;
-    // With a selected box and the cursor inside it, play just the box.
-    if (box && from >= box.start && from < box.end) this.player.play(box.start, box.end, this.loop, from);
+    // With the cursor inside the selection, play just the selection.
+    if (range && from >= range[0] && from < range[1]) this.player.play(range[0], range[1], this.loop, from);
     else this.player.play(from);
   }
 
-  /** Play a box (or the visible range when nothing is selected). */
-  playSelection(): void {
-    const box = this.selectedBox;
-    if (box) this.player.play(box.start, box.end, this.loop);
-    else this.player.play(this.view.t0, this.view.t1, this.loop);
+  /** Play the selection (or the visible range when nothing is selected). */
+  playSelection(loop = this.loop): void {
+    const [start, end] = this.selectionRange ?? [this.view.t0, this.view.t1];
+    this.player.play(start, end, loop);
   }
 
   stop(): void {
@@ -234,6 +262,8 @@ export class EditorEngine {
   seek(time: number): void {
     this.player.seek(time);
   }
+
+  // --------------------------------------------------------------- navigation
 
   zoomTimeAt(x: number, factor: number): void {
     this.view.zoomTimeAt(x, factor);
@@ -270,31 +300,40 @@ export class EditorEngine {
 
   resetFrequency(): void {
     this.view.setFreqRange(0, this.view.nyquist);
-    this.invalidate("view");
-  }
-
-  zoomToSelection(): void {
-    const box = this.selectedBox;
-    if (!box) return;
-    const pad = (box.end - box.start) * 0.5;
-    this.view.setTimeRange(box.start - pad, box.end + pad);
     this.userNavigated();
   }
 
-  select(id: string | null): void {
-    if (this.selectedId === id) return;
-    this.selectedId = id;
-    this.invalidate("overlay");
+  zoomToSelection(): void {
+    const range = this.selectionRange;
+    if (!range) return;
+    const pad = (range[1] - range[0]) * 0.5;
+    this.view.setTimeRange(range[0] - pad, range[1] + pad);
+    this.userNavigated();
+  }
+
+  /** Bring a time range into view without changing the zoom unless it doesn't fit. */
+  reveal(start: number, end: number): void {
+    if (start >= this.view.t0 && end <= this.view.t1) return;
+    if (end - start > this.view.visibleDuration * 0.8) {
+      const pad = (end - start) * 0.5;
+      this.view.setTimeRange(start - pad, end + pad);
+    } else {
+      const half = this.view.visibleDuration / 2;
+      const center = (start + end) / 2;
+      this.view.setTimeRange(center - half, center + half);
+    }
+    this.userNavigated();
   }
 
   /** Select the next (+1) or previous (−1) box in time and bring it into view. */
   selectAdjacent(direction: 1 | -1): void {
-    const list = this.boxes.boxes;
+    const list = this.doc.boxes;
     if (list.length === 0) return;
-    const current = this.selectedId ? this.boxes.indexOf(this.selectedId) : -1;
+    const selection = this.doc.selection;
     let next: number;
-    if (current >= 0) {
-      next = Math.min(list.length - 1, Math.max(0, current + direction));
+    if (selection.length > 0) {
+      const anchor = direction > 0 ? selection[selection.length - 1] : selection[0];
+      next = Math.min(list.length - 1, Math.max(0, list.indexOf(anchor) + direction));
     } else {
       // Start from the playhead position.
       const pos = this.player.position;
@@ -302,57 +341,36 @@ export class EditorEngine {
       if (next < 0) next = direction > 0 ? list.length - 1 : 0;
     }
     const box = list[next];
-    this.select(box.id);
+    this.doc.select([box.id]);
     this.player.seek(box.start);
-    if (box.start < this.view.t0 || box.end > this.view.t1) {
-      if (box.end - box.start > this.view.visibleDuration * 0.8) this.zoomToSelection();
-      else this.panToTime((box.start + box.end) / 2);
-    }
+    this.reveal(box.start, box.end);
   }
 
-  get selectedBox(): EditorBox | null {
-    if (!this.selectedId) return null;
-    const i = this.boxes.indexOf(this.selectedId);
-    return i >= 0 ? this.boxes.boxes[i] : null;
-  }
+  // ------------------------------------------------- gesture feedback (input)
 
-  // ------------------------------------------------------ pointer queries (input)
-
-  /** Box under a point of the spectrogram (CSS px relative to the plot). */
-  boxAtSpectrogram(x: number, y: number): EditorBox | null {
-    return this.boxes.hitTest(this.view.xToTime(x), this.view.yToFreq(y));
-  }
-
-  /** Box under a point of the time lane / waveform (time only). */
-  boxAtTime(x: number): EditorBox | null {
-    return this.boxes.hitTest(this.view.xToTime(x), null, 2 / this.view.pxPerSec);
-  }
-
-  setHover(x: number | null, y: number | null, overSpectrogram: boolean): void {
+  setHover(x: number | null, y: number | null, overSpectrogram: boolean, hoveredId: string | null): void {
     if (x === null) {
       this.hover = null;
       this.el.hoverLine.style.display = "none";
-      if (this.hoveredId) {
-        this.hoveredId = null;
-        this.dirtyOverlay = true;
-      }
-      this.schedule();
-      this.scheduleSnapshot();
-      return;
+    } else {
+      this.hover = { time: this.view.xToTime(x), freq: overSpectrogram && y !== null ? this.view.yToFreq(y) : null };
+      this.el.hoverLine.style.display = "block";
+      this.el.hoverLine.style.transform = `translateX(${x}px)`;
     }
-    const time = this.view.xToTime(x);
-    const freq = overSpectrogram && y !== null ? this.view.yToFreq(y) : null;
-    this.hover = { time, freq };
-    this.el.hoverLine.style.display = "block";
-    this.el.hoverLine.style.transform = `translateX(${x}px)`;
-    const box = overSpectrogram && y !== null ? this.boxAtSpectrogram(x, y) : this.boxAtTime(x);
-    const id = box ? box.id : null;
-    if (id !== this.hoveredId) {
-      this.hoveredId = id;
+    if (hoveredId !== this.hoveredId) {
+      this.hoveredId = hoveredId;
       this.dirtyOverlay = true;
       this.schedule();
     }
     this.scheduleSnapshot();
+  }
+
+  /** Preview of a box being drawn or a selection rectangle. */
+  setDraft(draft: Draft | null, snapGuide: number | null = null): void {
+    this.draft = draft;
+    this.snapGuide = snapGuide;
+    this.dirtyOverlay = true;
+    this.schedule();
   }
 
   // -------------------------------------------------------------- lifecycle
@@ -361,6 +379,7 @@ export class EditorEngine {
     this.destroyed = true;
     cancelAnimationFrame(this.rafId);
     if (this.snapshotTimer) clearTimeout(this.snapshotTimer);
+    this.unsubscribeDoc();
     this.resizeObserver.disconnect();
     this.scheduler.destroy();
     this.spectrogram.destroy();
@@ -382,10 +401,7 @@ export class EditorEngine {
   private invalidate(what: "view" | "spectrogram" | "overlay" | "playback"): void {
     if (what === "view") this.dirtyView = true;
     if (what === "spectrogram") this.dirtySpectrogram = true;
-    if (what === "overlay") {
-      this.dirtyOverlay = true;
-      this.dirtyMinimap = true;
-    }
+    if (what === "overlay") this.dirtyOverlay = true;
     this.schedule();
     // Continuous view changes are throttled; discrete commands update the UI at once
     // (controlled inputs such as sliders must not lag behind the user).
@@ -431,7 +447,7 @@ export class EditorEngine {
       this.dirtyMinimap = false;
       renderMinimapCache(
         this.minimapCache, this.el.minimap.clientWidth, this.el.minimap.clientHeight, this.dpr,
-        this.view.duration, this.view.sampleRate, this.peaks, this.boxes,
+        this.view.duration, this.view.sampleRate, this.peaks,
       );
     }
     this.drawMinimap();
@@ -512,15 +528,24 @@ export class EditorEngine {
 
   private drawOverlay(): void {
     const { el, view, dpr } = this;
+    const state: OverlayState = {
+      index: this.indexValue,
+      selected: this.doc.selectedIds,
+      hoveredId: this.hoveredId,
+      draft: this.draft,
+      snapGuide: this.snapGuide,
+    };
     const overlay = prepareCanvas(el.overlay, dpr);
-    if (overlay) drawBoxes(overlay, view, this.boxes, this.selectedId, this.hoveredId);
+    if (overlay) drawBoxes(overlay, view, state);
     const lane = prepareCanvas(el.lane, dpr);
-    if (lane) drawTimeLane(lane, view, this.boxes, el.lane.clientHeight, this.selectedId);
+    if (lane) drawTimeLane(lane, view, state, el.lane.clientHeight);
   }
 
   private drawMinimap(): void {
     const ctx = prepareCanvas(this.el.minimap, this.dpr);
-    if (ctx) drawMinimap(ctx, this.minimapCache, this.view, this.el.minimap.clientWidth, this.el.minimap.clientHeight);
+    if (ctx) {
+      drawMinimap(ctx, this.minimapCache, this.view, this.indexValue, this.el.minimap.clientWidth, this.el.minimap.clientHeight);
+    }
   }
 
   private positionPlayhead(): void {
@@ -547,22 +572,25 @@ export class EditorEngine {
 
   private buildSnapshot(): EditorSnapshot {
     const v = this.view;
+    const labels = Array.from(new Set(this.doc.boxes.map((b) => b.label))).sort();
     return {
       duration: v.duration,
       sampleRate: v.sampleRate,
       t0: v.t0,
       t1: v.t1,
-      pxPerSec: v.pxPerSec,
       f0: v.f0,
       f1: v.f1,
-      isFreqZoomed: v.isFreqZoomed,
       playing: this.player.isPlaying,
       position: this.player.position,
       playbackRate: this.player.playbackRate,
       loop: this.loop,
       hover: this.hover,
-      selectedBox: this.selectedBox,
-      boxCount: this.boxes.boxes.length,
+      selection: this.doc.selection,
+      boxCount: this.doc.boxes.length,
+      activeLabel: this.doc.activeLabel,
+      labels,
+      canUndo: this.doc.canUndo,
+      canRedo: this.doc.canRedo,
       pendingTiles: this.scheduler.pendingCount,
       workers: this.scheduler.workerCount,
       columnHop: hopForLevel(this.settings.fftSize, this.currentLevel()) / v.sampleRate,

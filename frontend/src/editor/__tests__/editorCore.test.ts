@@ -1,5 +1,6 @@
 import { Viewport } from "../core/Viewport";
-import { BoxIndex, EditorBox } from "../core/boxes";
+import { BoxIndex } from "../core/boxes";
+import { box } from "../testFixtures";
 import { TileComputer } from "../dsp/stft";
 import { DB_MAX, DB_MIN } from "../dsp/db";
 import { TILE_COLS, poolChildren, chooseLevel, hopForLevel, maxLevel, minLevel, tileIndexRange, tileTimeRange } from "../dsp/tiles";
@@ -74,7 +75,7 @@ describe("tiles", () => {
       const level = chooseLevel(1024, SR, pxPerSec, 2, total);
       const hop = hopForLevel(1024, level);
       const clamped = level === maxLevel(1024, total) || level === minLevel(1024);
-      if (!clamped) expect(hop).toBeLessThanOrEqual(SR / (pxPerSec * 2));
+      expect(clamped || hop <= SR / (pxPerSec * 2)).toBe(true);
     }
   });
 
@@ -131,22 +132,11 @@ describe("WaveformPeaks", () => {
 });
 
 describe("BoxIndex", () => {
-  const box = (id: string, start: number, end: number, fLow: number | null = null, fHigh: number | null = null): EditorBox => ({
-    id, start, end, fLow, fHigh, label: "x", colorIndex: 1,
-  });
-
   it("finds boxes overlapping a range, including long ones starting earlier", () => {
     const index = new BoxIndex([box("long", 0, 50), box("a", 10, 11), box("b", 20, 21), box("c", 30, 31)]);
     const found: string[] = [];
     index.forEachInRange(19.5, 20.5, (b) => found.push(b.id));
     expect(found).toEqual(["long", "b"]);
-  });
-
-  it("hit-tests by time and frequency, preferring the smaller box", () => {
-    const index = new BoxIndex([box("wide", 0, 10), box("small", 4, 5, 2000, 4000)]);
-    expect(index.hitTest(4.5, 3000)?.id).toBe("small");
-    expect(index.hitTest(4.5, 8000)?.id).toBe("wide");
-    expect(index.hitTest(11, null)).toBeNull();
   });
 });
 

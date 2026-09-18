@@ -1,5 +1,7 @@
 import { Viewport } from "../core/Viewport";
-import { BoxIndex, EditorBox } from "../core/boxes";
+import { BoxIndex, EditorBox, colorIndexForLabel } from "../core/boxes";
+import { Draft } from "../edit/draft";
+import { Rect, boxRect } from "../edit/geometry";
 import { WaveformPeaks } from "../dsp/WaveformPeaks";
 import { LABEL_COLORS } from "../../utils/constants";
 import { formatFrequency, formatTime, niceStep } from "./ticks";
@@ -111,37 +113,87 @@ export function drawWaveform(
   }
 }
 
-export function drawBoxes(
-  ctx: CanvasRenderingContext2D,
-  view: Viewport,
-  index: BoxIndex,
-  selectedId: string | null,
-  hoveredId: string | null,
-): void {
-  ctx.font = FONT;
-  ctx.textBaseline = "top";
-  index.forEachInRange(view.t0, view.t1, (box) => {
-    const x0 = view.timeToX(box.start);
-    const x1 = view.timeToX(box.end);
-    const y0 = box.fHigh === null ? 0 : view.freqToY(box.fHigh);
-    const y1 = box.fLow === null ? view.height : view.freqToY(box.fLow);
-    if (y1 < 0 || y0 > view.height) return;
-
-    const color = LABEL_COLORS[box.colorIndex];
-    const selected = box.id === selectedId;
-    const hovered = box.id === hoveredId;
-    ctx.fillStyle = color.fill;
-    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
-    ctx.lineWidth = selected ? 2.5 : hovered ? 2 : 1.25;
-    ctx.strokeStyle = selected ? SELECTED : color.stroke;
-    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
-
-    if (x1 - x0 > 24) drawLabel(ctx, box, x0, y0, x1 - x0, selected ? SELECTED : color.stroke);
-  });
+export interface OverlayState {
+  index: BoxIndex;
+  selected: ReadonlySet<string>;
+  hoveredId: string | null;
+  draft: Draft | null;
+  snapGuide: number | null;
 }
 
-function drawLabel(ctx: CanvasRenderingContext2D, box: EditorBox, x: number, y: number, maxWidth: number, color: string): void {
-  const text = box.label;
+const HANDLE_SIZE = 7;
+
+export function drawBoxes(ctx: CanvasRenderingContext2D, view: Viewport, state: OverlayState): void {
+  ctx.font = FONT;
+  ctx.textBaseline = "top";
+  const selectedRects: Rect[] = [];
+
+  state.index.forEachInRange(view.t0, view.t1, (box) => {
+    const r = boxRect(view, box);
+    if (r.y1 < 0 || r.y0 > view.height) return;
+    const color = LABEL_COLORS[colorIndexForLabel(box.label)];
+    const selected = state.selected.has(box.id);
+    const hovered = box.id === state.hoveredId;
+
+    ctx.fillStyle = color.fill;
+    ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+    ctx.lineWidth = selected ? 2 : hovered ? 2 : 1.25;
+    ctx.strokeStyle = selected ? SELECTED : color.stroke;
+    ctx.strokeRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+    if (selected) selectedRects.push(r);
+    drawLabel(ctx, box.label, r.x0, r.y0, Math.max(r.x1 - r.x0, 14), selected ? SELECTED : color.stroke);
+  });
+
+  // Handles on top of every box, so they are never hidden by a neighbour.
+  for (const r of selectedRects) drawHandles(ctx, r, r.y0 > 0 || r.y1 < view.height);
+
+  if (state.draft) {
+    const d = state.draft;
+    const r = boxRect(view, { start: d.start, end: d.end, fLow: d.fLow, fHigh: d.fHigh } as EditorBox);
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1.5;
+    if (d.kind === "marquee") {
+      ctx.fillStyle = "rgba(37, 99, 235, 0.08)";
+      ctx.strokeStyle = "#2563EB";
+    } else {
+      ctx.fillStyle = "rgba(245, 158, 11, 0.15)";
+      ctx.strokeStyle = SELECTED;
+    }
+    ctx.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+    ctx.strokeRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+    ctx.setLineDash([]);
+  }
+  if (state.snapGuide !== null) drawGuide(ctx, view, state.snapGuide, view.height);
+}
+
+function drawHandles(ctx: CanvasRenderingContext2D, r: Rect, vertical: boolean): void {
+  const xm = (r.x0 + r.x1) / 2;
+  const ym = (r.y0 + r.y1) / 2;
+  const points: [number, number][] = [[r.x0, ym], [r.x1, ym]];
+  if (vertical) points.push([r.x0, r.y0], [r.x1, r.y0], [r.x0, r.y1], [r.x1, r.y1], [xm, r.y0], [xm, r.y1]);
+  ctx.fillStyle = "#FFFFFF";
+  ctx.strokeStyle = SELECTED;
+  ctx.lineWidth = 1.5;
+  const h = HANDLE_SIZE / 2;
+  for (const [x, y] of points) {
+    ctx.fillRect(x - h, y - h, HANDLE_SIZE, HANDLE_SIZE);
+    ctx.strokeRect(x - h, y - h, HANDLE_SIZE, HANDLE_SIZE);
+  }
+}
+
+function drawGuide(ctx: CanvasRenderingContext2D, view: Viewport, time: number, height: number): void {
+  const x = Math.round(view.timeToX(time)) + 0.5;
+  ctx.strokeStyle = "#EC4899";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(x, 0);
+  ctx.lineTo(x, height);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, color: string): void {
   const width = Math.min(maxWidth, ctx.measureText(text).width + 6);
   const ty = Math.max(0, y - 15);
   ctx.fillStyle = color;
@@ -156,24 +208,26 @@ function drawLabel(ctx: CanvasRenderingContext2D, box: EditorBox, x: number, y: 
 }
 
 /** Boxes flattened onto the time axis — gaps and overlaps are visible at a glance. */
-export function drawTimeLane(
-  ctx: CanvasRenderingContext2D,
-  view: Viewport,
-  index: BoxIndex,
-  height: number,
-  selectedId: string | null,
-): void {
+export function drawTimeLane(ctx: CanvasRenderingContext2D, view: Viewport, state: OverlayState, height: number): void {
   ctx.fillStyle = "#F3F4F6";
   ctx.fillRect(0, 0, view.width, height);
-  index.forEachInRange(view.t0, view.t1, (box) => {
+  state.index.forEachInRange(view.t0, view.t1, (box) => {
     const x0 = view.timeToX(box.start);
     const x1 = view.timeToX(box.end);
-    const selected = box.id === selectedId;
-    ctx.fillStyle = selected ? SELECTED : LABEL_COLORS[box.colorIndex].stroke;
-    ctx.globalAlpha = selected ? 1 : 0.7;
+    const selected = state.selected.has(box.id);
+    const hovered = box.id === state.hoveredId;
+    ctx.fillStyle = selected ? SELECTED : LABEL_COLORS[colorIndexForLabel(box.label)].stroke;
+    ctx.globalAlpha = selected || hovered ? 1 : 0.65;
     ctx.fillRect(x0, 2, Math.max(1, x1 - x0), height - 4);
   });
   ctx.globalAlpha = 1;
+  if (state.draft) {
+    const x0 = view.timeToX(state.draft.start);
+    const x1 = view.timeToX(state.draft.end);
+    ctx.fillStyle = state.draft.kind === "marquee" ? "rgba(37, 99, 235, 0.35)" : "rgba(245, 158, 11, 0.6)";
+    ctx.fillRect(x0, 0, x1 - x0, height);
+  }
+  if (state.snapGuide !== null) drawGuide(ctx, view, state.snapGuide, height);
 }
 
 /**
@@ -188,7 +242,6 @@ export function renderMinimapCache(
   duration: number,
   sampleRate: number,
   peaks: WaveformPeaks,
-  index: BoxIndex,
 ): void {
   cache.width = Math.max(1, Math.round(width * dpr));
   cache.height = Math.max(1, Math.round(height * dpr));
@@ -209,23 +262,23 @@ export function renderMinimapCache(
     const top = mid - max[x] * scale;
     ctx.fillRect(x, top, 1, Math.max(1, (max[x] - min[x]) * scale));
   }
-
-  const pxPerSec = width / duration;
-  index.forEachInRange(0, duration, (box) => {
-    ctx.fillStyle = LABEL_COLORS[box.colorIndex].stroke;
-    ctx.fillRect(box.start * pxPerSec, height - 4, Math.max(1, (box.end - box.start) * pxPerSec), 4);
-  });
 }
 
+/** Minimap: cached envelope + live box ticks + the current viewport. */
 export function drawMinimap(
   ctx: CanvasRenderingContext2D,
   cache: HTMLCanvasElement,
   view: Viewport,
+  index: BoxIndex,
   width: number,
   height: number,
 ): void {
   ctx.drawImage(cache, 0, 0, width, height);
   const pxPerSec = width / view.duration;
+  index.forEachInRange(0, view.duration, (box) => {
+    ctx.fillStyle = LABEL_COLORS[colorIndexForLabel(box.label)].stroke;
+    ctx.fillRect(box.start * pxPerSec, height - 4, Math.max(1, (box.end - box.start) * pxPerSec), 4);
+  });
   const x0 = view.t0 * pxPerSec;
   const w = Math.max(4, view.visibleDuration * pxPerSec);
   ctx.fillStyle = "rgba(37, 99, 235, 0.12)";

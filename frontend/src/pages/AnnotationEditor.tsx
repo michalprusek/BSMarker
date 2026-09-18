@@ -355,6 +355,7 @@ const AnnotationEditor: React.FC = () => {
 
   const {
     convertBoxToTimeFrequency,
+    convertTimeFrequencyToBox,
     convertNormalizedBoxToTimeFrequency,
     getMaxSpectrogramY,
   } = useBoundingBoxTimeFrequency(
@@ -1276,21 +1277,20 @@ const AnnotationEditor: React.FC = () => {
   // Track previous duration to avoid unnecessary recalculations
   const prevDurationRef = useRef<number>(0);
   const prevWidthRef = useRef<number>(0);
+  const prevHeightRef = useRef<number>(0);
 
-  // Synchronize time coordinates when duration and dimensions become available
-  // This ensures mirrors align with bounding boxes regardless of load order
-  // IMPORTANT: Always recalculate when duration changes to fix stale coordinates
-  // from previous recordings or initial load with duration=0
+  // Re-derive pixel positions from time/frequency when the duration or the
+  // canvas size becomes known or changes.
   useEffect(() => {
-    // Only recalculate if duration or width actually changed
     const durationChanged = duration !== prevDurationRef.current;
     const widthChanged = baseSpectrogramDimensions.width !== prevWidthRef.current;
+    const heightChanged = baseSpectrogramDimensions.height !== prevHeightRef.current;
 
     if (
       duration > 0 &&
       baseSpectrogramDimensions.width > 0 &&
       boundingBoxes.length > 0 &&
-      (durationChanged || widthChanged)
+      (durationChanged || widthChanged || heightChanged)
     ) {
       // Performance monitoring: Log warning if too many boxes
       if (boundingBoxes.length > 100) {
@@ -1300,24 +1300,23 @@ const AnnotationEditor: React.FC = () => {
         );
       }
 
-      // Always recalculate time coordinates when duration changes
-      // This fixes the issue where waveform mirrors are misaligned after
-      // switching recordings because boxes have stale time coordinates
-      setBoundingBoxes((currentBoxes) =>
-        currentBoxes.map((box) => {
-          const timeFrequency = convertBoxToTimeFrequency(box);
-          return {
-            ...box,
-            ...timeFrequency,
-          };
-        })
-      );
+      // Time/frequency are the source of truth: re-derive pixel positions
+      // for the current canvas size (never the other way round, which
+      // would shift boxes whenever the window or monitor size differs).
+      // Apply the same layout to the saved state and the undo history, so a
+      // resize is not mistaken for an edit (and doesn't trigger autosave).
+      const relayout = (boxes: BoundingBox[]) =>
+        boxes.map((box) => ({ ...box, ...convertTimeFrequencyToBox(box) }));
+      setBoundingBoxes(relayout);
+      setLastSavedState(relayout);
+      setHistory((entries) => entries.map(relayout));
 
       // Update refs
       prevDurationRef.current = duration;
       prevWidthRef.current = baseSpectrogramDimensions.width;
+      prevHeightRef.current = baseSpectrogramDimensions.height;
     }
-  }, [duration, baseSpectrogramDimensions.width, convertBoxToTimeFrequency, boundingBoxes.length]); // Use base dimensions for consistency
+  }, [duration, baseSpectrogramDimensions.width, baseSpectrogramDimensions.height, convertTimeFrequencyToBox, boundingBoxes.length]);
 
   const loadSpectrogram = async (recordingId: number) => {
     setIsLoadingSpectrogram(true);
@@ -1542,29 +1541,13 @@ const AnnotationEditor: React.FC = () => {
         // Take the LATEST annotation (last in array), not the first one
         const latestAnnotation = annotationsData[annotationsData.length - 1];
         const rawBoxes = latestAnnotation.bounding_boxes || [];
-        // Round coordinates when loading to ensure consistency
-        // AND recalculate time coordinates to sync with current viewport
-        const boxes = rawBoxes.map((box) => {
-          const roundedBox = {
-            ...box,
-            x: Math.round(box.x || 0),
-            y: Math.round(box.y || 0),
-            width: Math.round(box.width || 0),
-            height: Math.round(box.height || 0),
-          };
-
-          // Recalculate time coordinates from pixel coordinates
-          // This ensures mirrors align correctly regardless of monitor resolution
-          if (duration > 0 && baseSpectrogramDimensions.width > 0) {
-            const timeFrequency = convertBoxToTimeFrequency(roundedBox);
-            return {
-              ...roundedBox,
-              ...timeFrequency,
-            };
-          }
-
-          return roundedBox;
-        });
+        // Time/frequency are the source of truth; pixel positions are derived
+        // for this screen (stored pixels depend on whoever saved the box).
+        const boxes = rawBoxes.map((box) =>
+          duration > 0 && baseSpectrogramDimensions.width > 0
+            ? { ...box, ...convertTimeFrequencyToBox(box) }
+            : box,
+        );
         setBoundingBoxes(boxes);
         setLastSavedState([...boxes]);
         setAnnotationId(latestAnnotation.id || null);

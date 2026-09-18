@@ -1,0 +1,188 @@
+import { Viewport } from "../core/Viewport";
+import { BoxIndex, colorIndexForLabel, toApiBoxes } from "../core/boxes";
+import { AnnotationDocument } from "../edit/AnnotationDocument";
+import { Autosaver, SaveStatus } from "../edit/Autosaver";
+import { EditActions, moveBoxes } from "../edit/EditActions";
+import { hitTest, snapTime } from "../edit/geometry";
+import { box } from "../testFixtures";
+
+const SR = 48000;
+
+describe("AnnotationDocument", () => {
+  it("adds with the active label, selects the new box, and undoes/redoes", () => {
+    const doc = new AnnotationDocument([box("1", 1, 2)]);
+    doc.setActiveLabel("C");
+    const id = doc.add({ start: 3, end: 4, fLow: 1000, fHigh: 2000 });
+    expect(doc.boxes.map((b) => b.label)).toEqual(["A", "C"]);
+    expect(Array.from(doc.selectedIds)).toEqual([id]);
+    expect(doc.isDirty).toBe(true);
+    doc.undo();
+    expect(doc.boxes).toHaveLength(1);
+    expect(doc.isDirty).toBe(false); // back to the loaded state
+    expect(doc.selectedIds.size).toBe(0); // selection of a vanished box is dropped
+    doc.redo();
+    expect(doc.boxes).toHaveLength(2);
+  });
+
+  it("records a whole drag as one undo step and can cancel it", () => {
+    const doc = new AnnotationDocument([box("1", 1, 2)]);
+    doc.begin();
+    for (let i = 1; i <= 10; i++) doc.update(["1"], (b) => ({ ...b, start: 1 + i * 0.1, end: 2 + i * 0.1 }));
+    doc.commit();
+    expect(doc.boxes[0].start).toBeCloseTo(2);
+    doc.undo();
+    expect(doc.boxes[0].start).toBe(1);
+    expect(doc.canUndo).toBe(false);
+
+    doc.begin();
+    doc.update(["1"], (b) => ({ ...b, start: 5, end: 6 }));
+    doc.cancel();
+    expect(doc.boxes[0].start).toBe(1);
+    expect(doc.canUndo).toBe(false);
+  });
+
+  it("does not create undo steps for no-op edits", () => {
+    const doc = new AnnotationDocument([box("1", 1, 2, null, null, "B")]);
+    doc.setLabel(["1"], "B");
+    expect(doc.canUndo).toBe(false);
+    doc.setLabel(["1"], "D");
+    expect(doc.boxes[0].label).toBe("D");
+    expect(doc.activeLabel).toBe("D"); // relabelling also picks the label for new boxes
+  });
+
+  it("keeps boxes sorted by start time", () => {
+    const doc = new AnnotationDocument([box("1", 5, 6), box("2", 1, 2)]);
+    doc.add({ start: 3, end: 4, fLow: null, fHigh: null });
+    expect(doc.boxes.map((b) => b.start)).toEqual([1, 3, 5]);
+  });
+});
+
+describe("Autosaver", () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  const flushPromises = async () => {
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  };
+
+  it("saves once after edits settle and reports status", async () => {
+    const doc = new AnnotationDocument([]);
+    const saves: number[] = [];
+    const statuses: SaveStatus[] = [];
+    const saver = new Autosaver(doc, async (boxes) => { saves.push(boxes.length); }, (s) => statuses.push(s));
+    doc.add({ start: 1, end: 2, fLow: null, fHigh: null });
+    doc.add({ start: 3, end: 4, fLow: null, fHigh: null });
+    expect(saves).toEqual([]);
+    jest.advanceTimersByTime(1600);
+    await flushPromises();
+    expect(saves).toEqual([2]);
+    expect(doc.isDirty).toBe(false);
+    expect(statuses).toEqual(["unsaved", "saving", "saved"]);
+    saver.destroy();
+  });
+
+  it("does not save in the middle of a drag, only after it", async () => {
+    const doc = new AnnotationDocument([box("1", 1, 2)]);
+    const save = jest.fn(async () => undefined);
+    const saver = new Autosaver(doc, save, () => undefined);
+    doc.begin();
+    doc.update(["1"], (b) => ({ ...b, start: 1.5 }));
+    jest.advanceTimersByTime(5000);
+    expect(save).not.toHaveBeenCalled();
+    doc.commit();
+    jest.advanceTimersByTime(1600);
+    await flushPromises();
+    expect(save).toHaveBeenCalledTimes(1);
+    saver.destroy();
+  });
+
+  it("retries after a failure", async () => {
+    const doc = new AnnotationDocument([]);
+    let fail = true;
+    const statuses: SaveStatus[] = [];
+    const save = jest.fn(async () => {
+      if (fail) throw new Error("offline");
+    });
+    const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    const saver = new Autosaver(doc, save, (s) => statuses.push(s));
+    doc.add({ start: 1, end: 2, fLow: null, fHigh: null });
+    jest.advanceTimersByTime(1600);
+    await flushPromises();
+    expect(statuses[statuses.length - 1]).toBe("error");
+    fail = false;
+    jest.advanceTimersByTime(2100);
+    await flushPromises();
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(statuses[statuses.length - 1]).toBe("saved");
+    spy.mockRestore();
+    saver.destroy();
+  });
+});
+
+describe("geometry", () => {
+  const view = new Viewport(10, SR);
+  view.setSize(1000, 500);
+  view.fitAll(); // 100 px per second, 48 Hz per px
+
+  it("finds edges, corners and bodies; selected boxes win", () => {
+    const b = box("b", 2, 4, 4800, 9600); // x 200–400, y 400–300
+    const index = new BoxIndex([b]);
+    const none = new Set<string>();
+    expect(hitTest(view, index, none, 300, 350, false)).toMatchObject({ kind: "body" });
+    expect(hitTest(view, index, none, 201, 350, false)).toMatchObject({ kind: "handle", handle: "w" });
+    expect(hitTest(view, index, none, 399, 350, false)).toMatchObject({ kind: "handle", handle: "e" });
+    expect(hitTest(view, index, none, 399, 301, false)).toMatchObject({ kind: "handle", handle: "ne" });
+    expect(hitTest(view, index, none, 300, 399, false)).toMatchObject({ kind: "handle", handle: "s" });
+    expect(hitTest(view, index, none, 300, 100, false)).toBeNull();
+    // In the lane only time matters: any y hits, and there are no n/s handles.
+    expect(hitTest(view, index, none, 300, 5, true)).toMatchObject({ kind: "body" });
+
+    const inner = box("inner", 2.5, 3, 5000, 6000);
+    const nested = new BoxIndex([b, inner]);
+    expect(hitTest(view, nested, none, 270, 380, false)?.box.id).toBe("inner"); // smaller wins
+    expect(hitTest(view, nested, new Set(["b"]), 270, 380, false)?.box.id).toBe("b"); // selected wins
+  });
+
+  it("snaps to nearby edges of other boxes only", () => {
+    const index = new BoxIndex([box("a", 1, 2), box("b", 5, 6)]);
+    expect(snapTime(view, index, 2.04, new Set())).toEqual({ time: 2, guide: 2 });
+    expect(snapTime(view, index, 2.2, new Set()).guide).toBeNull();
+    expect(snapTime(view, index, 2.04, new Set(["a"])).guide).toBeNull();
+  });
+});
+
+describe("editing actions", () => {
+  it("moves a group without leaving the recording and keeps time segments full-height", () => {
+    const moved = moveBoxes([box("a", 1, 2, 1000, 2000), box("s", 3, 4)], -5, 30000, 10, 24000);
+    expect(moved.get("a")).toMatchObject({ start: 0, end: 1, fLow: 23000, fHigh: 24000 });
+    expect(moved.get("s")).toMatchObject({ start: 2, end: 3, fLow: null, fHigh: null });
+  });
+
+  it("duplicates right after the selection and pastes at a time", () => {
+    const doc = new AnnotationDocument([box("a", 1, 2), box("b", 2.5, 3)]);
+    const actions = new EditActions(doc, 100, 24000);
+    doc.select(["a", "b"]);
+    actions.duplicate();
+    expect(doc.boxes.map((b) => [b.start, b.end])).toEqual([[1, 2], [2.5, 3], [3, 4], [4.5, 5]]);
+    actions.copy();
+    actions.paste(10);
+    expect(doc.selection.map((b) => b.start)).toEqual([10, 11.5]);
+  });
+
+  it("gives letters stable colours", () => {
+    expect(colorIndexForLabel("None")).toBe(0);
+    expect(colorIndexForLabel("A")).toBe(1);
+    expect(colorIndexForLabel("J")).toBe(1); // 9 colours cycle
+    expect(colorIndexForLabel("B")).not.toBe(colorIndexForLabel("A"));
+  });
+
+  it("serialises time/frequency as authoritative and keeps passthrough fields", () => {
+    const [p] = toApiBoxes([{ ...box("a", 2, 4, 1000, 3000), confidence: 0, extraMetadata: { k: 1 } }], 10, 24000);
+    expect(p).toMatchObject({
+      start_time: 2, end_time: 4, min_frequency: 1000, max_frequency: 3000,
+      label: "A", confidence: 0, extra_metadata: { k: 1 }, x: 200, width: 200,
+    });
+    const [segment] = toApiBoxes([box("s", 2, 4)], 10, 24000);
+    expect(segment).toMatchObject({ min_frequency: null, max_frequency: null, y: 0, height: 400 });
+  });
+});
