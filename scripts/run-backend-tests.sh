@@ -14,7 +14,7 @@ docker network create "$NET" >/dev/null
 docker run -d --name "$NET-pg" --network "$NET" -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=bsmarker_test postgres:14-alpine >/dev/null
 docker run -d --name "$NET-redis" --network "$NET" redis:7-alpine >/dev/null
 docker run -d --name "$NET-minio" --network "$NET" -e MINIO_ROOT_USER=test-access-key \
-  -e MINIO_ROOT_PASSWORD=test-secret-key-minio minio/minio:latest server /data >/dev/null
+  -e MINIO_ROOT_PASSWORD=test-secret-key-minio quay.io/minio/minio:latest server /data >/dev/null
 until docker exec "$NET-pg" pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
 sleep 2  # MinIO needs a moment to accept connections
 
