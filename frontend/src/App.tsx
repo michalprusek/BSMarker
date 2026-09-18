@@ -12,6 +12,7 @@ import LoginPage from "./pages/LoginPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
 import AnnotationEditor from "./pages/AnnotationEditor";
+import AnnotationEditorV2 from "./pages/AnnotationEditorV2";
 import { AnnotationEditorProvider } from "./contexts/AnnotationEditorContext";
 import AdminUsersPage from "./pages/AdminUsersPage";
 
@@ -24,6 +25,11 @@ const router = createBrowserRouter(
     {
       element: <ProtectedRoute />,
       children: [
+        {
+          // Full-screen editor, outside the page layout.
+          path: "/recordings/:recordingId/annotate-v2",
+          element: <AnnotationEditorV2 />,
+        },
         {
           element: <Layout />,
           children: [
