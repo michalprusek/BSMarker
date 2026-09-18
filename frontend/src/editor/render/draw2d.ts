@@ -122,13 +122,17 @@ export interface OverlayState {
   snapGuide: number | null;
   conflicts: Conflict[];
   conflicted: ReadonlySet<string>;
+  /** Frequency floor (Hz) or null. */
+  floor: number | null;
 }
 
 const CONFLICT = "#DC2626";
+const FLOOR = "#2563EB";
 
 const HANDLE_SIZE = 7;
 
 export function drawBoxes(ctx: CanvasRenderingContext2D, view: Viewport, state: OverlayState): void {
+  if (state.floor !== null) drawFloor(ctx, view, state.floor);
   ctx.font = FONT;
   ctx.textBaseline = "top";
   const selectedRects: Rect[] = [];
@@ -178,6 +182,30 @@ export function drawBoxes(ctx: CanvasRenderingContext2D, view: Viewport, state: 
     ctx.setLineDash([]);
   }
   if (state.snapGuide !== null) drawGuide(ctx, view, state.snapGuide, view.height);
+}
+
+/** The frequency floor: shaded no-go zone below a dashed line with its value. */
+function drawFloor(ctx: CanvasRenderingContext2D, view: Viewport, floor: number): void {
+  const y = Math.round(view.freqToY(floor)) + 0.5;
+  if (y < 0 || y > view.height + 1) return;
+  ctx.fillStyle = "rgba(107, 114, 128, 0.12)";
+  ctx.fillRect(0, y, view.width, view.height - y);
+  ctx.strokeStyle = FLOOR;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([8, 4]);
+  ctx.beginPath();
+  ctx.moveTo(0, y);
+  ctx.lineTo(view.width, y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const text = `floor ${(floor / 1000).toFixed(2)} kHz`;
+  ctx.font = FONT;
+  ctx.textBaseline = "bottom";
+  const w = ctx.measureText(text).width + 8;
+  ctx.fillStyle = FLOOR;
+  ctx.fillRect(view.width - w - 4, y - 16, w, 15);
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillText(text, view.width - w, y - 3);
 }
 
 function drawHandles(ctx: CanvasRenderingContext2D, r: Rect, vertical: boolean): void {

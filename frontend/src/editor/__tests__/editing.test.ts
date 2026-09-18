@@ -236,6 +236,14 @@ describe("editing actions", () => {
     expect(left.get("low")).toMatchObject({ start: 0.5, fLow: -50, fHigh: 500 });
   });
 
+  it("keeps moved boxes above the frequency floor", () => {
+    const moved = moveBoxes([box("a", 1, 2, 3000, 5000)], 0, -2500, 10, 24000, 1000);
+    expect(moved.get("a")).toMatchObject({ fLow: 1000, fHigh: 3000 });
+    // A box that is already below the floor is not pushed when moving in time only.
+    const old = moveBoxes([box("b", 1, 2, 200, 800)], 0.5, 0, 10, 24000, 1000);
+    expect(old.get("b")).toMatchObject({ start: 1.5, fLow: 200 });
+  });
+
   it("duplicates right after the selection and pastes at a time", () => {
     const doc = new AnnotationDocument([box("a", 1, 2), box("b", 2.5, 3)]);
     const actions = new EditActions(doc, 100, 24000);

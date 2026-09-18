@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  AdjustmentsHorizontalIcon,
+  Cog6ToothIcon,
   ArrowLeftIcon,
   ArrowPathRoundedSquareIcon,
   ArrowUturnLeftIcon,
@@ -210,9 +210,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         disabled={disabled}
         onMouseDown={keepFocus}
         onClick={() => setShowDisplay((v) => !v)}
-        title="Display settings (FFT, colours, contrast)"
+        title="Settings: frequency floor, FFT, colours, contrast"
       >
-        <AdjustmentsHorizontalIcon className="h-5 w-5 text-gray-600" />
+        <Cog6ToothIcon className="h-5 w-5 text-gray-600" />
       </button>
       <button
         className={`${BUTTON} ${listOpen ? "bg-gray-100" : ""}`}
@@ -290,6 +290,8 @@ const DisplayPanel: React.FC<{
   const windowMs = (snap.settings.fftSize / snap.sampleRate) * 1000;
   return (
     <div className="absolute right-12 top-11 z-20 w-72 bg-white border border-gray-200 shadow-lg rounded-lg p-3 text-xs text-gray-700 space-y-3">
+      <FloorSetting engine={engine} snap={snap} />
+      <hr className="border-gray-200" />
       <label
         className="flex items-center justify-between"
         title="Smaller = sharper in time, larger = sharper in frequency"
@@ -382,6 +384,50 @@ const DisplayPanel: React.FC<{
       >
         Auto contrast
       </button>
+    </div>
+  );
+};
+
+/** Frequency floor for this recording: boxes can't go below it. */
+const FloorSetting: React.FC<{
+  engine: EditorEngine;
+  snap: EditorSnapshot;
+}> = ({ engine, snap }) => {
+  const floor = snap.freqFloor;
+  const nyquistKhz = snap.sampleRate / 2000;
+  return (
+    <div
+      className="space-y-1.5"
+      title="Boxes can't be drawn, moved or resized below this frequency. Drag the line on the spectrogram to adjust it. Remembered for this recording in this browser."
+    >
+      <label className="flex items-center justify-between">
+        <span className="font-medium">Frequency floor</span>
+        <input
+          type="checkbox"
+          checked={floor !== null}
+          onChange={(e) => engine.setFreqFloor(e.target.checked ? 1000 : null)}
+        />
+      </label>
+      {floor !== null && (
+        <label className="flex items-center justify-between">
+          <span className="text-gray-500">Boxes stay above</span>
+          <span className="flex items-center gap-1">
+            <input
+              type="number"
+              min={0}
+              max={nyquistKhz}
+              step={0.1}
+              value={(floor / 1000).toFixed(1)}
+              onChange={(e) => {
+                const khz = Number(e.target.value);
+                if (Number.isFinite(khz)) engine.setFreqFloor(khz * 1000);
+              }}
+              className="w-16 border border-gray-300 rounded px-1.5 py-0.5 text-right"
+            />
+            kHz
+          </span>
+        </label>
+      )}
     </div>
   );
 };

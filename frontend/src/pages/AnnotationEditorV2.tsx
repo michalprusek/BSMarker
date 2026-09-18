@@ -37,6 +37,7 @@ import { StatusBar } from "../editor/ui/StatusBar";
 import { HelpPanel } from "../editor/ui/HelpPanel";
 import { LabelEditor } from "../editor/ui/LabelEditor";
 import { RecordingNav, useNeighbours } from "../editor/ui/RecordingNav";
+import { readFreqFloor, writeFreqFloor } from "../editor/edit/recordingPrefs";
 import { BoxList } from "../editor/ui/BoxList";
 import { ConflictCard } from "../editor/ui/ConflictCard";
 
@@ -252,6 +253,15 @@ const AnnotationEditorV2: React.FC = () => {
           audio,
           document,
         );
+        // The frequency floor is remembered per recording (in this browser).
+        const engineForFloor = created;
+        engineForFloor.setFreqFloor(readFreqFloor(id));
+        let savedFloor = engineForFloor.freqFloor;
+        engineForFloor.subscribe(() => {
+          if (engineForFloor.freqFloor === savedFloor) return;
+          savedFloor = engineForFloor.freqFloor;
+          writeFreqFloor(id, savedFloor);
+        });
         input = new EditorInput(
           created,
           {
@@ -265,6 +275,7 @@ const AnnotationEditorV2: React.FC = () => {
           {
             save: () => void saver.flush(),
             editLabel: () => setLabelTarget("selection"),
+            notify: (message) => toast(message),
           },
         );
 

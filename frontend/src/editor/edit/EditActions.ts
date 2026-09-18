@@ -3,8 +3,8 @@ import { AnnotationDocument } from "./AnnotationDocument";
 
 /**
  * Moves boxes by (dt, df), clamped as a group so that no box leaves the
- * recording (0…duration, 0…nyquist) and relative positions are preserved.
- * Time segments only move in time.
+ * recording (0…duration, fMin…nyquist) and relative positions are preserved.
+ * `fMin` is 0 or the frequency floor. Time segments only move in time.
  */
 export function moveBoxes(
   boxes: EditorBox[],
@@ -12,6 +12,7 @@ export function moveBoxes(
   df: number,
   duration: number,
   nyquist: number,
+  fMin = 0,
 ): Map<string, EditorBox> {
   const minStart = Math.min(...boxes.map((b) => b.start));
   const maxEnd = Math.max(...boxes.map((b) => b.end));
@@ -22,7 +23,7 @@ export function moveBoxes(
   if (banded.length > 0) {
     const minLow = Math.min(...banded.map((b) => b.fLow!));
     const maxHigh = Math.max(...banded.map((b) => b.fHigh!));
-    f = clampDelta(df, -minLow, nyquist - maxHigh);
+    f = clampDelta(df, fMin - minLow, nyquist - maxHigh);
   }
 
   const moved = new Map<string, EditorBox>();
@@ -55,6 +56,8 @@ export class EditActions {
     private readonly doc: AnnotationDocument,
     private readonly duration: number,
     private readonly nyquist: number,
+    /** Current frequency floor (Hz) or null. */
+    private readonly floor: () => number | null = () => null,
   ) {}
 
   deleteSelection(): void {
@@ -94,7 +97,7 @@ export class EditActions {
   nudge(dt: number, df: number): void {
     const selection = this.doc.selection;
     if (selection.length === 0) return;
-    const moved = moveBoxes(selection, dt, df, this.duration, this.nyquist);
+    const moved = moveBoxes(selection, dt, df, this.duration, this.nyquist, this.floor() ?? 0);
     this.doc.update(moved.keys(), (b) => moved.get(b.id)!);
   }
 

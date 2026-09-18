@@ -64,6 +64,8 @@ export interface EditorSnapshot {
   canRedo: boolean;
   /** Viewing only (no permission to save). */
   readOnly: boolean;
+  /** Lowest frequency boxes may reach (Hz), or null for no limit. */
+  freqFloor: number | null;
   pendingTiles: number;
   workers: number;
   /** Time resolution of the displayed columns (s) */
@@ -106,6 +108,7 @@ export class EditorEngine {
   private hover: { time: number; freq: number | null } | null = null;
   private draft: Draft | null = null;
   private snapGuide: number | null = null;
+  private floor: number | null = null;
   private loop = false;
   private settings: EditorSettings;
   /** Most recent tile data, kept for automatic contrast. */
@@ -381,6 +384,16 @@ export class EditorEngine {
     this.userNavigated();
   }
 
+  /** Lowest frequency new or edited boxes may reach (Hz); null = no limit. */
+  get freqFloor(): number | null {
+    return this.floor;
+  }
+
+  setFreqFloor(hz: number | null): void {
+    this.floor = hz === null ? null : Math.min(this.view.nyquist, Math.max(0, hz));
+    this.invalidate("overlay");
+  }
+
   // ------------------------------------------------- gesture feedback (input)
 
   setHover(x: number | null, y: number | null, overSpectrogram: boolean, hoveredId: string | null): void {
@@ -587,6 +600,7 @@ export class EditorEngine {
       snapGuide: this.snapGuide,
       conflicts: this.conflicts,
       conflicted: this.conflicted,
+      floor: this.floor,
     };
     const overlay = prepareCanvas(el.overlay, dpr);
     if (overlay) drawBoxes(overlay, view, state);
@@ -647,6 +661,7 @@ export class EditorEngine {
       labels,
       canUndo: this.doc.canUndo,
       readOnly: this.doc.readOnly,
+      freqFloor: this.floor,
       canRedo: this.doc.canRedo,
       pendingTiles: this.scheduler.pendingCount,
       workers: this.scheduler.workerCount,

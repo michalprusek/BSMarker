@@ -1,7 +1,16 @@
 import type { EditorEngine } from "../EditorEngine";
 import { EditorBox, isTimeSegment } from "../core/boxes";
 import { EditActions, moveBoxes } from "../edit/EditActions";
-import { CURSOR_FOR_HANDLE, EdgeSide, Handle, Hit, hitTest, snapTime } from "../edit/geometry";
+import {
+  CURSOR_FOR_HANDLE,
+  EdgeSide,
+  GRAB_PX,
+  Handle,
+  Hit,
+  SNAP_PX,
+  hitTest,
+  snapTime,
+} from "../edit/geometry";
 import { Draft } from "../edit/draft";
 
 export type Zone = "spectrogram" | "lane" | "waveform";
@@ -21,6 +30,8 @@ export interface InputElements {
 export interface InputCallbacks {
   save: () => void;
   editLabel: () => void;
+  /** Short message for the user (e.g. why a box was not created). */
+  notify: (message: string) => void;
 }
 
 /** Pointer movement (px) below which a press counts as a click. */
@@ -37,21 +48,50 @@ const EDGE_PAN = 0.5;
 type Point = { x: number; y: number };
 
 type Gesture =
-  | { type: "pending"; id: number; start: Point; zone: Zone; hit: Hit; shift: boolean; forceDraw: boolean }
+  | {
+      type: "pending";
+      id: number;
+      start: Point;
+      zone: Zone;
+      hit: Hit;
+      shift: boolean;
+      forceDraw: boolean;
+    }
   | { type: "pan"; id: number; last: Point; zone: Zone | "ruler" | "freqAxis" }
   | { type: "draw"; id: number; start: Point; zone: Zone; startTime: number }
   | { type: "marquee"; id: number; start: Point; zone: Zone; additive: boolean }
-  | { type: "move"; id: number; start: Point; zone: Zone; originals: EditorBox[] }
-  | { type: "resize"; id: number; zone: Zone; handle: Handle; original: EditorBox };
+  | {
+      type: "move";
+      id: number;
+      start: Point;
+      zone: Zone;
+      originals: EditorBox[];
+    }
+  | {
+      type: "resize";
+      id: number;
+      zone: Zone;
+      handle: Handle;
+      original: EditorBox;
+    }
+  | { type: "floor"; id: number };
 
 export const isFormControl = (target: EventTarget | null): boolean => {
   const el = target as HTMLElement | null;
   if (!el) return false;
   const tag = el.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON" || tag === "A" || el.isContentEditable;
+  return (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT" ||
+    tag === "BUTTON" ||
+    tag === "A" ||
+    el.isContentEditable
+  );
 };
 
-const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
+const clamp = (v: number, lo: number, hi: number): number =>
+  Math.min(hi, Math.max(lo, v));
 
 /**
  * All pointer and keyboard input of the editor. There are no modes: what a
@@ -73,14 +113,24 @@ export class EditorInput {
   private lastClient: Point = { x: 0, y: 0 };
   private minimapDrag: { id: number; grabOffset: number } | null = null;
   private readonly actions: EditActions;
-  private readonly listeners: [EventTarget, string, EventListener, AddEventListenerOptions?][] = [];
+  private readonly listeners: [
+    EventTarget,
+    string,
+    EventListener,
+    AddEventListenerOptions?,
+  ][] = [];
 
   constructor(
     private readonly engine: EditorEngine,
     private readonly el: InputElements,
     private readonly callbacks: InputCallbacks,
   ) {
-    this.actions = new EditActions(engine.doc, engine.view.duration, engine.view.nyquist);
+    this.actions = new EditActions(
+      engine.doc,
+      engine.view.duration,
+      engine.view.nyquist,
+      () => engine.freqFloor,
+    );
 
     this.on(el.plotArea, "wheel", this.onWheel, { passive: false });
     this.on(el.plotArea, "pointerdown", this.onPointerDown);
@@ -115,11 +165,18 @@ export class EditorInput {
   }
 
   destroy(): void {
-    this.listeners.forEach(([target, type, fn, opts]) => target.removeEventListener(type, fn, opts));
+    this.listeners.forEach(([target, type, fn, opts]) =>
+      target.removeEventListener(type, fn, opts),
+    );
     this.listeners.length = 0;
   }
 
-  private on<E extends Event>(target: EventTarget, type: string, fn: (e: E) => void, opts?: AddEventListenerOptions): void {
+  private on<E extends Event>(
+    target: EventTarget,
+    type: string,
+    fn: (e: E) => void,
+    opts?: AddEventListenerOptions,
+  ): void {
     target.addEventListener(type, fn as EventListener, opts);
     this.listeners.push([target, type, fn as EventListener, opts]);
   }
@@ -143,14 +200,44 @@ export class EditorInput {
     const plot = this.el.plotArea.getBoundingClientRect();
     const spec = this.el.spectrogram.getBoundingClientRect();
     const lane = this.el.lane.getBoundingClientRect();
-    const zone: Zone = e.clientY < spec.bottom ? "spectrogram" : e.clientY < lane.bottom ? "lane" : "waveform";
+    const zone: Zone =
+      e.clientY < spec.bottom
+        ? "spectrogram"
+        : e.clientY < lane.bottom
+          ? "lane"
+          : "waveform";
     return { x: e.clientX - plot.left, y: e.clientY - spec.top, zone };
   }
 
   /** You can only grab what you can see: boxes are drawn on the spectrogram and the lane, not the waveform. */
   private hitAt(p: Point, zone: Zone): Hit {
     if (zone === "waveform") return null;
-    return hitTest(this.view, this.engine.index, this.doc.selectedIds, p.x, p.y, zone === "lane");
+    return hitTest(
+      this.view,
+      this.engine.index,
+      this.doc.selectedIds,
+      p.x,
+      p.y,
+      zone === "lane",
+    );
+  }
+
+  /** Is the pointer on the frequency floor line (spectrogram only)? */
+  private onFloorLine(p: Point, zone: Zone): boolean {
+    const floor = this.engine.freqFloor;
+    return (
+      floor !== null &&
+      zone === "spectrogram" &&
+      Math.abs(p.y - this.view.freqToY(floor)) <= GRAB_PX
+    );
+  }
+
+  /** Keep a frequency on or above the floor; within snapping distance it sticks to the floor. */
+  private aboveFloor(f: number, e: MouseEvent): number {
+    const floor = this.engine.freqFloor;
+    if (floor === null) return f;
+    const snapHz = (SNAP_PX / this.view.height) * (this.view.f1 - this.view.f0);
+    return f < floor || (!e.altKey && f - floor < snapHz) ? floor : f;
   }
 
   private timeAt(x: number): number {
@@ -162,13 +249,21 @@ export class EditorInput {
   }
 
   /** Snap an edge next to neighbouring boxes (leaving the minimum gap) unless Alt is held. */
-  private snap(t: number, e: MouseEvent, side: EdgeSide, exclude: ReadonlySet<string> = new Set()) {
+  private snap(
+    t: number,
+    e: MouseEvent,
+    side: EdgeSide,
+    exclude: ReadonlySet<string> = new Set(),
+  ) {
     if (e.altKey) return { time: t, guide: null };
     return snapTime(this.view, this.engine.index, t, exclude, side);
   }
 
   /** While drawing, the moving edge is the start if it is left of the anchor. */
-  private drawnEdge(g: Extract<Gesture, { type: "draw" }>, t: number): EdgeSide {
+  private drawnEdge(
+    g: Extract<Gesture, { type: "draw" }>,
+    t: number,
+  ): EdgeSide {
     return t < g.startTime ? "start" : "end";
   }
 
@@ -180,7 +275,12 @@ export class EditorInput {
 
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();
-    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.el.plotArea.clientHeight : 1;
+    const unit =
+      e.deltaMode === 1
+        ? 16
+        : e.deltaMode === 2
+          ? this.el.plotArea.clientHeight
+          : 1;
     const dx = e.deltaX * unit;
     const dy = e.deltaY * unit;
     const { x, y, zone } = this.locate(e);
@@ -235,8 +335,19 @@ export class EditorInput {
     this.el.plotArea.setPointerCapture(e.pointerId);
 
     if (e.button === 1) {
-      this.gesture = { type: "pan", id: e.pointerId, last: { x: e.clientX, y: e.clientY }, zone: p.zone };
+      this.gesture = {
+        type: "pan",
+        id: e.pointerId,
+        last: { x: e.clientX, y: e.clientY },
+        zone: p.zone,
+      };
       this.setCursor("grabbing");
+      return;
+    }
+    const hit = e.ctrlKey || e.metaKey ? null : this.hitAt(p, p.zone);
+    if (hit?.kind !== "handle" && this.onFloorLine(p, p.zone)) {
+      this.gesture = { type: "floor", id: e.pointerId };
+      this.setCursor("ns-resize");
       return;
     }
     this.gesture = {
@@ -244,7 +355,7 @@ export class EditorInput {
       id: e.pointerId,
       start: p,
       zone: p.zone,
-      hit: e.ctrlKey || e.metaKey ? null : this.hitAt(p, p.zone),
+      hit,
       shift: e.shiftKey,
       forceDraw: e.ctrlKey || e.metaKey,
     };
@@ -269,6 +380,10 @@ export class EditorInput {
     }
 
     const p = this.locate(e);
+    if (g.type === "floor") {
+      this.engine.setFreqFloor(this.freqAt(p.y));
+      return;
+    }
     if (g.type === "pending") {
       if (Math.hypot(p.x - g.start.x, p.y - g.start.y) < CLICK_SLOP) return;
       this.startDrag(g, e);
@@ -299,6 +414,7 @@ export class EditorInput {
         this.engine.setDraft(null);
         break;
       case "pan":
+      case "floor":
         break;
     }
     this.updateHover(e);
@@ -324,7 +440,8 @@ export class EditorInput {
 
   private releaseCapture(e: PointerEvent): void {
     const target = e.currentTarget as HTMLElement;
-    if (target.hasPointerCapture(e.pointerId)) target.releasePointerCapture(e.pointerId);
+    if (target.hasPointerCapture(e.pointerId))
+      target.releasePointerCapture(e.pointerId);
     this.el.ruler.style.cursor = "";
     this.el.freqAxis.style.cursor = "";
   }
@@ -332,9 +449,16 @@ export class EditorInput {
   private updateHover(e: MouseEvent): void {
     const p = this.locate(e);
     const hit = this.hitAt(p, p.zone);
-    this.engine.setHover(p.x, p.y, p.zone === "spectrogram", hit ? hit.box.id : null);
+    this.engine.setHover(
+      p.x,
+      p.y,
+      p.zone === "spectrogram",
+      hit ? hit.box.id : null,
+    );
     if (this.doc.readOnly) this.setCursor(hit ? "pointer" : "default");
-    else if (hit?.kind === "handle") this.setCursor(CURSOR_FOR_HANDLE[hit.handle]);
+    else if (hit?.kind === "handle")
+      this.setCursor(CURSOR_FOR_HANDLE[hit.handle]);
+    else if (this.onFloorLine(p, p.zone)) this.setCursor("ns-resize");
     else if (hit?.kind === "body") this.setCursor("move");
     else this.setCursor("crosshair");
   }
@@ -342,9 +466,11 @@ export class EditorInput {
   /** While drawing/moving past the plot edge, scroll the view along. */
   private autoPan(x: number): void {
     const g = this.gesture;
-    if (!g || g.type === "pan" || g.type === "pending") return;
+    if (!g || g.type === "pan" || g.type === "pending" || g.type === "floor")
+      return;
     if (x < 0) this.engine.panByPx(x * EDGE_PAN);
-    else if (x > this.view.width) this.engine.panByPx((x - this.view.width) * EDGE_PAN);
+    else if (x > this.view.width)
+      this.engine.panByPx((x - this.view.width) * EDGE_PAN);
   }
 
   // ------------------------------------------------------------- gestures
@@ -358,7 +484,10 @@ export class EditorInput {
     this.engine.seek(this.timeAt(g.start.x));
   }
 
-  private startDrag(g: Extract<Gesture, { type: "pending" }>, e: PointerEvent): void {
+  private startDrag(
+    g: Extract<Gesture, { type: "pending" }>,
+    e: PointerEvent,
+  ): void {
     const { id, start, zone, hit } = g;
     if (this.doc.readOnly) {
       // Nothing to edit: every drag just pans the view.
@@ -369,12 +498,25 @@ export class EditorInput {
     if (hit?.kind === "handle") {
       if (!this.doc.isSelected(hit.box.id)) this.doc.select([hit.box.id]);
       this.doc.begin();
-      this.gesture = { type: "resize", id, zone, handle: hit.handle, original: hit.box };
+      this.gesture = {
+        type: "resize",
+        id,
+        zone,
+        handle: hit.handle,
+        original: hit.box,
+      };
       this.setCursor(CURSOR_FOR_HANDLE[hit.handle]);
     } else if (hit?.kind === "body") {
-      if (!this.doc.isSelected(hit.box.id)) this.doc.select([hit.box.id], g.shift ? "add" : "replace");
+      if (!this.doc.isSelected(hit.box.id))
+        this.doc.select([hit.box.id], g.shift ? "add" : "replace");
       this.doc.begin();
-      this.gesture = { type: "move", id, start, zone, originals: this.doc.selection };
+      this.gesture = {
+        type: "move",
+        id,
+        start,
+        zone,
+        originals: this.doc.selection,
+      };
       this.setCursor("move");
     } else if (g.shift && !g.forceDraw) {
       this.gesture = { type: "marquee", id, start, zone, additive: true };
@@ -391,7 +533,10 @@ export class EditorInput {
       case "draw": {
         const t = this.timeAt(p.x);
         const snapped = this.snap(t, e, this.drawnEdge(g, t));
-        this.engine.setDraft(this.drawDraft(g, p, snapped.time), snapped.guide);
+        this.engine.setDraft(
+          this.drawDraft(g, p, snapped.time, e),
+          snapped.guide,
+        );
         break;
       }
       case "marquee":
@@ -406,20 +551,32 @@ export class EditorInput {
     }
   }
 
-  private drawDraft(g: Extract<Gesture, { type: "draw" }>, p: Point, time: number): Draft {
+  /** The box being drawn; its bottom is clipped to (and snaps onto) the frequency floor. */
+  private drawDraft(
+    g: Extract<Gesture, { type: "draw" }>,
+    p: Point,
+    time: number,
+    e: MouseEvent,
+  ): Draft {
     const timeOnly = g.zone !== "spectrogram";
     const f0 = this.freqAt(g.start.y);
     const f1 = this.freqAt(p.y);
+    const low = this.aboveFloor(Math.min(f0, f1), e);
     return {
       kind: "box",
       start: Math.min(g.startTime, time),
       end: Math.max(g.startTime, time),
-      fLow: timeOnly ? null : Math.min(f0, f1),
-      fHigh: timeOnly ? null : Math.max(f0, f1),
+      fLow: timeOnly ? null : low,
+      fHigh: timeOnly ? null : Math.max(low, f0, f1),
     };
   }
 
-  private rectDraft(kind: Draft["kind"], zone: Zone, a: Point, b: Point): Draft {
+  private rectDraft(
+    kind: Draft["kind"],
+    zone: Zone,
+    a: Point,
+    b: Point,
+  ): Draft {
     const timeOnly = zone !== "spectrogram";
     const t0 = this.timeAt(a.x);
     const t1 = this.timeAt(b.x);
@@ -434,27 +591,64 @@ export class EditorInput {
     };
   }
 
-  private finishDraw(g: Extract<Gesture, { type: "draw" }>, p: Point, e: PointerEvent): void {
+  private finishDraw(
+    g: Extract<Gesture, { type: "draw" }>,
+    p: Point,
+    e: PointerEvent,
+  ): void {
     this.engine.setDraft(null);
     const t = this.timeAt(p.x);
-    const draft = this.drawDraft(g, p, this.snap(t, e, this.drawnEdge(g, t)).time);
-    const wide = this.view.timeToX(draft.end) - this.view.timeToX(draft.start) >= MIN_DRAW_PX;
-    const tall = draft.fLow === null || this.view.freqToY(draft.fLow) - this.view.freqToY(draft.fHigh!) >= MIN_DRAW_PX;
-    if (wide && tall) this.doc.add(draft);
+    const draft = this.drawDraft(
+      g,
+      p,
+      this.snap(t, e, this.drawnEdge(g, t)).time,
+      e,
+    );
+    const wide =
+      this.view.timeToX(draft.end) - this.view.timeToX(draft.start) >=
+      MIN_DRAW_PX;
+    const tall =
+      draft.fLow === null ||
+      this.view.freqToY(draft.fLow) - this.view.freqToY(draft.fHigh!) >=
+        MIN_DRAW_PX;
+    if (wide && tall) {
+      this.doc.add(draft);
+    } else if (
+      wide &&
+      this.engine.freqFloor !== null &&
+      draft.fHigh !== null &&
+      draft.fHigh <= this.engine.freqFloor
+    ) {
+      this.callbacks.notify(
+        "That box is below the frequency floor, so it wasn't created.",
+      );
+    }
   }
 
-  private finishMarquee(g: Extract<Gesture, { type: "marquee" }>, p: Point): void {
+  private finishMarquee(
+    g: Extract<Gesture, { type: "marquee" }>,
+    p: Point,
+  ): void {
     this.engine.setDraft(null);
     const r = this.rectDraft("marquee", g.zone, g.start, p);
     const ids: string[] = [];
     this.engine.index.forEachInRange(r.start, r.end, (box) => {
-      if (r.fLow !== null && !isTimeSegment(box) && (box.fHigh! < r.fLow || box.fLow! > r.fHigh!)) return;
+      if (
+        r.fLow !== null &&
+        !isTimeSegment(box) &&
+        (box.fHigh! < r.fLow || box.fLow! > r.fHigh!)
+      )
+        return;
       ids.push(box.id);
     });
     this.doc.select(ids, g.additive ? "add" : "replace");
   }
 
-  private updateMove(g: Extract<Gesture, { type: "move" }>, p: Point, e: PointerEvent): void {
+  private updateMove(
+    g: Extract<Gesture, { type: "move" }>,
+    p: Point,
+    e: PointerEvent,
+  ): void {
     let dxPx = p.x - g.start.x;
     let dyPx = g.zone === "spectrogram" ? p.y - g.start.y : 0;
     if (e.shiftKey) {
@@ -484,12 +678,23 @@ export class EditorInput {
       }
     }
 
-    const moved = moveBoxes(g.originals, dt, df, this.view.duration, this.view.nyquist);
+    const moved = moveBoxes(
+      g.originals,
+      dt,
+      df,
+      this.view.duration,
+      this.view.nyquist,
+      this.engine.freqFloor ?? 0,
+    );
     this.doc.update(moved.keys(), (box) => moved.get(box.id)!);
     this.engine.setDraft(null, guide);
   }
 
-  private updateResize(g: Extract<Gesture, { type: "resize" }>, p: Point, e: PointerEvent): void {
+  private updateResize(
+    g: Extract<Gesture, { type: "resize" }>,
+    p: Point,
+    e: PointerEvent,
+  ): void {
     const o = g.original;
     let { start, end } = o;
     let fLow = o.fLow;
@@ -497,14 +702,22 @@ export class EditorInput {
     let guide: number | null = null;
 
     if (g.handle.includes("w") || g.handle.includes("e")) {
-      const snapped = this.snap(this.timeAt(p.x), e, g.handle.includes("w") ? "start" : "end", new Set([o.id]));
+      const snapped = this.snap(
+        this.timeAt(p.x),
+        e,
+        g.handle.includes("w") ? "start" : "end",
+        new Set([o.id]),
+      );
       guide = snapped.guide;
       if (g.handle.includes("w")) start = snapped.time;
       else end = snapped.time;
     }
-    if (!isTimeSegment(o) && g.zone === "spectrogram") {
-      if (g.handle.includes("n")) fHigh = this.freqAt(p.y);
-      if (g.handle.includes("s")) fLow = this.freqAt(p.y);
+    const verticalResize =
+      !isTimeSegment(o) && g.zone === "spectrogram" && /[ns]/.test(g.handle);
+    if (verticalResize) {
+      // A dragged frequency edge stops at (and snaps onto) the floor.
+      if (g.handle.includes("n")) fHigh = this.aboveFloor(this.freqAt(p.y), e);
+      if (g.handle.includes("s")) fLow = this.aboveFloor(this.freqAt(p.y), e);
     }
 
     // Dragging an edge past the opposite one flips the box (like Figma);
@@ -516,9 +729,18 @@ export class EditorInput {
     let hi = fHigh;
     if (lo !== null && hi !== null) {
       const minDf = (this.view.f1 - this.view.f0) / this.view.height;
-      [lo, hi] = [Math.min(lo, hi), Math.max(Math.max(lo, hi), Math.min(lo, hi) + minDf)];
+      [lo, hi] = [
+        Math.min(lo, hi),
+        Math.max(Math.max(lo, hi), Math.min(lo, hi) + minDf),
+      ];
     }
-    this.doc.update([o.id], (box) => ({ ...box, start: s, end: t, fLow: lo, fHigh: hi }));
+    this.doc.update([o.id], (box) => ({
+      ...box,
+      start: s,
+      end: t,
+      fLow: lo,
+      fHigh: hi,
+    }));
     this.engine.setDraft(null, guide);
   }
 
@@ -558,7 +780,8 @@ export class EditorInput {
   private onMinimapUp = (e: PointerEvent): void => {
     if (!this.minimapDrag || this.minimapDrag.id !== e.pointerId) return;
     this.minimapDrag = null;
-    if (this.el.minimap.hasPointerCapture(e.pointerId)) this.el.minimap.releasePointerCapture(e.pointerId);
+    if (this.el.minimap.hasPointerCapture(e.pointerId))
+      this.el.minimap.releasePointerCapture(e.pointerId);
   };
 
   // ----------------------------------------------------------------- keyboard
@@ -567,7 +790,8 @@ export class EditorInput {
     if (isFormControl(e.target)) return;
     // AltGr (Ctrl+Alt on Windows) types characters like # or @ on Czech keyboards.
     if (e.altKey && (e.ctrlKey || e.getModifierState?.("AltGraph"))) return;
-    const handled = e.ctrlKey || e.metaKey ? this.handleCommandKey(e) : this.handleKey(e);
+    const handled =
+      e.ctrlKey || e.metaKey ? this.handleCommandKey(e) : this.handleKey(e);
     if (handled) e.preventDefault();
   };
 
@@ -716,7 +940,9 @@ export function zoomKey(e: KeyboardEvent): 1 | -1 | 0 {
 }
 
 const zoomFactor = (dy: number): number =>
-  Math.exp(-clamp(dy, -WHEEL_DELTA_CLAMP, WHEEL_DELTA_CLAMP) * WHEEL_ZOOM_SPEED);
+  Math.exp(
+    -clamp(dy, -WHEEL_DELTA_CLAMP, WHEEL_DELTA_CLAMP) * WHEEL_ZOOM_SPEED,
+  );
 
 const preventMiddleClickPaste = (e: MouseEvent): void => {
   if (e.button === 1) e.preventDefault();
