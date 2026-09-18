@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 class AudioMetadata:
     """Audio metadata container."""
 
-    def __init__(self, duration: float, sample_rate: int, channels: int = 1):
+    def __init__(self, duration: float, sample_rate: int, channels: int = 1) -> None:
+        """Store the extracted metadata values."""
         self.duration = duration
         self.sample_rate = sample_rate
         self.channels = channels
@@ -32,13 +33,11 @@ class AudioMetadata:
 class AudioProcessingError(Exception):
     """Custom exception for audio processing errors."""
 
-    pass
-
 
 class AudioService:
     """Service for audio file processing and metadata extraction."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize audio service."""
         # Set cache directory for numba/librosa to avoid permission issues in Docker
         os.environ["NUMBA_CACHE_DIR"] = "/tmp"
@@ -142,6 +141,7 @@ class AudioService:
 
         Raises:
             AudioProcessingError: If file cannot be loaded
+            FileNotFoundError: If file does not exist
         """
         file_path = Path(file_path)
 

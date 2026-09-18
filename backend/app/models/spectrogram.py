@@ -1,10 +1,11 @@
 import enum
 from typing import TYPE_CHECKING
 
-from app.db.base_class import Base
 from sqlalchemy import JSON, Column, DateTime, Enum, Float, ForeignKey, Integer, String
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.sql import func
+
+from app.db.base_class import Base
 
 if TYPE_CHECKING:
     from app.models.recording import Recording
@@ -46,4 +47,4 @@ class Spectrogram(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
-    recording = relationship("Recording", back_populates="spectrograms")
+    recording: Mapped["Recording"] = relationship("Recording", back_populates="spectrograms")

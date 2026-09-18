@@ -2,14 +2,15 @@
 
 from typing import Any, List
 
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
+
 from app.api import deps
 from app.core.rate_limiter import RATE_LIMITS, limiter
 from app.core.security import get_password_hash
 from app.models.user import User
 from app.schemas.user import User as UserSchema
 from app.schemas.user import UserCreate, UserUpdate
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
 
 router = APIRouter()
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Configuration validation script for BSMarker
+Configuration validation script for BSMarker.
+
 Validates all settings and optionally tests external connections
 """
 
@@ -52,9 +53,9 @@ def load_env_file(env_path: Path) -> Dict[str, str]:
             if line and not line.startswith("#") and "=" in line:
                 key, value = line.split("=", 1)
                 # Remove quotes
-                if value.startswith('"') and value.endswith('"'):
-                    value = value[1:-1]
-                elif value.startswith("'") and value.endswith("'"):
+                if (value.startswith('"') and value.endswith('"')) or (
+                    value.startswith("'") and value.endswith("'")
+                ):
                     value = value[1:-1]
                 env_vars[key] = value
 
@@ -232,7 +233,6 @@ def print_results(
     connection_results: Optional[Dict[str, Tuple[bool, str]]] = None,
 ):
     """Print validation results in a formatted way"""
-
     # Print configuration issues
     errors = [issue for issue in issues if issue[0] == "ERROR"]
     warnings = [issue for issue in issues if issue[0] == "WARNING"]
@@ -242,12 +242,12 @@ def print_results(
     else:
         if errors:
             print(f"\n❌ {len(errors)} Error(s):")
-            for level, field, message in errors:
+            for _level, field, message in errors:
                 print(f"   {field}: {message}")
 
         if warnings:
             print(f"\n⚠️  {len(warnings)} Warning(s):")
-            for level, field, message in warnings:
+            for _level, field, message in warnings:
                 print(f"   {field}: {message}")
 
     # Print connection test results
@@ -260,7 +260,6 @@ def print_results(
     # Summary
     print("\n" + "=" * 40)
     total_errors = len(errors)
-    total_warnings = len(warnings)
 
     if total_errors == 0:
         print("✅ Configuration is valid")
@@ -322,9 +321,9 @@ def main():
 
     # Exit with appropriate code
     errors = [issue for issue in issues if issue[0] == "ERROR"]
-    if errors:
-        sys.exit(1)
-    elif connection_results and any(not success for success, _ in connection_results.values()):
+    if errors or (
+        connection_results and any(not success for success, _ in connection_results.values())
+    ):
         sys.exit(1)
     else:
         sys.exit(0)

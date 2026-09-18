@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Secret rotation script for existing BSMarker deployments
+Secret rotation script for existing BSMarker deployments.
+
 Safely rotates all secrets while maintaining service availability
 """
 
@@ -16,7 +17,10 @@ from typing import Any, Dict, Optional
 backend_path = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_path))
 
-from app.core.generate_secrets import generate_all_secrets, write_env_file
+from app.core.generate_secrets import (  # noqa: E402  (needs the sys.path setup above)
+    generate_all_secrets,
+    write_env_file,
+)
 
 
 def backup_env_file(env_path: Path) -> Path:
@@ -62,9 +66,9 @@ def parse_existing_env(env_path: Path) -> Dict[str, str]:
             if line and not line.startswith("#") and "=" in line:
                 key, value = line.split("=", 1)
                 # Remove quotes if present
-                if value.startswith('"') and value.endswith('"'):
-                    value = value[1:-1]
-                elif value.startswith("'") and value.endswith("'"):
+                if (value.startswith('"') and value.endswith('"')) or (
+                    value.startswith("'") and value.endswith("'")
+                ):
                     value = value[1:-1]
                 env_vars[key] = value
 

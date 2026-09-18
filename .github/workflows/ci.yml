@@ -1,0 +1,93 @@
+name: CI
+
+# Checks only — nothing is deployed from GitHub. Deployments are done on the
+# production server (see the deployment section of the project notes).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (types, lint, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --progress=false
+      - name: Type check
+        run: npx tsc --noEmit
+      - name: Lint (no warnings allowed)
+        run: npm run lint
+      - name: Unit tests
+        run: npx craco test --watchAll=false
+        env:
+          CI: "true"
+      - name: Production build
+        run: npm run build
+        env:
+          REACT_APP_API_URL: /api/v1
+          GENERATE_SOURCEMAP: "false"
+
+  backend:
+    name: Backend (lint, types, tests)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_PASSWORD: postgres  # pragma: allowlist secret
+          POSTGRES_DB: bsmarker_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bsmarker_test  # pragma: allowlist secret
+      REDIS_URL: redis://localhost:6379/1
+      MINIO_ENDPOINT: localhost:9000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: System libraries (audio decoding)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg libsndfile1
+      - name: MinIO (service containers can't take a command, so start it here)
+        env:
+          MINIO_ROOT_USER: test-access-key
+          MINIO_ROOT_PASSWORD: test-secret-key-minio  # pragma: allowlist secret
+        run: |
+          docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD \
+            quay.io/minio/minio:latest server /data
+          for i in $(seq 1 30); do curl -sf http://localhost:9000/minio/health/live && break; sleep 1; done
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip wheel "setuptools<81"
+          pip install -r backend/requirements.txt pre-commit
+      - name: Lint and type check (same hooks as local pre-commit)
+        run: |
+          FILES=$(git ls-files 'backend/*.py' | grep -v '^backend/tests/')
+          pre-commit run flake8 --files $FILES
+          pre-commit run mypy --files $FILES
+          pre-commit run pylint --files $FILES
+      - name: Tests
+        working-directory: backend
+        run: python -m pytest -q -p no:cacheprovider

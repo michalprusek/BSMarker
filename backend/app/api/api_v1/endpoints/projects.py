@@ -6,7 +6,7 @@ import os
 import re
 from datetime import datetime
 from stat import S_IFREG
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List, Optional, TypedDict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -32,6 +32,19 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+class _ExportStats(TypedDict):
+    """Counters collected while streaming a project export."""
+
+    total_recordings: int
+    exported_annotations: int
+    exported_audio: int
+    exported_spectrograms: int
+    failed_spectrograms: int
+    skipped: int
+    errors: List[Dict[str, Any]]
+    has_errors: bool
+
+
 def _sanitize_filename(filename: str) -> str:
     """
     Sanitize filename to prevent path traversal attacks (Zip Slip).
@@ -46,11 +59,11 @@ def _sanitize_filename(filename: str) -> str:
         Safe filename with path separators replaced by underscores
     """
     # Remove path traversal sequences and directory separators
-    safe_name = re.sub(r'[/\\]', '_', filename)
+    safe_name = re.sub(r"[/\\]", "_", filename)
     # Remove any remaining dots at the start (e.g., "..file")
-    safe_name = re.sub(r'^\.+', '', safe_name)
+    safe_name = re.sub(r"^\.+", "", safe_name)
     # Ensure we have a valid filename
-    return safe_name if safe_name else 'unnamed_file'
+    return safe_name if safe_name else "unnamed_file"
 
 
 @router.get("/", response_model=List[ProjectSchema])
@@ -145,7 +158,9 @@ def delete_project(
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
     """
-    Delete a project and all its associated data including:
+    Delete a project and all its associated data.
+
+    This includes:
     - All recordings
     - All spectrograms
     - All annotations
@@ -166,6 +181,7 @@ def delete_project(
     # Delete all MinIO files for recordings
     for recording in recordings:
         try:
+            assert recording.file_path is not None  # NOT NULL column
             # Delete the audio file from MinIO
             minio_client.delete_file(
                 bucket_name=settings.MINIO_BUCKET_RECORDINGS, object_name=recording.file_path
@@ -180,6 +196,9 @@ def delete_project(
 
         for spectrogram in spectrograms:
             try:
+                if spectrogram.image_path is None:
+                    # Nullable column: fail this deletion like the MinIO client would
+                    raise ValueError("Spectrogram has no image path")
                 # Delete the spectrogram image from MinIO
                 minio_client.delete_file(
                     bucket_name=settings.MINIO_BUCKET_SPECTROGRAMS,
@@ -206,14 +225,15 @@ def _create_streaming_export_generator(
     filters: Dict,
 ) -> Generator:
     """
-    Generator that yields ZIP member files for streaming export.
+    Yield ZIP member files for streaming export.
 
     Uses stream-zip for true streaming without loading entire ZIP into memory.
     All database queries are performed BEFORE this generator starts to avoid
     session lifecycle issues with FastAPI's dependency injection.
 
     Args:
-        export_data: Pre-fetched list of dicts with recording info, annotations, and spectrogram paths
+        export_data: Pre-fetched list of dicts with recording info, annotations,
+            and spectrogram paths
         project_info: Dict with project id, name, description
         include: Export type ('annotations' or 'full')
         filters: Dict with search, min_duration, max_duration, annotation_status
@@ -224,7 +244,7 @@ def _create_streaming_export_generator(
     modified_at = datetime.now()
     mode = S_IFREG | 0o644
 
-    export_stats = {
+    export_stats: _ExportStats = {
         "total_recordings": len(export_data),
         "exported_annotations": 0,
         "exported_audio": 0,
@@ -315,7 +335,8 @@ def _create_streaming_export_generator(
                     except Exception as spectrogram_error:
                         logger.error(
                             f"Failed to download spectrogram for recording {recording_id} "
-                            f"({original_filename}): {type(spectrogram_error).__name__}: {spectrogram_error}"
+                            f"({original_filename}): "
+                            f"{type(spectrogram_error).__name__}: {spectrogram_error}"
                         )
                         export_stats["failed_spectrograms"] += 1
                         export_stats["errors"].append(
@@ -323,7 +344,10 @@ def _create_streaming_export_generator(
                                 "recording_id": recording_id,
                                 "filename": original_filename,
                                 "type": "spectrogram",
-                                "error": f"Spectrogram download failed: {str(spectrogram_error)[:200]}",
+                                "error": (
+                                    "Spectrogram download failed: "
+                                    f"{str(spectrogram_error)[:200]}"
+                                ),
                             }
                         )
                         export_stats["has_errors"] = True
@@ -370,7 +394,9 @@ async def export_project_annotations(
     include: str = Query(
         "annotations",
         regex="^(annotations|full)$",
-        description="Export type: 'annotations' (JSON only) or 'full' (audio+spectrograms+annotations)",
+        description=(
+            "Export type: 'annotations' (JSON only) or 'full' (audio+spectrograms+annotations)"
+        ),
     ),
     search: Optional[str] = Query(None, description="Search in filename"),
     min_duration: Optional[float] = Query(None, description="Minimum duration in seconds"),
@@ -479,15 +505,17 @@ async def export_project_annotations(
             if spectrogram:
                 spectrogram_path = spectrogram.image_path
 
-        export_data.append({
-            "recording_id": recording.id,
-            "original_filename": recording.original_filename,
-            "file_path": recording.file_path,
-            "duration": recording.duration,
-            "sample_rate": recording.sample_rate,
-            "annotations": annotation_dicts,
-            "spectrogram_path": spectrogram_path,
-        })
+        export_data.append(
+            {
+                "recording_id": recording.id,
+                "original_filename": recording.original_filename,
+                "file_path": recording.file_path,
+                "duration": recording.duration,
+                "sample_rate": recording.sample_rate,
+                "annotations": annotation_dicts,
+                "spectrogram_path": spectrogram_path,
+            }
+        )
 
     # Extract project info while session is active
     project_info = {

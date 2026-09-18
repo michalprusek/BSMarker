@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Apply performance optimization indexes to the database.
+
 This script safely applies indexes that improve query performance for 1000+ recordings.
 """
 
@@ -15,12 +16,11 @@ from sqlalchemy.exc import SQLAlchemyError
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.core.config import settings
+from app.core.config import settings  # noqa: E402  (needs the sys.path setup above)
 
 
 def apply_indexes():
     """Apply performance indexes to the database."""
-
     # Create database connection
     engine = create_engine(settings.SQLALCHEMY_DATABASE_URI)
 
@@ -76,14 +76,14 @@ def apply_indexes():
 
             except SQLAlchemyError as e:
                 if "already exists" in str(e).lower():
-                    print(f"⚠️  Index already exists (skipped)")
+                    print("⚠️  Index already exists (skipped)")
                     successful += 1
                 else:
                     print(f"❌ Failed: {str(e)[:100]}")
                     failed += 1
 
     print("\n" + "=" * 60)
-    print(f"📊 Index Creation Summary:")
+    print("📊 Index Creation Summary:")
     print(f"   ✅ Successful: {successful}")
     print(f"   ❌ Failed: {failed}")
     print(f"   📈 Total: {successful + failed}")
@@ -95,14 +95,13 @@ def apply_indexes():
         print("   • Support for 1000+ recordings with sub-second loading")
         print("   • Reduced database CPU usage")
     else:
-        print(f"\n⚠️  Some indexes failed to create. Please review the errors above.")
+        print("\n⚠️  Some indexes failed to create. Please review the errors above.")
 
     return failed == 0
 
 
 def check_current_indexes():
     """Check currently existing indexes in the database."""
-
     engine = create_engine(settings.SQLALCHEMY_DATABASE_URI)
 
     query = """

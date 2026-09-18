@@ -1,28 +1,25 @@
 # Standard library imports
-import io
 import logging
-from typing import Optional
+from typing import Dict
 
 # Third-party imports
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import Response, StreamingResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.responses import Response
 from slowapi.errors import RateLimitExceeded
-from starlette.datastructures import MutableHeaders
+from starlette.middleware.base import RequestResponseEndpoint
 
 # Local application imports
+# (app.models is imported for its side effect: it registers all models with SQLAlchemy)
+from app import models  # noqa: F401  # pylint: disable=unused-import
 from app.api.api_v1.api import api_router
-from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.rate_limiter import get_rate_limit, limiter, rate_limit_exceeded_handler
-from app.core.security import decode_access_token
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
-from app.models import *  # noqa: F403,F401  # Import all models first for SQLAlchemy relationships
-from app.models.user import User
-from app.services.minio_client import minio_client
+
+# Imported for its side effect: creating the client ensures the MinIO buckets exist.
+from app.services.minio_client import minio_client  # noqa: F401  # pylint: disable=unused-import
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -44,7 +41,9 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # Middleware to handle proxy headers and ensure HTTPS URLs
 @app.middleware("http")
-async def proxy_headers_middleware(request: Request, call_next):
+async def proxy_headers_middleware(
+    request: Request, call_next: RequestResponseEndpoint
+) -> Response:
     # Get the forwarded headers from nginx
     forwarded_proto = request.headers.get("X-Forwarded-Proto", "https")
     forwarded_host = request.headers.get("X-Forwarded-Host") or request.headers.get("Host")
@@ -68,16 +67,13 @@ async def proxy_headers_middleware(request: Request, call_next):
                 new_headers.append((header_name, header_value))
         request.scope["headers"] = new_headers
 
-    # Process the request - let exceptions propagate properly
-    try:
-        response = await call_next(request)
-    except Exception:
-        # Re-raise all exceptions (including HTTPException) to be handled by FastAPI
-        raise
+    # Process the request - exceptions (including HTTPException) propagate to FastAPI
+    response = await call_next(request)
 
     # Fix redirect URLs to use HTTPS
     if hasattr(response, "headers"):
-        headers = MutableHeaders(response.headers)
+        # Write to response.headers itself (MutableHeaders(...) would be a copy).
+        headers = response.headers
         if response.status_code in (301, 302, 303, 307, 308):
             location = headers.get("location")
             if location:
@@ -104,8 +100,8 @@ app.add_middleware(
 
 
 # Health check endpoint for Docker
-@app.get("/health")
-async def health_check():
+@app.get("/health", response_model=None)  # keep the untyped (no response model) behaviour
+async def health_check() -> Dict[str, str]:
     return {"status": "ok", "service": "BSMarker API"}
 
 
@@ -113,7 +109,7 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
     # Initialize database
     db = SessionLocal()
     init_db(db)
@@ -121,86 +117,12 @@ async def startup_event():
 
     # Initialize MinIO buckets
     logger.info("Initializing MinIO storage...")
-    try:
-        # Force initialization of MinIO client and buckets
-        from app.services.minio_client import minio_client as mc
-
-        # This will trigger _ensure_buckets() in the constructor
-        logger.info("MinIO client initialized successfully")
-    except Exception as e:
-        logger.error(f"Error initializing MinIO: {e}")
+    # The MinIO client and its buckets are created by _ensure_buckets() when
+    # app.services.minio_client is imported at the top of this module.
+    logger.info("MinIO client initialized successfully")
 
 
-@app.get("/")
+@app.get("/", response_model=None)  # keep the untyped (no response model) behaviour
 @limiter.limit(get_rate_limit("crud_read"))
-def read_root(request: Request):
+def read_root(request: Request) -> Dict[str, str]:
     return {"message": "BSMarker API", "version": settings.VERSION}
-
-
-async def verify_token(
-    token: Optional[str] = Query(None), authorization: Optional[str] = Header(None)
-):
-    """Verify token from query parameter or Authorization header"""
-    if token:
-        # Token from query parameter
-        try:
-            payload = decode_access_token(token)
-            if payload is None:
-                raise HTTPException(status_code=403, detail="Invalid token")
-            return True
-        except Exception:
-            raise HTTPException(status_code=403, detail="Invalid token")
-    elif authorization and authorization.startswith("Bearer "):
-        # Token from Authorization header
-        token_value = authorization.replace("Bearer ", "")
-        try:
-            payload = decode_access_token(token_value)
-            if payload is None:
-                raise HTTPException(status_code=403, detail="Invalid token")
-            return True
-        except Exception:
-            raise HTTPException(status_code=403, detail="Invalid token")
-    else:
-        raise HTTPException(status_code=403, detail="No authentication provided")
-
-
-@app.get("/files/recordings/{file_path:path}")
-@limiter.limit(get_rate_limit("file_serve"))
-async def get_audio_file(
-    request: Request,
-    file_path: str,
-    token: Optional[str] = Query(None),
-    authorization: Optional[str] = None,
-):
-    await verify_token(token, authorization)
-    try:
-        audio_data = minio_client.download_file(settings.MINIO_BUCKET_RECORDINGS, file_path)
-        if audio_data:
-            return StreamingResponse(io.BytesIO(audio_data), media_type="audio/mpeg")
-        else:
-            raise HTTPException(status_code=404, detail="Audio file not found")
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/files/spectrograms/{file_path:path}")
-@limiter.limit(get_rate_limit("file_serve"))
-async def get_spectrogram_file(
-    request: Request,
-    file_path: str,
-    token: Optional[str] = Query(None),
-    authorization: Optional[str] = None,
-):
-    await verify_token(token, authorization)
-    try:
-        image_data = minio_client.download_file(settings.MINIO_BUCKET_SPECTROGRAMS, file_path)
-        if image_data:
-            return StreamingResponse(io.BytesIO(image_data), media_type="image/png")
-        else:
-            raise HTTPException(status_code=404, detail="Spectrogram not found")
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(status_code=500, detail=str(e))

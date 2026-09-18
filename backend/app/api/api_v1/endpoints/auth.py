@@ -28,7 +28,11 @@ def login_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
 ) -> Any:
     user = db.query(User).filter(User.email == form_data.username).first()
-    if not user or not security.verify_password(form_data.password, user.hashed_password):
+    password_ok = False
+    if user is not None:
+        assert user.hashed_password is not None  # NOT NULL column
+        password_ok = security.verify_password(form_data.password, user.hashed_password)
+    if not user or not password_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -63,6 +67,7 @@ def change_password(
 ) -> Any:
     """Change the current user's password."""
     # Verify current password
+    assert current_user.hashed_password is not None  # NOT NULL column
     if not security.verify_password(password_data.current_password, current_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

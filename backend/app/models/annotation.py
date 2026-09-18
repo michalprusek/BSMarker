@@ -1,7 +1,14 @@
-from app.db.base_class import Base
+from typing import TYPE_CHECKING, List
+
 from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.sql import func
+
+from app.db.base_class import Base
+
+if TYPE_CHECKING:
+    from app.models.recording import Recording
+    from app.models.user import User
 
 
 class Annotation(Base):
@@ -13,9 +20,9 @@ class Annotation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    recording = relationship("Recording", back_populates="annotations")
-    user = relationship("User", back_populates="annotations")
-    bounding_boxes = relationship(
+    recording: Mapped["Recording"] = relationship("Recording", back_populates="annotations")
+    user: Mapped["User"] = relationship("User", back_populates="annotations")
+    bounding_boxes: Mapped[List["BoundingBox"]] = relationship(
         "BoundingBox", back_populates="annotation", cascade="all, delete-orphan"
     )
 
@@ -37,4 +44,4 @@ class BoundingBox(Base):
     confidence = Column(Float)
     extra_metadata = Column(JSON)  # Keep original column name
 
-    annotation = relationship("Annotation", back_populates="bounding_boxes")
+    annotation: Mapped["Annotation"] = relationship("Annotation", back_populates="bounding_boxes")

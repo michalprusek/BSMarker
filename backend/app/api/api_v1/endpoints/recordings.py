@@ -7,12 +7,12 @@ import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.api import deps
 from app.api.deps import check_project_edit_permission
@@ -36,9 +36,10 @@ logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def secure_temp_file(suffix="", prefix="bsmarker_"):
+def secure_temp_file(suffix: str = "", prefix: str = "bsmarker_") -> Iterator[Path]:
     """
     Create a secure temporary file with path validation.
+
     Ensures the file stays within the system temp directory.
     """
     temp_file = None
@@ -79,6 +80,7 @@ def secure_temp_file(suffix="", prefix="bsmarker_"):
 def validate_file_extension(filename: str) -> str:
     """
     Validate and sanitize file extension.
+
     Returns a safe extension string.
     """
     if not filename:
@@ -120,7 +122,7 @@ async def upload_recording(
     try:
         file_extension = validate_file_extension(file.filename)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Check for empty files
     if file.size == 0:
@@ -169,18 +171,20 @@ async def upload_recording(
         if "Connection" in error_msg or "refused" in error_msg.lower():
             raise HTTPException(
                 status_code=503, detail="Storage service temporarily unavailable. Please try again."
-            )
+            ) from e
         elif "Access" in error_msg or "credentials" in error_msg.lower():
             raise HTTPException(
                 status_code=500, detail="Storage authentication error. Please contact support."
-            )
+            ) from e
         else:
             raise HTTPException(
                 status_code=500, detail=f"Storage error: {error_msg[:100]}"
-            )  # Limit error message length
+            ) from e  # Limit error message length
 
     # Extract audio metadata using centralized service
     audio_analysis_start = time.time()
+    duration: Optional[float]
+    sr: Optional[int]
     try:
         audio_metadata = audio_service.extract_audio_metadata_from_bytes(contents, file_extension)
         duration = audio_metadata.duration
@@ -199,7 +203,8 @@ async def upload_recording(
         filename=unique_filename,
         original_filename=file.filename,
         file_path=file_path,
-        duration=duration,
+        # The SQLAlchemy mypy plugin leaves Float's type variable unresolved.
+        duration=duration,  # type: ignore[arg-type]
         sample_rate=sr,
         project_id=project_id,
     )
@@ -267,14 +272,17 @@ def read_recordings(
         .group_by(Recording.id)
     )
 
-    # Apply search filter
-    if search:
-        query = query.filter(
-            or_(
-                Recording.original_filename.ilike(f"%{search}%"),
-                Recording.filename.ilike(f"%{search}%"),
-            )
+    # Apply search filter (the same condition is used for the summary counts below)
+    search_condition = (
+        or_(
+            Recording.original_filename.ilike(f"%{search}%"),
+            Recording.filename.ilike(f"%{search}%"),
         )
+        if search
+        else None
+    )
+    if search_condition is not None:
+        query = query.filter(search_condition)
 
     # Apply duration filters
     if min_duration is not None:
@@ -288,9 +296,10 @@ def read_recordings(
     elif annotation_status == "unannotated":
         query = query.having(func.count(Annotation.id) == 0)
     elif annotation_status == "finished":
-        query = query.filter(Recording.is_finished == True)
+        query = query.filter(Recording.is_finished.is_(True))
 
     # Apply sorting
+    order_field: InstrumentedAttribute[Any]
     if sort_by == "filename":
         order_field = Recording.original_filename
     elif sort_by == "duration":
@@ -314,10 +323,8 @@ def read_recordings(
     )
 
     # Apply the same filters as the main query for consistency
-    if search:
-        total_duration_query = total_duration_query.filter(
-            Recording.original_filename.ilike(f"%{search}%")
-        )
+    if search_condition is not None:
+        total_duration_query = total_duration_query.filter(search_condition)
     if min_duration is not None:
         total_duration_query = total_duration_query.filter(Recording.duration >= min_duration)
     if max_duration is not None:
@@ -335,19 +342,17 @@ def read_recordings(
                 Annotation.id.is_(None)
             )
         elif annotation_status == "finished":
-            total_duration_query = total_duration_query.filter(Recording.is_finished == True)
+            total_duration_query = total_duration_query.filter(Recording.is_finished.is_(True))
 
     total_duration = total_duration_query.scalar() or 0.0
 
     # Calculate finished count (total recordings with is_finished=True)
     # Apply same filters as duration but NOT annotation_status
     finished_count_query = db.query(func.count(Recording.id)).filter(
-        Recording.project_id == project_id, Recording.is_finished == True
+        Recording.project_id == project_id, Recording.is_finished.is_(True)
     )
-    if search:
-        finished_count_query = finished_count_query.filter(
-            Recording.original_filename.ilike(f"%{search}%")
-        )
+    if search_condition is not None:
+        finished_count_query = finished_count_query.filter(search_condition)
     if min_duration is not None:
         finished_count_query = finished_count_query.filter(Recording.duration >= min_duration)
     if max_duration is not None:
@@ -364,10 +369,8 @@ def read_recordings(
         .group_by(Recording.id)
         .having(func.count(Annotation.id) > 0)
     )
-    if search:
-        annotated_count_query = annotated_count_query.filter(
-            Recording.original_filename.ilike(f"%{search}%")
-        )
+    if search_condition is not None:
+        annotated_count_query = annotated_count_query.filter(search_condition)
     if min_duration is not None:
         annotated_count_query = annotated_count_query.filter(Recording.duration >= min_duration)
     if max_duration is not None:
@@ -413,7 +416,9 @@ def read_recordings(
         annotated_count=annotated_count,
     )
 
-    response = PaginatedResponse(items=recordings_with_counts, pagination=pagination_metadata)
+    response: PaginatedResponse[RecordingSchema] = PaginatedResponse(
+        items=recordings_with_counts, pagination=pagination_metadata
+    )
 
     # Cache the response
     cache_service.set_project_recordings(
@@ -479,6 +484,8 @@ def delete_recording(
     # Use shared permission check that respects ADMIN_CAN_EDIT_USER_PROJECTS setting
     check_project_edit_permission(db, project, current_user)
 
+    # file_path and id are NOT NULL columns of a loaded row
+    assert recording.file_path is not None and project.id is not None
     minio_client.delete_file(
         bucket_name=settings.MINIO_BUCKET_RECORDINGS, object_name=recording.file_path
     )
@@ -521,6 +528,7 @@ def bulk_delete_recordings(
 
     for recording in recordings:
         try:
+            assert recording.file_path is not None  # NOT NULL column
             minio_client.delete_file(
                 bucket_name=settings.MINIO_BUCKET_RECORDINGS, object_name=recording.file_path
             )
@@ -537,7 +545,7 @@ def bulk_delete_recordings(
 
     db.commit()
 
-    response = {
+    response: Dict[str, Any] = {
         "message": f"Deleted {deleted_count} recordings successfully",
         "deleted_count": deleted_count,
         "total_requested": len(recording_ids),
@@ -564,9 +572,13 @@ async def get_recording_audio(
         raise HTTPException(status_code=404, detail="Recording not found")
 
     project = db.query(Project).filter(Project.id == recording.project_id).first()
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
     if not current_user.is_admin and project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
+    # file_path and filename are NOT NULL columns
+    assert recording.file_path is not None and recording.filename is not None
     try:
         audio_data = minio_client.get_file(
             bucket_name=settings.MINIO_BUCKET_RECORDINGS, object_name=recording.file_path
@@ -621,29 +633,23 @@ def backfill_missing_durations(
 
     for recording in recordings_missing_duration:
         try:
-            # Download audio file from MinIO
+            # file_path and filename are NOT NULL columns
+            assert recording.file_path is not None and recording.filename is not None
+            # Download audio file from MinIO (get_file returns an in-memory BytesIO)
             audio_data = minio_client.get_file(
                 bucket_name=settings.MINIO_BUCKET_RECORDINGS, object_name=recording.file_path
-            )
-
-            # Create temporary file
-            import tempfile
-
-            with tempfile.NamedTemporaryFile(
-                delete=False, suffix=os.path.splitext(recording.filename)[1]
-            ) as temp_file:
-                for chunk in audio_data:
-                    temp_file.write(chunk)
-                temp_path = temp_file.name
+            ).getvalue()
+            file_extension = os.path.splitext(recording.filename)[1]
 
             try:
                 # Analyze audio to get duration using AudioService
-                audio_metadata = audio_service.extract_audio_metadata(
-                    open(temp_path, "rb").read(), os.path.splitext(recording.filename)[1]
+                audio_metadata = audio_service.extract_audio_metadata_from_bytes(
+                    audio_data, file_extension
                 )
 
                 # Update recording with duration and sample rate if missing
-                recording.duration = audio_metadata.duration
+                # (the SQLAlchemy mypy plugin leaves Float's type variable unresolved)
+                recording.duration = audio_metadata.duration  # type: ignore[assignment]
                 if recording.sample_rate is None:
                     recording.sample_rate = audio_metadata.sample_rate
 
@@ -659,16 +665,13 @@ def backfill_missing_durations(
                 logger.error(f"Failed to analyze audio for recording {recording.id}: {str(e)}")
                 errors.append(f"Recording {recording.id}: {str(e)}")
                 failed_count += 1
-            finally:
-                # Clean up temporary file
-                os.unlink(temp_path)
 
         except Exception as e:
             logger.error(f"Failed to process recording {recording.id}: {str(e)}")
             errors.append(f"Recording {recording.id}: {str(e)}")
             failed_count += 1
 
-    result = {
+    result: Dict[str, Any] = {
         "message": f"Processed {len(recordings_missing_duration)} recordings",
         "updated_count": updated_count,
         "failed_count": failed_count,
@@ -718,10 +721,12 @@ def toggle_recording_finished(
     recording_dict["annotation_count"] = annotation_count
 
     # Invalidate cache
+    assert recording.project_id is not None  # NOT NULL column
     cache_service.invalidate_project_recordings(recording.project_id)
 
     logger.info(
-        f"Recording {recording_id} finished status toggled to {recording.is_finished} by {current_user.email}"
+        f"Recording {recording_id} finished status toggled to {recording.is_finished} "
+        f"by {current_user.email}"
     )
 
     return recording_dict

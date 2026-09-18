@@ -3,16 +3,19 @@
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+
 from app.services.audio_service import (
     AudioMetadata,
     AudioProcessingError,
     AudioService,
     audio_service,
 )
+
+from .conftest import SAMPLE_MP3_DURATION, SAMPLE_MP3_SAMPLE_RATE
 
 
 @pytest.fixture
@@ -163,26 +166,24 @@ class TestExtractAudioMetadata:
 class TestExtractAudioMetadataFromBytes:
     """Test extract_audio_metadata_from_bytes method."""
 
-    def test_extract_from_bytes_success(self, service, mock_librosa_success):
-        """Test successful metadata extraction from bytes."""
+    def test_extract_from_bytes_writes_temp_file_and_removes_it(self, service):
+        """The bytes are written to a temp file with the given suffix, which is removed after."""
         audio_bytes = b"fake mp3 content for testing"
+        seen = {}
 
-        with patch("tempfile.NamedTemporaryFile") as mock_temp:
-            mock_file = MagicMock()
-            mock_file.name = "/tmp/test_audio.mp3"
-            mock_file.__enter__.return_value = mock_file
-            mock_temp.return_value = mock_file
+        def fake_extract(path):
+            seen["path"] = str(path)
+            seen["content"] = Path(path).read_bytes()
+            return AudioMetadata(duration=3.5, sample_rate=44100)
 
-            with patch.object(service, "extract_audio_metadata") as mock_extract:
-                mock_metadata = AudioMetadata(duration=3.5, sample_rate=44100)
-                mock_extract.return_value = mock_metadata
+        with patch.object(service, "extract_audio_metadata", side_effect=fake_extract):
+            result = service.extract_audio_metadata_from_bytes(audio_bytes, ".wav")
 
-                result = service.extract_audio_metadata_from_bytes(audio_bytes, ".mp3")
-
-                assert result == mock_metadata
-                mock_file.write.assert_called_once_with(audio_bytes)
-                mock_file.flush.assert_called_once()
-                mock_extract.assert_called_once_with("/tmp/test_audio.mp3")
+        assert result.duration == 3.5
+        assert result.sample_rate == 44100
+        assert seen["path"].endswith(".wav")
+        assert seen["content"] == audio_bytes
+        assert not os.path.exists(seen["path"])
 
     def test_extract_from_bytes_failure(self, service):
         """Test metadata extraction from bytes with failure."""
@@ -355,29 +356,36 @@ class TestValidateAudioFormat:
 class TestIntegrationScenarios:
     """Integration tests for common usage scenarios."""
 
-    def test_full_metadata_extraction_workflow(self, service, mock_librosa_success):
-        """Test complete metadata extraction workflow."""
-        audio_bytes = b"fake mp3 content for workflow test"
+    @pytest.mark.audio
+    def test_full_metadata_extraction_workflow(self, service, sample_mp3_bytes):
+        """Real MP3 bytes -> real librosa decode -> correct duration and sample rate."""
+        metadata = service.extract_audio_metadata_from_bytes(sample_mp3_bytes, ".mp3")
 
-        with patch("tempfile.NamedTemporaryFile") as mock_temp, patch("os.unlink") as mock_unlink:
+        assert isinstance(metadata, AudioMetadata)
+        assert metadata.duration == pytest.approx(SAMPLE_MP3_DURATION, abs=0.05)
+        assert metadata.sample_rate == SAMPLE_MP3_SAMPLE_RATE
+        assert metadata.channels == 1
 
-            mock_file = MagicMock()
-            mock_file.name = "/tmp/workflow_test.mp3"
-            mock_file.__enter__.return_value = mock_file
-            mock_temp.return_value = mock_file
+    @pytest.mark.audio
+    def test_real_wav_file_metadata(self, service, tmp_path):
+        """A generated 2 s, 16 kHz WAV is decoded with its native sample rate."""
+        import soundfile as sf
 
-            # Test the complete workflow
-            metadata = service.extract_audio_metadata_from_bytes(audio_bytes, ".mp3")
+        sr = 16000
+        t = np.linspace(0, 2.0, 2 * sr, endpoint=False)
+        path = tmp_path / "tone.wav"
+        sf.write(path, 0.5 * np.sin(2 * np.pi * 440 * t), sr)
 
-            # Verify results
-            assert isinstance(metadata, AudioMetadata)
-            assert metadata.duration == mock_librosa_success["duration"]
-            assert metadata.sample_rate == mock_librosa_success["sample_rate"]
-            assert metadata.channels == 1
+        metadata = service.extract_audio_metadata(path)
 
-            # Verify file operations
-            mock_file.write.assert_called_once_with(audio_bytes)
-            mock_unlink.assert_called_once()
+        assert metadata.sample_rate == sr
+        assert metadata.duration == pytest.approx(2.0, abs=1e-3)
+        assert service.validate_audio_format(path) is True
+
+    @pytest.mark.audio
+    def test_real_decoder_rejects_garbage(self, service):
+        with pytest.raises(AudioProcessingError):
+            service.extract_audio_metadata_from_bytes(b"definitely not audio data", ".mp3")
 
     @pytest.mark.audio
     def test_error_handling_chain(self, service):

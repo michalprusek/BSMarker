@@ -26,6 +26,8 @@ class RecordingInDBBase(RecordingBase):
     can_edit: Optional[bool] = None
 
     class Config:
+        """Pydantic model configuration."""
+
         from_attributes = True
 
 

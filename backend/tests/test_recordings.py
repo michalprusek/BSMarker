@@ -1,739 +1,579 @@
-"""Tests for recordings API endpoints, especially duration extraction and backfill functionality."""
+"""Tests for the recordings API.
 
-import io
-from unittest.mock import MagicMock, patch
+Covers upload + metadata extraction, listing, finished toggle, backfill, audio
+streaming and deletion.
 
-import numpy as np
+PostgreSQL, Redis and MinIO are real (throwaway) services; audio is decoded by the real
+librosa from a small MP3 fixture, so no mocks are needed here.
+"""
+
+import pytest
 from fastapi import status
+from minio.error import S3Error
 
+from app.core.config import settings
+from app.models.annotation import Annotation, BoundingBox
 from app.models.recording import Recording
+from app.services.minio_client import minio_client
+
+from .conftest import SAMPLE_MP3_DURATION, SAMPLE_MP3_SAMPLE_RATE
+
+
+def add_recording(db, project, name, duration=10.0, is_finished=False, **kwargs):
+    recording = Recording(
+        filename=name,
+        original_filename=name,
+        file_path=f"project_{project.id}/{name}",
+        duration=duration,
+        sample_rate=kwargs.pop("sample_rate", 44100 if duration is not None else None),
+        is_finished=is_finished,
+        project_id=project.id,
+        **kwargs,
+    )
+    db.add(recording)
+    db.commit()
+    db.refresh(recording)
+    return recording
+
+
+def add_annotation(db, recording, user, n_boxes=1):
+    annotation = Annotation(recording_id=recording.id, user_id=user.id)
+    db.add(annotation)
+    db.flush()
+    for i in range(n_boxes):
+        db.add(
+            BoundingBox(
+                annotation_id=annotation.id,
+                x=i,
+                y=0,
+                width=10,
+                height=10,
+                start_time=i,
+                end_time=i + 1,
+                label="bird",
+            )
+        )
+    db.commit()
+    return annotation
+
+
+def list_recordings(client, project_id, headers, **params):
+    response = client.get(
+        f"/api/v1/recordings/{project_id}/recordings", params=params, headers=headers
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    return response.json()
 
 
 class TestRecordingUpload:
-    """Test recording upload with duration extraction."""
-
-    def test_upload_with_successful_duration_extraction(
-        self, client, test_db, test_project, auth_headers, mock_minio_client
+    @pytest.mark.audio
+    def test_upload_real_mp3_extracts_duration_and_sample_rate(
+        self, client, test_db, test_project, auth_headers, sample_mp3_bytes
     ):
-        """Test successful recording upload with duration extraction."""
-        project_id = test_project.id
+        response = client.post(
+            f"/api/v1/recordings/{test_project.id}/upload",
+            files={"file": ("bird call.mp3", sample_mp3_bytes, "audio/mpeg")},
+            headers=auth_headers,
+        )
 
-        # Create fake audio file
-        audio_content = b"fake mp3 content for testing duration extraction"
-        audio_file = io.BytesIO(audio_content)
-
-        # Mock librosa operations for duration extraction
-        with patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa:
-            mock_audio_data = np.random.random(88200)  # 2 seconds at 44100 Hz
-            mock_sample_rate = 44100
-            mock_duration = 2.0
-
-            mock_librosa.load.return_value = (mock_audio_data, mock_sample_rate)
-            mock_librosa.get_duration.return_value = mock_duration
-
-            # Mock MinIO upload
-            with patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio:
-                mock_minio.put_file.return_value = True
-
-                # Mock secure temp file
-                with patch("app.api.api_v1.endpoints.recordings.secure_temp_file") as mock_temp:
-                    mock_temp.return_value.__enter__.return_value = "/tmp/test_audio.mp3"
-
-                    # Mock file writing
-                    with patch("builtins.open", create=True) as mock_open:
-                        mock_file = MagicMock()
-                        mock_open.return_value.__enter__.return_value = mock_file
-
-                        # Upload file
-                        response = client.post(
-                            f"/api/v1/recordings/{project_id}/upload",
-                            files={"file": ("test_audio.mp3", audio_file, "audio/mpeg")},
-                            headers=auth_headers,
-                        )
-
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code == status.HTTP_200_OK, response.text
         data = response.json()
+        assert data["original_filename"] == "bird call.mp3"
+        assert data["filename"].endswith(".mp3")
+        assert data["filename"] != "bird call.mp3"  # stored under a generated name
+        assert data["file_path"] == f"project_{test_project.id}/{data['filename']}"
+        assert data["project_id"] == test_project.id
+        assert data["is_finished"] is False
+        assert data["duration"] == pytest.approx(SAMPLE_MP3_DURATION, abs=0.05)
+        assert data["sample_rate"] == SAMPLE_MP3_SAMPLE_RATE
 
-        # Verify recording was created with duration
-        assert "id" in data
-        assert data["filename"].endswith("test_audio.mp3")
-        assert data["original_filename"] == "test_audio.mp3"
-        assert data["duration"] == mock_duration
-        assert data["sample_rate"] == mock_sample_rate
-        assert data["project_id"] == project_id
+        recording = test_db.query(Recording).filter(Recording.id == data["id"]).one()
+        assert recording.duration == pytest.approx(SAMPLE_MP3_DURATION, abs=0.05)
+        assert recording.sample_rate == SAMPLE_MP3_SAMPLE_RATE
+        assert recording.is_finished is False
 
-        # Verify recording exists in database
-        recording = test_db.query(Recording).filter(Recording.id == data["id"]).first()
-        assert recording is not None
-        assert recording.duration == mock_duration
-        assert recording.sample_rate == mock_sample_rate
+        # The file really landed in object storage, byte for byte.
+        stored = minio_client.download_file(settings.MINIO_BUCKET_RECORDINGS, data["file_path"])
+        assert stored == sample_mp3_bytes
+        minio_client.delete_file(settings.MINIO_BUCKET_RECORDINGS, data["file_path"])
 
-    def test_upload_with_duration_extraction_failure(
+    @pytest.mark.audio
+    def test_upload_undecodable_audio_is_stored_without_metadata(
         self, client, test_db, test_project, auth_headers
     ):
-        """Test recording upload when duration extraction fails."""
-        project_id = test_project.id
+        response = client.post(
+            f"/api/v1/recordings/{test_project.id}/upload",
+            files={"file": ("corrupted.mp3", b"this is not audio at all", "audio/mpeg")},
+            headers=auth_headers,
+        )
 
-        # Create fake audio file
-        audio_content = b"fake corrupted mp3 content"
-        audio_file = io.BytesIO(audio_content)
-
-        # Mock librosa failure
-        with patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa:
-            mock_librosa.load.side_effect = Exception("Failed to load corrupted audio")
-
-            with patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio:
-                mock_minio.put_file.return_value = True
-
-                with patch("app.api.api_v1.endpoints.recordings.secure_temp_file") as mock_temp:
-                    mock_temp.return_value.__enter__.return_value = "/tmp/test_audio.mp3"
-
-                    with patch("builtins.open", create=True) as mock_open:
-                        mock_file = MagicMock()
-                        mock_open.return_value.__enter__.return_value = mock_file
-
-                        response = client.post(
-                            f"/api/v1/recordings/{project_id}/upload",
-                            files={"file": ("corrupted.mp3", audio_file, "audio/mpeg")},
-                            headers=auth_headers,
-                        )
-
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code == status.HTTP_200_OK, response.text
         data = response.json()
-
-        # Verify recording was created even with failed duration extraction
-        assert "id" in data
-        assert data["duration"] is None  # Should be None when extraction fails
+        assert data["duration"] is None
         assert data["sample_rate"] is None
-
-        # Verify recording exists in database with null duration
-        recording = test_db.query(Recording).filter(Recording.id == data["id"]).first()
-        assert recording is not None
+        recording = test_db.query(Recording).filter(Recording.id == data["id"]).one()
         assert recording.duration is None
         assert recording.sample_rate is None
+        minio_client.delete_file(settings.MINIO_BUCKET_RECORDINGS, data["file_path"])
 
-    def test_upload_with_unsupported_file_type(self, client, test_project, auth_headers):
-        """Test upload with unsupported file type."""
-        project_id = test_project.id
-
-        # Create fake text file
-        text_content = b"This is not an audio file"
-        text_file = io.BytesIO(text_content)
-
+    def test_upload_rejects_unsupported_extension(
+        self, client, test_db, test_project, auth_headers
+    ):
         response = client.post(
-            f"/api/v1/recordings/{project_id}/upload",
-            files={"file": ("test.txt", text_file, "text/plain")},
+            f"/api/v1/recordings/{test_project.id}/upload",
+            files={"file": ("notes.txt", b"This is not an audio file", "text/plain")},
             headers=auth_headers,
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "not supported" in response.json()["detail"].lower()
+        assert "not allowed" in response.json()["detail"].lower()
+        assert test_db.query(Recording).count() == 0
 
-    def test_upload_with_large_file(self, client, test_project, auth_headers):
-        """Test upload with file size limit exceeded."""
-        project_id = test_project.id
+    def test_upload_rejects_empty_file(self, client, test_db, test_project, auth_headers):
+        response = client.post(
+            f"/api/v1/recordings/{test_project.id}/upload",
+            files={"file": ("empty.mp3", b"", "audio/mpeg")},
+            headers=auth_headers,
+        )
 
-        # Create oversized content (simulate large file)
-        large_content = b"x" * (100 * 1024 * 1024 + 1)  # Over 100MB
-        large_file = io.BytesIO(large_content)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "empty" in response.json()["detail"].lower()
+        assert test_db.query(Recording).count() == 0
+
+    def test_upload_rejects_file_over_size_limit(
+        self, client, test_db, test_project, auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "MAX_UPLOAD_SIZE", 1024)
 
         response = client.post(
-            f"/api/v1/recordings/{project_id}/upload",
-            files={"file": ("large_audio.mp3", large_file, "audio/mpeg")},
+            f"/api/v1/recordings/{test_project.id}/upload",
+            files={"file": ("large.mp3", b"x" * 1025, "audio/mpeg")},
             headers=auth_headers,
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "too large" in response.json()["detail"].lower()
+        assert test_db.query(Recording).count() == 0
 
-class TestBackfillDurations:
-    """Test backfill missing durations endpoint."""
+    def test_upload_to_missing_project_returns_404(self, client, auth_headers):
+        response = client.post(
+            "/api/v1/recordings/999999/upload",
+            files={"file": ("a.mp3", b"abc", "audio/mpeg")},
+            headers=auth_headers,
+        )
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_backfill_missing_durations_success(
-        self, client, test_db, test_project, admin_auth_headers
+    def test_upload_to_foreign_project_is_forbidden(
+        self, client, test_db, test_project, other_auth_headers
     ):
-        """Test successful backfill of missing durations."""
-        # Create recordings with missing durations
-        recordings_without_duration = []
-        for i in range(3):
-            recording = Recording(
-                filename=f"test_audio_{i}.mp3",
-                original_filename=f"test_audio_{i}.mp3",
-                file_path=f"recordings/test_audio_{i}.mp3",
-                duration=None,
-                sample_rate=None,
-                project_id=test_project.id,
-            )
-            test_db.add(recording)
-            recordings_without_duration.append(recording)
+        response = client.post(
+            f"/api/v1/recordings/{test_project.id}/upload",
+            files={"file": ("a.mp3", b"abc", "audio/mpeg")},
+            headers=other_auth_headers,
+        )
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert test_db.query(Recording).count() == 0
 
-        test_db.commit()
+    def test_upload_requires_authentication(self, client, test_project):
+        response = client.post(
+            f"/api/v1/recordings/{test_project.id}/upload",
+            files={"file": ("a.mp3", b"abc", "audio/mpeg")},
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-        # Mock MinIO and librosa operations
-        with (
-            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
-            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
-        ):
 
-            # Mock MinIO file download
-            fake_audio_content = b"fake mp3 content"
-            mock_minio.get_file.return_value = iter([fake_audio_content])
+class TestRecordingList:
+    def test_min_duration_filter(self, client, test_db, test_project, auth_headers):
+        add_recording(test_db, test_project, "short.mp3", duration=2.5)
+        long = add_recording(test_db, test_project, "long.mp3", duration=10.0)
 
-            # Mock librosa analysis
-            mock_audio_data = np.random.random(66150)  # 1.5 seconds at 44100 Hz
-            mock_sample_rate = 44100
-            mock_duration = 1.5
+        data = list_recordings(client, test_project.id, auth_headers, min_duration=5.0)
 
-            mock_librosa.load.return_value = (mock_audio_data, mock_sample_rate)
-            mock_librosa.get_duration.return_value = mock_duration
+        assert [r["id"] for r in data["items"]] == [long.id]
+        assert data["pagination"]["total"] == 1
+        assert data["pagination"]["total_duration"] == pytest.approx(10.0)
 
-            # Mock tempfile operations
-            with (
-                patch("tempfile.NamedTemporaryFile") as mock_temp,
-                patch("os.unlink") as mock_unlink,
-            ):
+    def test_max_duration_filter(self, client, test_db, test_project, auth_headers):
+        short = add_recording(test_db, test_project, "short.mp3", duration=2.5)
+        add_recording(test_db, test_project, "long.mp3", duration=10.0)
+        add_recording(test_db, test_project, "unknown.mp3", duration=None)
 
-                mock_file = MagicMock()
-                mock_file.name = "/tmp/backfill_audio.mp3"
-                mock_file.__enter__.return_value = mock_file
-                mock_temp.return_value = mock_file
+        data = list_recordings(client, test_project.id, auth_headers, max_duration=5.0)
 
-                response = client.post(
-                    "/api/v1/recordings/backfill-durations", headers=admin_auth_headers
-                )
+        assert [r["id"] for r in data["items"]] == [short.id]
+
+    def test_duration_range_filter(self, client, test_db, test_project, auth_headers):
+        add_recording(test_db, test_project, "a.mp3", duration=0.5)
+        mid1 = add_recording(test_db, test_project, "b.mp3", duration=3.0)
+        mid2 = add_recording(test_db, test_project, "c.mp3", duration=12.0)
+        add_recording(test_db, test_project, "d.mp3", duration=30.0)
+
+        data = list_recordings(
+            client, test_project.id, auth_headers, min_duration=1.0, max_duration=15.0
+        )
+
+        assert {r["id"] for r in data["items"]} == {mid1.id, mid2.id}
+        assert data["pagination"]["total_duration"] == pytest.approx(15.0)
+
+    @pytest.mark.parametrize("order", ["asc", "desc"])
+    def test_sort_by_duration(self, client, test_db, test_project, auth_headers, order):
+        for name, duration in [("m.mp3", 5.0), ("s.mp3", 1.0), ("l.mp3", 9.0)]:
+            add_recording(test_db, test_project, name, duration=duration)
+
+        data = list_recordings(
+            client, test_project.id, auth_headers, sort_by="duration", sort_order=order
+        )
+
+        durations = [r["duration"] for r in data["items"]]
+        assert durations == sorted(durations, reverse=(order == "desc"))
+        assert len(durations) == 3
+
+    def test_sort_by_filename_and_search(self, client, test_db, test_project, auth_headers):
+        add_recording(test_db, test_project, "robin_2.mp3")
+        add_recording(test_db, test_project, "robin_1.mp3")
+        add_recording(test_db, test_project, "sparrow.mp3")
+
+        data = list_recordings(
+            client,
+            test_project.id,
+            auth_headers,
+            search="ROBIN",
+            sort_by="filename",
+            sort_order="asc",
+        )
+
+        assert [r["original_filename"] for r in data["items"]] == ["robin_1.mp3", "robin_2.mp3"]
+
+    def test_pagination_metadata(self, client, test_db, test_project, auth_headers):
+        for i in range(5):
+            add_recording(test_db, test_project, f"rec_{i}.mp3", duration=2.0)
+
+        first = list_recordings(client, test_project.id, auth_headers, skip=0, limit=2)
+        last = list_recordings(client, test_project.id, auth_headers, skip=4, limit=2)
+
+        assert len(first["items"]) == 2
+        assert first["pagination"] == {
+            "total": 5,
+            "page": 1,
+            "page_size": 2,
+            "total_pages": 3,
+            "has_next": True,
+            "has_prev": False,
+            "total_duration": pytest.approx(10.0),
+            "finished_count": 0,
+            "annotated_count": 0,
+        }
+        assert len(last["items"]) == 1
+        assert last["pagination"]["page"] == 3
+        assert last["pagination"]["has_next"] is False
+        assert last["pagination"]["has_prev"] is True
+        all_ids = {r["id"] for r in first["items"]} | {r["id"] for r in last["items"]}
+        assert len(all_ids) == 3
+
+    def test_annotation_status_filters_and_counts(
+        self, client, test_db, test_project, test_user, auth_headers
+    ):
+        annotated = add_recording(test_db, test_project, "annotated.mp3")
+        plain = add_recording(test_db, test_project, "plain.mp3")
+        finished = add_recording(test_db, test_project, "finished.mp3", is_finished=True)
+        add_annotation(test_db, annotated, test_user, n_boxes=3)
+
+        everything = list_recordings(client, test_project.id, auth_headers)
+        counts = {r["id"]: r["annotation_count"] for r in everything["items"]}
+        assert counts == {annotated.id: 1, plain.id: 0, finished.id: 0}
+        assert everything["pagination"]["annotated_count"] == 1
+        assert everything["pagination"]["finished_count"] == 1
+
+        only_annotated = list_recordings(
+            client, test_project.id, auth_headers, annotation_status="annotated"
+        )
+        assert [r["id"] for r in only_annotated["items"]] == [annotated.id]
+
+        unannotated = list_recordings(
+            client, test_project.id, auth_headers, annotation_status="unannotated"
+        )
+        assert {r["id"] for r in unannotated["items"]} == {plain.id, finished.id}
+
+        only_finished = list_recordings(
+            client, test_project.id, auth_headers, annotation_status="finished"
+        )
+        assert [r["id"] for r in only_finished["items"]] == [finished.id]
+
+    def test_list_items_do_not_expose_removed_spectrogram_fields(
+        self, client, test_db, test_project, auth_headers
+    ):
+        add_recording(test_db, test_project, "a.mp3")
+        item = list_recordings(client, test_project.id, auth_headers)["items"][0]
+        assert "spectrogram_status" not in item
+
+    def test_list_forbidden_for_other_user(self, client, test_db, test_project, other_auth_headers):
+        response = client.get(
+            f"/api/v1/recordings/{test_project.id}/recordings", headers=other_auth_headers
+        )
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_admin_may_list_any_project(self, client, test_db, test_project, admin_auth_headers):
+        rec = add_recording(test_db, test_project, "a.mp3")
+        data = list_recordings(client, test_project.id, admin_auth_headers)
+        assert [r["id"] for r in data["items"]] == [rec.id]
+
+    def test_list_missing_project_returns_404(self, client, auth_headers):
+        response = client.get("/api/v1/recordings/999999/recordings", headers=auth_headers)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+class TestReadRecording:
+    def test_owner_gets_recording_with_can_edit(self, client, test_recording, auth_headers):
+        response = client.get(f"/api/v1/recordings/{test_recording.id}", headers=auth_headers)
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
+        assert data["id"] == test_recording.id
+        assert data["duration"] == test_recording.duration
+        assert data["sample_rate"] == test_recording.sample_rate
+        assert data["can_edit"] is True
 
-        # Verify response structure
-        assert data["updated_count"] == 3
-        assert data["failed_count"] == 0
-        assert data["total_processed"] == 3
-        assert "No recordings found" not in data["message"]
-
-        # Verify recordings were updated in database
-        for recording in recordings_without_duration:
-            test_db.refresh(recording)
-            assert recording.duration == mock_duration
-            assert recording.sample_rate == mock_sample_rate
-
-    def test_backfill_no_missing_durations(
-        self,
-        client,
-        test_db,
-        test_recording,  # This recording already has duration
-        admin_auth_headers,
+    def test_admin_reads_regular_users_recording_read_only(
+        self, client, test_recording, admin_auth_headers, monkeypatch
     ):
-        """Test backfill when no recordings have missing durations."""
+        monkeypatch.setattr(settings, "ADMIN_CAN_EDIT_USER_PROJECTS", False)
+        response = client.get(f"/api/v1/recordings/{test_recording.id}", headers=admin_auth_headers)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["can_edit"] is False
+
+    def test_admin_can_edit_when_setting_allows(
+        self, client, test_recording, admin_auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "ADMIN_CAN_EDIT_USER_PROJECTS", True)
+        response = client.get(f"/api/v1/recordings/{test_recording.id}", headers=admin_auth_headers)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["can_edit"] is True
+
+    def test_other_user_is_forbidden(self, client, test_recording, other_auth_headers):
+        response = client.get(f"/api/v1/recordings/{test_recording.id}", headers=other_auth_headers)
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_missing_recording_returns_404(self, client, auth_headers):
+        response = client.get("/api/v1/recordings/999999", headers=auth_headers)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+class TestFinishedStatus:
+    def test_toggle_finished_on_and_off(self, client, test_db, test_recording, auth_headers):
+        assert test_recording.is_finished is False
+        url = f"/api/v1/recordings/{test_recording.id}/finished"
+
+        response = client.patch(url, headers=auth_headers)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["id"] == test_recording.id
+        assert response.json()["is_finished"] is True
+        test_db.refresh(test_recording)
+        assert test_recording.is_finished is True
+
+        response = client.patch(url, headers=auth_headers)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["is_finished"] is False
+        test_db.refresh(test_recording)
+        assert test_recording.is_finished is False
+
+    def test_toggle_reports_annotation_count(
+        self, client, test_db, test_recording, test_user, auth_headers
+    ):
+        add_annotation(test_db, test_recording, test_user)
+        response = client.patch(
+            f"/api/v1/recordings/{test_recording.id}/finished", headers=auth_headers
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["annotation_count"] == 1
+
+    def test_toggle_invalidates_cached_list(
+        self, client, test_db, test_project, test_recording, auth_headers
+    ):
+        before = list_recordings(client, test_project.id, auth_headers)
+        assert before["pagination"]["finished_count"] == 0
+
+        client.patch(f"/api/v1/recordings/{test_recording.id}/finished", headers=auth_headers)
+
+        after = list_recordings(client, test_project.id, auth_headers)
+        assert after["pagination"]["finished_count"] == 1
+        assert after["items"][0]["is_finished"] is True
+
+    def test_toggle_requires_authentication(self, client, test_recording):
+        response = client.patch(f"/api/v1/recordings/{test_recording.id}/finished")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_toggle_nonexistent_recording(self, client, auth_headers):
+        response = client.patch("/api/v1/recordings/999999/finished", headers=auth_headers)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_toggle_forbidden_for_other_user(
+        self, client, test_db, test_recording, other_auth_headers
+    ):
+        response = client.patch(
+            f"/api/v1/recordings/{test_recording.id}/finished", headers=other_auth_headers
+        )
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        test_db.refresh(test_recording)
+        assert test_recording.is_finished is False
+
+    def test_admin_cannot_toggle_regular_users_recording(
+        self, client, test_db, test_recording, admin_auth_headers, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "ADMIN_CAN_EDIT_USER_PROJECTS", False)
+        response = client.patch(
+            f"/api/v1/recordings/{test_recording.id}/finished", headers=admin_auth_headers
+        )
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        test_db.refresh(test_recording)
+        assert test_recording.is_finished is False
+
+
+class TestBackfillDurations:
+    @pytest.mark.audio
+    def test_backfill_fills_duration_from_stored_audio(
+        self, client, test_db, test_project, admin_auth_headers, sample_mp3_bytes, store_object
+    ):
+        recording = add_recording(test_db, test_project, "missing.mp3", duration=None)
+        store_object(recording.file_path, sample_mp3_bytes)
+
         response = client.post("/api/v1/recordings/backfill-durations", headers=admin_auth_headers)
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
+        assert data["updated_count"] == 1, data
+        assert data["failed_count"] == 0
+        test_db.refresh(recording)
+        assert recording.duration == pytest.approx(SAMPLE_MP3_DURATION, abs=0.05)
+        assert recording.sample_rate == SAMPLE_MP3_SAMPLE_RATE
 
+    def test_backfill_nothing_to_do(self, client, test_recording, admin_auth_headers):
+        response = client.post("/api/v1/recordings/backfill-durations", headers=admin_auth_headers)
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
         assert data["updated_count"] == 0
         assert data["failed_count"] == 0
         assert data["total_processed"] == 0
         assert "No recordings found with missing duration" in data["message"]
 
-    def test_backfill_with_some_failures(self, client, test_db, test_project, admin_auth_headers):
-        """Test backfill with some recordings failing to process."""
-        # Create recordings with missing durations
-        success_recording = Recording(
-            filename="success.mp3",
-            original_filename="success.mp3",
-            file_path="recordings/success.mp3",
-            duration=None,
-            project_id=test_project.id,
-        )
+    def test_backfill_counts_missing_and_undecodable_files_as_failures(
+        self, client, test_db, test_project, admin_auth_headers, store_object
+    ):
+        missing = add_recording(test_db, test_project, "not_in_storage.mp3", duration=None)
+        corrupt = add_recording(test_db, test_project, "corrupt.mp3", duration=None)
+        store_object(corrupt.file_path, b"garbage, not audio")
 
-        fail_recording = Recording(
-            filename="fail.mp3",
-            original_filename="fail.mp3",
-            file_path="recordings/fail.mp3",
-            duration=None,
-            project_id=test_project.id,
-        )
-
-        test_db.add(success_recording)
-        test_db.add(fail_recording)
-        test_db.commit()
-
-        with (
-            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
-            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
-        ):
-
-            # Mock MinIO to succeed for first file, fail for second
-            def mock_get_file(bucket_name, object_name):
-                if "success" in object_name:
-                    return iter([b"fake audio content"])
-                else:
-                    raise Exception("Failed to download file")
-
-            mock_minio.get_file.side_effect = mock_get_file
-
-            # Mock librosa for successful case
-            mock_librosa.load.return_value = (np.random.random(44100), 44100)
-            mock_librosa.get_duration.return_value = 1.0
-
-            with patch("tempfile.NamedTemporaryFile") as mock_temp, patch("os.unlink"):
-
-                mock_file = MagicMock()
-                mock_file.name = "/tmp/test.mp3"
-                mock_file.__enter__.return_value = mock_file
-                mock_temp.return_value = mock_file
-
-                response = client.post(
-                    "/api/v1/recordings/backfill-durations", headers=admin_auth_headers
-                )
+        response = client.post("/api/v1/recordings/backfill-durations", headers=admin_auth_headers)
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-
-        assert data["updated_count"] == 1  # Only success_recording
-        assert data["failed_count"] == 1  # fail_recording failed
+        assert data["updated_count"] == 0
+        assert data["failed_count"] == 2
         assert data["total_processed"] == 2
-        assert "errors" in data
-        assert len(data["errors"]) == 1
+        assert len(data["errors"]) == 2
+        for recording in (missing, corrupt):
+            test_db.refresh(recording)
+            assert recording.duration is None
 
-    def test_backfill_requires_admin(self, client, auth_headers):  # Regular user, not admin
-        """Test that backfill requires admin privileges."""
+    def test_backfill_limits_reported_errors(
+        self, client, test_db, test_project, admin_auth_headers
+    ):
+        for i in range(15):  # none of these exist in object storage
+            add_recording(test_db, test_project, f"fail_{i}.mp3", duration=None)
+
+        response = client.post("/api/v1/recordings/backfill-durations", headers=admin_auth_headers)
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["failed_count"] == 15
+        assert data["updated_count"] == 0
+        assert len(data["errors"]) == 10
+        assert data["additional_errors"] == 5
+
+    def test_backfill_requires_admin(self, client, auth_headers):
         response = client.post("/api/v1/recordings/backfill-durations", headers=auth_headers)
-
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert "Only admins can perform bulk operations" in response.json()["detail"]
 
-    def test_backfill_unauthenticated(self, client):
-        """Test backfill without authentication."""
+    def test_backfill_requires_authentication(self, client):
         response = client.post("/api/v1/recordings/backfill-durations")
-
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_backfill_with_librosa_failures(
-        self, client, test_db, test_project, admin_auth_headers
+
+class TestAudioAndDeletion:
+    def test_stream_audio(
+        self, client, test_db, test_project, auth_headers, sample_mp3_bytes, store_object
     ):
-        """Test backfill when librosa fails to process files."""
-        # Create recording with missing duration
-        recording = Recording(
-            filename="corrupted.mp3",
-            original_filename="corrupted.mp3",
-            file_path="recordings/corrupted.mp3",
-            duration=None,
-            project_id=test_project.id,
-        )
-        test_db.add(recording)
-        test_db.commit()
+        recording = add_recording(test_db, test_project, "stream.mp3")
+        store_object(recording.file_path, sample_mp3_bytes)
 
-        with (
-            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
-            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
-        ):
-
-            # Mock successful MinIO download
-            mock_minio.get_file.return_value = iter([b"corrupted audio content"])
-
-            # Mock librosa failure
-            mock_librosa.load.side_effect = Exception("Corrupted audio file")
-
-            with (
-                patch("tempfile.NamedTemporaryFile") as mock_temp,
-                patch("os.unlink") as mock_unlink,
-            ):
-
-                mock_file = MagicMock()
-                mock_file.name = "/tmp/corrupted.mp3"
-                mock_file.__enter__.return_value = mock_file
-                mock_temp.return_value = mock_file
-
-                response = client.post(
-                    "/api/v1/recordings/backfill-durations", headers=admin_auth_headers
-                )
+        response = client.get(f"/api/v1/recordings/{recording.id}/audio", headers=auth_headers)
 
         assert response.status_code == status.HTTP_200_OK
-        data = response.json()
+        assert response.headers["content-type"] == "audio/mpeg"
+        assert response.headers["content-length"] == str(len(sample_mp3_bytes))
+        assert response.content == sample_mp3_bytes
 
-        assert data["updated_count"] == 0
-        assert data["failed_count"] == 1
-        assert data["total_processed"] == 1
-        assert "errors" in data
-        assert "Corrupted audio file" in data["errors"][0]
-
-    def test_backfill_error_limit(self, client, test_db, test_project, admin_auth_headers):
-        """Test that backfill limits the number of errors returned."""
-        # Create many recordings that will fail
-        for i in range(15):  # More than the 10 error limit
-            recording = Recording(
-                filename=f"fail_{i}.mp3",
-                original_filename=f"fail_{i}.mp3",
-                file_path=f"recordings/fail_{i}.mp3",
-                duration=None,
-                project_id=test_project.id,
-            )
-            test_db.add(recording)
-
-        test_db.commit()
-
-        with patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio:
-            # Mock all files to fail download
-            mock_minio.get_file.side_effect = Exception("Failed to download")
-
-            response = client.post(
-                "/api/v1/recordings/backfill-durations", headers=admin_auth_headers
-            )
-
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-
-        assert data["failed_count"] == 15
-        assert data["updated_count"] == 0
-        assert len(data["errors"]) == 10  # Limited to 10 errors
-        assert "additional_errors" in data
-        assert data["additional_errors"] == 5  # 15 - 10 = 5
-
-
-class TestRecordingDurationFiltering:
-    """Test duration-based filtering in recording list endpoint."""
-
-    def test_duration_filter_min(self, client, test_db, test_project, auth_headers):
-        """Test filtering recordings by minimum duration."""
-        # Create recordings with different durations
-        short_recording = Recording(
-            filename="short.mp3",
-            original_filename="short.mp3",
-            file_path="recordings/short.mp3",
-            duration=2.5,
-            project_id=test_project.id,
-        )
-
-        long_recording = Recording(
-            filename="long.mp3",
-            original_filename="long.mp3",
-            file_path="recordings/long.mp3",
-            duration=10.0,
-            project_id=test_project.id,
-        )
-
-        test_db.add(short_recording)
-        test_db.add(long_recording)
-        test_db.commit()
-
-        # Filter for recordings longer than 5 seconds
-        response = client.get(
-            f"/api/v1/recordings/{test_project.id}/recordings?min_duration=5.0",
-            headers=auth_headers,
-        )
-
-        assert response.status_code == status.HTTP_200_OK
-        recordings = response.json()
-
-        # Should only return the long recording
-        assert len(recordings) == 1
-        assert recordings[0]["id"] == long_recording.id
-        assert recordings[0]["duration"] == 10.0
-
-    def test_duration_filter_max(self, client, test_db, test_project, auth_headers):
-        """Test filtering recordings by maximum duration."""
-        # Use existing recordings from previous test
-        response = client.get(
-            f"/api/v1/recordings/{test_project.id}/recordings?max_duration=5.0",
-            headers=auth_headers,
-        )
-
-        assert response.status_code == status.HTTP_200_OK
-        recordings = response.json()
-
-        # Should only return recordings <= 5 seconds
-        for recording in recordings:
-            if recording["duration"] is not None:
-                assert recording["duration"] <= 5.0
-
-    def test_duration_filter_range(self, client, test_db, test_project, auth_headers):
-        """Test filtering recordings by duration range."""
-        response = client.get(
-            f"/api/v1/recordings/{test_project.id}/recordings?min_duration=1.0&max_duration=15.0",
-            headers=auth_headers,
-        )
-
-        assert response.status_code == status.HTTP_200_OK
-        recordings = response.json()
-
-        # All returned recordings should be within range
-        for recording in recordings:
-            if recording["duration"] is not None:
-                assert 1.0 <= recording["duration"] <= 15.0
-
-    def test_duration_sort(self, client, test_db, test_project, auth_headers):
-        """Test sorting recordings by duration."""
-        # Sort by duration ascending
-        response = client.get(
-            f"/api/v1/recordings/{test_project.id}/recordings?sort_by=duration&sort_order=asc",
-            headers=auth_headers,
-        )
-
-        assert response.status_code == status.HTTP_200_OK
-        recordings = response.json()
-
-        # Check that recordings are sorted by duration (ascending)
-        durations = [r["duration"] for r in recordings if r["duration"] is not None]
-        if len(durations) > 1:
-            assert durations == sorted(durations)
-
-
-class TestRecordingIntegration:
-    """Integration tests for recording-related functionality."""
-
-    def test_upload_to_backfill_workflow(
-        self, client, test_db, test_project, auth_headers, admin_auth_headers
+    def test_stream_audio_forbidden_for_other_user(
+        self, client, test_recording, other_auth_headers
     ):
-        """Test complete workflow: upload with failed duration -> backfill."""
-        project_id = test_project.id
-
-        # Step 1: Upload file with duration extraction failure
-        audio_content = b"fake corrupted mp3"
-        audio_file = io.BytesIO(audio_content)
-
-        with (
-            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
-            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
-            patch("app.api.api_v1.endpoints.recordings.secure_temp_file") as mock_temp,
-            patch("builtins.open", create=True),
-        ):
-
-            # Mock failed duration extraction during upload
-            mock_librosa.load.side_effect = Exception("Failed during upload")
-            mock_minio.put_file.return_value = True
-            mock_temp.return_value.__enter__.return_value = "/tmp/test.mp3"
-
-            upload_response = client.post(
-                f"/api/v1/recordings/{project_id}/upload",
-                files={"file": ("test.mp3", audio_file, "audio/mpeg")},
-                headers=auth_headers,
-            )
-
-        assert upload_response.status_code == status.HTTP_200_OK
-        upload_data = upload_response.json()
-        assert upload_data["duration"] is None
-
-        recording_id = upload_data["id"]
-
-        # Step 2: Run backfill to fix the duration
-        with (
-            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
-            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
-            patch("tempfile.NamedTemporaryFile") as mock_temp,
-            patch("os.unlink"),
-        ):
-
-            # Mock successful duration extraction during backfill
-            mock_minio.get_file.return_value = iter([b"fake audio content"])
-            mock_librosa.load.return_value = (np.random.random(88200), 44100)
-            mock_librosa.get_duration.return_value = 2.0
-
-            mock_file = MagicMock()
-            mock_file.name = "/tmp/backfill.mp3"
-            mock_file.__enter__.return_value = mock_file
-            mock_temp.return_value = mock_file
-
-            backfill_response = client.post(
-                "/api/v1/recordings/backfill-durations", headers=admin_auth_headers
-            )
-
-        assert backfill_response.status_code == status.HTTP_200_OK
-        backfill_data = backfill_response.json()
-        assert backfill_data["updated_count"] == 1
-
-        # Step 3: Verify the recording now has duration
-        recording = test_db.query(Recording).filter(Recording.id == recording_id).first()
-        assert recording.duration == 2.0
-        assert recording.sample_rate == 44100
-
-
-class TestFinishedStatus:
-    """Test finished status functionality."""
-
-    def test_toggle_finished_status_to_true(self, client, test_db, test_recording, auth_headers):
-        """Test toggling finished status from False to True."""
-        recording_id = test_recording.id
-
-        # Verify initial state
-        assert test_recording.is_finished is False
-
-        # Toggle to True
-        response = client.patch(
-            f"/api/v1/recordings/{recording_id}/finished",
-            json={"is_finished": True},
-            headers=auth_headers,
-        )
-
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-
-        assert data["id"] == recording_id
-        assert data["is_finished"] is True
-
-        # Verify in database
-        test_db.refresh(test_recording)
-        assert test_recording.is_finished is True
-
-    def test_toggle_finished_status_to_false(self, client, test_db, test_recording, auth_headers):
-        """Test toggling finished status from True to False."""
-        recording_id = test_recording.id
-
-        # Set to True first
-        test_recording.is_finished = True
-        test_db.commit()
-
-        # Toggle to False
-        response = client.patch(
-            f"/api/v1/recordings/{recording_id}/finished",
-            json={"is_finished": False},
-            headers=auth_headers,
-        )
-
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-
-        assert data["id"] == recording_id
-        assert data["is_finished"] is False
-
-        # Verify in database
-        test_db.refresh(test_recording)
-        assert test_recording.is_finished is False
-
-    def test_toggle_finished_status_unauthorized(self, client, test_recording):
-        """Test toggling finished status without authentication."""
-        recording_id = test_recording.id
-
-        response = client.patch(
-            f"/api/v1/recordings/{recording_id}/finished",
-            json={"is_finished": True},
-        )
-
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
-
-    def test_toggle_finished_nonexistent_recording(self, client, auth_headers):
-        """Test toggling finished status for non-existent recording."""
-        response = client.patch(
-            "/api/v1/recordings/999999/finished",
-            json={"is_finished": True},
-            headers=auth_headers,
-        )
-
-        assert response.status_code == status.HTTP_404_NOT_FOUND
-
-    def test_filter_recordings_by_finished_status(
-        self, client, test_db, test_project, auth_headers
-    ):
-        """Test filtering recordings by finished status."""
-        # Create recordings with different finished states
-        finished_recording = Recording(
-            filename="finished.mp3",
-            original_filename="finished.mp3",
-            file_path="recordings/finished.mp3",
-            duration=3.0,
-            is_finished=True,
-            project_id=test_project.id,
-        )
-
-        unfinished_recording = Recording(
-            filename="unfinished.mp3",
-            original_filename="unfinished.mp3",
-            file_path="recordings/unfinished.mp3",
-            duration=3.0,
-            is_finished=False,
-            project_id=test_project.id,
-        )
-
-        test_db.add(finished_recording)
-        test_db.add(unfinished_recording)
-        test_db.commit()
-
-        # Filter for finished recordings
         response = client.get(
-            f"/api/v1/recordings/{test_project.id}/recordings?annotation_status=finished",
-            headers=auth_headers,
+            f"/api/v1/recordings/{test_recording.id}/audio", headers=other_auth_headers
         )
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-
-        # Check that only finished recordings are returned
-        finished_ids = [r["id"] for r in data["items"]]
-        assert finished_recording.id in finished_ids
-        assert unfinished_recording.id not in finished_ids
-
-    def test_finished_count_in_pagination_metadata(
-        self, client, test_db, test_project, auth_headers
+    def test_delete_recording_removes_row_annotations_and_object(
+        self, client, test_db, test_project, test_user, auth_headers, store_object
     ):
-        """Test that pagination metadata includes finished_count."""
-        # Create recordings with different finished states
-        for i in range(3):
-            recording = Recording(
-                filename=f"finished_{i}.mp3",
-                original_filename=f"finished_{i}.mp3",
-                file_path=f"recordings/finished_{i}.mp3",
-                duration=2.0,
-                is_finished=True,
-                project_id=test_project.id,
-            )
-            test_db.add(recording)
+        recording = add_recording(test_db, test_project, "doomed.mp3")
+        add_annotation(test_db, recording, test_user, n_boxes=2)
+        store_object(recording.file_path, b"data")
+        recording_id = recording.id
 
-        for i in range(2):
-            recording = Recording(
-                filename=f"unfinished_{i}.mp3",
-                original_filename=f"unfinished_{i}.mp3",
-                file_path=f"recordings/unfinished_{i}.mp3",
-                duration=2.0,
-                is_finished=False,
-                project_id=test_project.id,
-            )
-            test_db.add(recording)
+        response = client.delete(f"/api/v1/recordings/{recording_id}", headers=auth_headers)
 
+        assert response.status_code == status.HTTP_200_OK
+        test_db.expire_all()
+        assert test_db.query(Recording).filter(Recording.id == recording_id).count() == 0
+        assert test_db.query(Annotation).count() == 0
+        assert test_db.query(BoundingBox).count() == 0
+        with pytest.raises(S3Error):
+            minio_client.download_file(settings.MINIO_BUCKET_RECORDINGS, recording.file_path)
+
+    def test_delete_forbidden_for_other_user(
+        self, client, test_db, test_recording, other_auth_headers
+    ):
+        response = client.delete(
+            f"/api/v1/recordings/{test_recording.id}", headers=other_auth_headers
+        )
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert test_db.query(Recording).count() == 1
+
+    def test_bulk_delete_only_touches_own_project(
+        self, client, test_db, test_project, other_user, auth_headers
+    ):
+        from app.models.project import Project
+
+        keep = add_recording(test_db, test_project, "keep.mp3")
+        drop1 = add_recording(test_db, test_project, "drop1.mp3")
+        drop2 = add_recording(test_db, test_project, "drop2.mp3")
+        foreign_project = Project(name="Foreign", owner_id=other_user.id)
+        test_db.add(foreign_project)
         test_db.commit()
+        foreign = add_recording(test_db, foreign_project, "foreign.mp3")
 
-        # Get recordings list
-        response = client.get(
-            f"/api/v1/recordings/{test_project.id}/recordings",
+        response = client.post(
+            f"/api/v1/recordings/{test_project.id}/bulk-delete",
+            json=[drop1.id, drop2.id, foreign.id],
             headers=auth_headers,
         )
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-
-        # Check pagination metadata
-        assert "pagination" in data
-        assert "finished_count" in data["pagination"]
-        assert data["pagination"]["finished_count"] >= 3  # At least our 3 finished recordings
-
-    def test_default_finished_status_is_false(self, client, test_db, test_project, auth_headers):
-        """Test that new recordings default to is_finished=False."""
-        audio_content = b"fake mp3 content"
-        audio_file = io.BytesIO(audio_content)
-
-        with (
-            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
-            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
-            patch("app.api.api_v1.endpoints.recordings.secure_temp_file") as mock_temp,
-            patch("builtins.open", create=True),
-        ):
-            mock_librosa.load.return_value = (np.random.random(44100), 44100)
-            mock_librosa.get_duration.return_value = 1.0
-            mock_minio.put_file.return_value = True
-            mock_temp.return_value.__enter__.return_value = "/tmp/test.mp3"
-
-            response = client.post(
-                f"/api/v1/recordings/{test_project.id}/upload",
-                files={"file": ("new_recording.mp3", audio_file, "audio/mpeg")},
-                headers=auth_headers,
-            )
-
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-
-        # Check that is_finished defaults to False
-        assert "is_finished" in data
-        assert data["is_finished"] is False
-
-        # Verify in database
-        recording = test_db.query(Recording).filter(Recording.id == data["id"]).first()
-        assert recording.is_finished is False
+        assert data["deleted_count"] == 2
+        assert data["total_requested"] == 3
+        test_db.expire_all()
+        remaining = {r.id for r in test_db.query(Recording).all()}
+        assert remaining == {keep.id, foreign.id}

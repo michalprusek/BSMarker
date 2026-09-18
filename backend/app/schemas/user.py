@@ -26,6 +26,8 @@ class UserInDBBase(UserBase):
     updated_at: Optional[datetime] = None
 
     class Config:
+        """Pydantic model configuration."""
+
         from_attributes = True
 
 

@@ -1,7 +1,7 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.sql import func
 
 from app.db.base_class import Base
@@ -25,10 +25,10 @@ class Recording(Base):
     is_finished = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    project = relationship("Project", back_populates="recordings")
-    spectrograms = relationship(
+    project: Mapped["Project"] = relationship("Project", back_populates="recordings")
+    spectrograms: Mapped[List["Spectrogram"]] = relationship(
         "Spectrogram", back_populates="recording", cascade="all, delete-orphan"
     )
-    annotations = relationship(
+    annotations: Mapped[List["Annotation"]] = relationship(
         "Annotation", back_populates="recording", cascade="all, delete-orphan"
     )

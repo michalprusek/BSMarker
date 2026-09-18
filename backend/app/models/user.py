@@ -1,7 +1,14 @@
-from app.db.base_class import Base
+from typing import TYPE_CHECKING, List
+
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.sql import func
+
+from app.db.base_class import Base
+
+if TYPE_CHECKING:
+    from app.models.annotation import Annotation
+    from app.models.project import Project
 
 
 class User(Base):
@@ -17,5 +24,5 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    projects = relationship("Project", back_populates="owner")
-    annotations = relationship("Annotation", back_populates="user")
+    projects: Mapped[List["Project"]] = relationship("Project", back_populates="owner")
+    annotations: Mapped[List["Annotation"]] = relationship("Annotation", back_populates="user")
