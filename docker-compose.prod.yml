@@ -45,7 +45,7 @@ services:
           memory: 2G
 
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z  # pinned; Docker Hub no longer publishes MinIO
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
