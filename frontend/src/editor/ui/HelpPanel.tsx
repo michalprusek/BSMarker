@@ -37,6 +37,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["Space", "Play / pause"],
       ["Enter / double-click box", "Play selection (or visible range)"],
       ["Shift+Enter", "Play selection in a loop"],
+      ["Box list → Review", "Listen box by box: Space next, Shift+Space back, Enter replay, Esc end"],
     ],
   },
   {

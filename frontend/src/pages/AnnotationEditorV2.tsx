@@ -40,6 +40,8 @@ import { RecordingNav, useNeighbours } from "../editor/ui/RecordingNav";
 import { readFreqFloor, writeFreqFloor } from "../editor/edit/recordingPrefs";
 import { BoxList } from "../editor/ui/BoxList";
 import { ConflictCard } from "../editor/ui/ConflictCard";
+import { ReviewBar, ReviewSummaryCard } from "../editor/ui/ReviewBar";
+import { ReviewSession, ReviewState } from "../editor/review/ReviewSession";
 
 const FREQ_AXIS_WIDTH = "w-14";
 
@@ -58,6 +60,34 @@ type LabelTarget = "selection" | "active" | null;
 const noopSubscribe = () => () => undefined;
 const noSnapshot = () => null;
 
+/** Review keys: Space = next (Shift = previous), Enter = replay, Esc = end. */
+function handleReviewKey(review: ReviewSession, e: KeyboardEvent): boolean {
+  const state = review.getState();
+  if (
+    state.summary &&
+    ["Escape", "Enter", "NumpadEnter", "Space"].includes(e.code)
+  ) {
+    review.dismissSummary();
+    return true;
+  }
+  if (!state.active) return false;
+  switch (e.code) {
+    case "Space":
+      if (e.shiftKey) review.previous();
+      else review.next();
+      return true;
+    case "Enter":
+    case "NumpadEnter":
+      review.replay();
+      return true;
+    case "Escape":
+      review.end();
+      return true;
+    default:
+      return false;
+  }
+}
+
 const annotationUrl = (recordingId: number) => `/annotations/${recordingId}`;
 
 const AnnotationEditorV2: React.FC = () => {
@@ -68,6 +98,7 @@ const AnnotationEditorV2: React.FC = () => {
     message: "Loading recording…",
   });
   const [engine, setEngine] = useState<EditorEngine | null>(null);
+  const [review, setReview] = useState<ReviewSession | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [showHelp, setShowHelp] = useState(false);
   const [labelTarget, setLabelTarget] = useState<LabelTarget>(null);
@@ -121,6 +152,7 @@ const AnnotationEditorV2: React.FC = () => {
     let doc: AnnotationDocument | null = null;
     let payload: ((boxes: EditorBox[]) => ApiBoxPayload[]) | null = null;
     let onBeforeUnload: (() => void) | null = null;
+    let reviewSession: ReviewSession | null = null;
     const abort = new AbortController();
     setRecording(null);
     setLoad({ phase: "loading", message: "Loading recording…" });
@@ -262,6 +294,17 @@ const AnnotationEditorV2: React.FC = () => {
           savedFloor = engineForFloor.freqFloor;
           writeFreqFloor(id, savedFloor);
         });
+        const engineForReview = created;
+        const session = new ReviewSession({
+          doc: document,
+          duration: audio.duration,
+          play: (start, end) => engineForReview.player.play(start, end),
+          stop: () => engineForReview.stop(),
+          isPlaying: () => engineForReview.player.isPlaying,
+          focus: (start, end) => engineForReview.focusRange(start, end),
+          onPlaybackChange: (listener) => engineForReview.subscribe(listener),
+        });
+        reviewSession = session;
         input = new EditorInput(
           created,
           {
@@ -276,6 +319,7 @@ const AnnotationEditorV2: React.FC = () => {
             save: () => void saver.flush(),
             editLabel: () => setLabelTarget("selection"),
             notify: (message) => toast(message),
+            interceptKey: (e) => handleReviewKey(session, e),
           },
         );
 
@@ -290,6 +334,7 @@ const AnnotationEditorV2: React.FC = () => {
         window.addEventListener("beforeunload", onBeforeUnload);
 
         setEngine(created);
+        setReview(session);
         setLoad({ phase: "ready" });
       } catch (error) {
         if (cancelled) return;
@@ -325,13 +370,19 @@ const AnnotationEditorV2: React.FC = () => {
         });
         trackPendingSave(id, done);
       }
+      reviewSession?.destroy();
       setEngine(null);
+      setReview(null);
     };
   }, [recordingId]);
 
   const snap = useSyncExternalStore<EditorSnapshot | null>(
     engine ? engine.subscribe : noopSubscribe,
     engine ? engine.getSnapshot : noSnapshot,
+  );
+  const reviewState = useSyncExternalStore<ReviewState | null>(
+    review ? review.subscribe : noopSubscribe,
+    review ? review.getState : noSnapshot,
   );
 
   const applyLabel = useCallback(
@@ -447,13 +498,22 @@ const AnnotationEditorV2: React.FC = () => {
             <LoadingOverlay state={{ phase: "error", message: snap.error }} />
           )}
           {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
-          {engine && snap?.focusedConflict && !labelTarget && (
-            <ConflictCard
-              engine={engine}
-              conflict={snap.focusedConflict}
-              total={snap.conflicts.length}
-            />
+          {review && reviewState?.active && (
+            <ReviewBar session={review} state={reviewState} />
           )}
+          {review && reviewState?.summary && (
+            <ReviewSummaryCard session={review} state={reviewState} />
+          )}
+          {engine &&
+            snap?.focusedConflict &&
+            !labelTarget &&
+            !reviewState?.active && (
+              <ConflictCard
+                engine={engine}
+                conflict={snap.focusedConflict}
+                total={snap.conflicts.length}
+              />
+            )}
           {labelTarget && snap && (
             <LabelEditor
               title={
@@ -478,6 +538,7 @@ const AnnotationEditorV2: React.FC = () => {
             engine={engine}
             snap={snap}
             onClose={() => setShowList(false)}
+            onReview={(boxes, label) => review?.start(boxes, label)}
           />
         )}
       </div>

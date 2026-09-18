@@ -328,6 +328,22 @@ export class EditorEngine {
     this.userNavigated();
   }
 
+  /**
+   * Show a time range well: zoom so it takes about a quarter of the view
+   * (at least 1 s visible) if the view is much wider or too narrow;
+   * otherwise keep the zoom and just centre it. Used when stepping through boxes.
+   */
+  focusRange(start: number, end: number): void {
+    const span = end - start;
+    const target = Math.max(1, span * 4);
+    const visible = this.view.visibleDuration;
+    const width = visible > target * 2 || span > visible * 0.8 ? target : visible;
+    const center = (start + end) / 2;
+    this.view.setTimeRange(center - width / 2, center + width / 2);
+    // Programmatic, not the user looking elsewhere — keep following playback.
+    this.invalidate("view");
+  }
+
   /** Bring a time range into view without changing the zoom unless it doesn't fit. */
   reveal(start: number, end: number): void {
     if (start >= this.view.t0 && end <= this.view.t1) return;

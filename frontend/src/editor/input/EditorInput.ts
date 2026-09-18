@@ -32,6 +32,8 @@ export interface InputCallbacks {
   editLabel: () => void;
   /** Short message for the user (e.g. why a box was not created). */
   notify: (message: string) => void;
+  /** Gets plain key presses first (e.g. during a review); return true if handled. */
+  interceptKey?: (e: KeyboardEvent) => boolean;
 }
 
 /** Pointer movement (px) below which a press counts as a click. */
@@ -841,6 +843,13 @@ export class EditorInput {
   private handleKey(e: KeyboardEvent): boolean {
     const { engine, doc, actions, view } = this;
     const hasSelection = doc.selectedIds.size > 0;
+
+    // A drag in progress always gets Esc first; then e.g. an active review.
+    if (e.code === "Escape" && this.gesture) {
+      this.cancelGesture();
+      return true;
+    }
+    if (this.callbacks.interceptKey?.(e)) return true;
 
     // Letters are labels: with a selection they relabel it, otherwise they
     // choose the label for the next boxes you draw.
