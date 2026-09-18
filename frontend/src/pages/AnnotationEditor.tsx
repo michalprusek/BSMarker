@@ -1278,6 +1278,7 @@ const AnnotationEditor: React.FC = () => {
   const prevDurationRef = useRef<number>(0);
   const prevWidthRef = useRef<number>(0);
   const prevHeightRef = useRef<number>(0);
+  const prevNyquistRef = useRef<number>(0);
 
   // Re-derive pixel positions from time/frequency when the duration or the
   // canvas size becomes known or changes.
@@ -1285,12 +1286,13 @@ const AnnotationEditor: React.FC = () => {
     const durationChanged = duration !== prevDurationRef.current;
     const widthChanged = baseSpectrogramDimensions.width !== prevWidthRef.current;
     const heightChanged = baseSpectrogramDimensions.height !== prevHeightRef.current;
+    const nyquistChanged = getNyquistFrequency() !== prevNyquistRef.current;
 
     if (
       duration > 0 &&
       baseSpectrogramDimensions.width > 0 &&
       boundingBoxes.length > 0 &&
-      (durationChanged || widthChanged || heightChanged)
+      (durationChanged || widthChanged || heightChanged || nyquistChanged)
     ) {
       // Performance monitoring: Log warning if too many boxes
       if (boundingBoxes.length > 100) {
@@ -1315,8 +1317,9 @@ const AnnotationEditor: React.FC = () => {
       prevDurationRef.current = duration;
       prevWidthRef.current = baseSpectrogramDimensions.width;
       prevHeightRef.current = baseSpectrogramDimensions.height;
+      prevNyquistRef.current = getNyquistFrequency();
     }
-  }, [duration, baseSpectrogramDimensions.width, baseSpectrogramDimensions.height, convertTimeFrequencyToBox, boundingBoxes.length]);
+  }, [duration, baseSpectrogramDimensions.width, baseSpectrogramDimensions.height, getNyquistFrequency, convertTimeFrequencyToBox, boundingBoxes.length]);
 
   const loadSpectrogram = async (recordingId: number) => {
     setIsLoadingSpectrogram(true);

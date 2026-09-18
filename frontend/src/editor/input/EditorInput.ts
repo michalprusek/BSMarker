@@ -548,6 +548,8 @@ export class EditorInput {
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (isFormControl(e.target)) return;
+    // AltGr (Ctrl+Alt on Windows) types characters like # or @ on Czech keyboards.
+    if (e.altKey && (e.ctrlKey || e.getModifierState?.("AltGraph"))) return;
     const handled = e.ctrlKey || e.metaKey ? this.handleCommandKey(e) : this.handleKey(e);
     if (handled) e.preventDefault();
   };
@@ -555,42 +557,40 @@ export class EditorInput {
   /** Ctrl/⌘ shortcuts — the usual editing commands. */
   private handleCommandKey(e: KeyboardEvent): boolean {
     const { doc, actions } = this;
-    switch (e.code) {
-      case "KeyZ":
+    const zoom = zoomKey(e);
+    if (zoom) {
+      this.engine.zoomTimeCentered(zoom > 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
+      return true;
+    }
+    if (e.code === "Digit0") {
+      this.engine.fitAll();
+      return true;
+    }
+    switch (letterOf(e)) {
+      case "Z":
         if (e.shiftKey) doc.redo();
         else doc.undo();
         return true;
-      case "KeyY":
+      case "Y":
         doc.redo();
         return true;
-      case "KeyC":
+      case "C":
         actions.copy();
         return true;
-      case "KeyX":
+      case "X":
         actions.cut();
         return true;
-      case "KeyV":
+      case "V":
         actions.paste(this.engine.player.position);
         return true;
-      case "KeyD":
+      case "D":
         actions.duplicate();
         return true;
-      case "KeyA":
+      case "A":
         actions.selectAll();
         return true;
-      case "KeyS":
+      case "S":
         this.callbacks.save();
-        return true;
-      case "Equal":
-      case "NumpadAdd":
-        this.engine.zoomTimeCentered(ZOOM_STEP);
-        return true;
-      case "Minus":
-      case "NumpadSubtract":
-        this.engine.zoomTimeCentered(1 / ZOOM_STEP);
-        return true;
-      case "Digit0":
-        this.engine.fitAll();
         return true;
       default:
         return false;
@@ -603,10 +603,15 @@ export class EditorInput {
 
     // Letters are labels: with a selection they relabel it, otherwise they
     // choose the label for the next boxes you draw.
-    if (!e.altKey && /^Key[A-Z]$/.test(e.code)) {
-      const letter = e.code.slice(3);
+    const letter = e.altKey ? null : letterOf(e);
+    if (letter) {
       if (hasSelection) actions.setLabel(letter);
       else doc.setActiveLabel(letter);
+      return true;
+    }
+    const zoom = zoomKey(e);
+    if (zoom) {
+      engine.zoomTimeCentered(zoom > 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
       return true;
     }
 
@@ -632,14 +637,6 @@ export class EditorInput {
         return true;
       case "F2":
         if (hasSelection) this.callbacks.editLabel();
-        return true;
-      case "Equal":
-      case "NumpadAdd":
-        engine.zoomTimeCentered(ZOOM_STEP);
-        return true;
-      case "Minus":
-      case "NumpadSubtract":
-        engine.zoomTimeCentered(1 / ZOOM_STEP);
         return true;
       case "Digit0":
         engine.fitAll();
@@ -678,6 +675,24 @@ export class EditorInput {
         return false;
     }
   }
+}
+
+/**
+ * The letter a key types. Uses the character (e.key) so that layouts which
+ * move letters around — Czech/German QWERTZ swaps Z and Y — label and undo
+ * correctly; falls back to the physical key for non-Latin layouts.
+ */
+export function letterOf(e: KeyboardEvent): string | null {
+  if (/^[a-z]$/i.test(e.key)) return e.key.toUpperCase();
+  if (/^Key[A-Z]$/.test(e.code)) return e.code.slice(3);
+  return null;
+}
+
+/** +1 / −1 for zoom keys by character (on Czech layouts "+" is on the 1 key). */
+export function zoomKey(e: KeyboardEvent): 1 | -1 | 0 {
+  if (e.key === "+" || e.key === "=" || e.code === "NumpadAdd") return 1;
+  if (e.key === "-" || e.code === "NumpadSubtract") return -1;
+  return 0;
 }
 
 const zoomFactor = (dy: number): number =>

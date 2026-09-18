@@ -38,7 +38,24 @@ export const isTimeSegment = (box: EditorBox): boolean => box.fLow === null || b
 
 export const byStart = (a: EditorBox, b: EditorBox): number => a.start - b.start || a.end - b.end;
 
-export function fromApiBoxes(apiBoxes: BoundingBox[]): EditorBox[] {
+/** Same boxes (ignoring ids)? Used to tell whether a local backup adds anything. */
+export function sameContent(a: EditorBox[], b: EditorBox[]): boolean {
+  const key = (x: EditorBox) => [x.start, x.end, x.fLow, x.fHigh, x.label].join("|");
+  const ka = a.map(key).sort();
+  const kb = b.map(key).sort();
+  return ka.length === kb.length && ka.every((k, i) => k === kb[i]);
+}
+
+/** Boxes as the API returns them (or as we send them, e.g. from a local backup). */
+type ApiBoxLike = Pick<BoundingBox, "id" | "start_time" | "end_time" | "label"> & {
+  min_frequency?: number | null;
+  max_frequency?: number | null;
+  confidence?: number | null;
+  extra_metadata?: Record<string, unknown> | null;
+  metadata?: unknown;
+};
+
+export function fromApiBoxes(apiBoxes: ApiBoxLike[]): EditorBox[] {
   return apiBoxes
     .filter((b) => Number.isFinite(b.start_time) && Number.isFinite(b.end_time) && b.end_time > b.start_time)
     .map((b, i) => ({
@@ -49,7 +66,7 @@ export function fromApiBoxes(apiBoxes: BoundingBox[]): EditorBox[] {
       fHigh: b.max_frequency ?? null,
       label: b.label || NO_LABEL,
       confidence: b.confidence ?? null,
-      extraMetadata: (b.metadata as Record<string, unknown> | null | undefined) ?? null,
+      extraMetadata: b.extra_metadata ?? (b.metadata as Record<string, unknown> | null | undefined) ?? null,
     }))
     .sort(byStart);
 }

@@ -1,13 +1,17 @@
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import toast from "react-hot-toast";
 import api, { annotationService, recordingService } from "../services/api";
 import { Recording } from "../types";
 import { EditorEngine, EditorSnapshot } from "../editor/EditorEngine";
 import { EditorInput, isFormControl } from "../editor/input/EditorInput";
 import { loadRecordingAudio } from "../editor/audio/loadAudio";
-import { ApiBoxPayload, EditorBox, fromApiBoxes, toApiBoxes } from "../editor/core/boxes";
+import { ApiBoxPayload, EditorBox, fromApiBoxes, sameContent, toApiBoxes } from "../editor/core/boxes";
 import { AnnotationDocument } from "../editor/edit/AnnotationDocument";
 import { Autosaver, SaveStatus } from "../editor/edit/Autosaver";
+import {
+  clearBackup, readBackup, trackPendingSave, waitForPendingSave, writeBackup,
+} from "../editor/edit/pendingSaves";
 import { Toolbar } from "../editor/ui/Toolbar";
 import { StatusBar } from "../editor/ui/StatusBar";
 import { HelpPanel } from "../editor/ui/HelpPanel";
@@ -20,6 +24,9 @@ type LoadState =
   | { phase: "loading"; message: string; progress?: number }
   | { phase: "error"; message: string }
   | { phase: "ready" };
+
+/** Browsers cap keepalive request bodies at 64 KiB. */
+const KEEPALIVE_LIMIT_BYTES = 60 * 1024;
 
 /** What the label editor (F2) is editing. */
 type LabelTarget = "selection" | "active" | null;
@@ -75,6 +82,8 @@ const AnnotationEditorV2: React.FC = () => {
     let created: EditorEngine | null = null;
     let input: EditorInput | null = null;
     let autosaver: Autosaver | null = null;
+    let doc: AnnotationDocument | null = null;
+    let payload: ((boxes: EditorBox[]) => ApiBoxPayload[]) | null = null;
     let onBeforeUnload: (() => void) | null = null;
     const abort = new AbortController();
     setRecording(null);
@@ -83,6 +92,8 @@ const AnnotationEditorV2: React.FC = () => {
 
     (async () => {
       try {
+        // If we just left this recording, its last save may still be running.
+        await waitForPendingSave(id);
         const [rec, annotations] = await Promise.all([
           recordingService.getRecording(id),
           annotationService.getAnnotations(id),
@@ -90,7 +101,21 @@ const AnnotationEditorV2: React.FC = () => {
         if (cancelled) return;
         setRecording(rec);
         const latest = annotations[annotations.length - 1];
-        const doc = new AnnotationDocument(fromApiBoxes(latest?.bounding_boxes ?? []));
+        const loaded = fromApiBoxes(latest?.bounding_boxes ?? []);
+        const document = new AnnotationDocument(loaded);
+        doc = document;
+
+        // Changes that could not be saved last time come back (Ctrl+Z discards them).
+        const backup = readBackup(id);
+        if (backup) {
+          const restored = fromApiBoxes(backup.boxes);
+          if (sameContent(restored, loaded)) {
+            clearBackup(id);
+          } else {
+            document.replaceAll(restored);
+            toast.success("Restored unsaved changes from your last session (Ctrl+Z to discard).", { duration: 8000 });
+          }
+        }
 
         setLoad({ phase: "loading", message: "Downloading audio…", progress: 0 });
         const audio = await loadRecordingAudio(id, rec.sample_rate, (progress) => {
@@ -119,29 +144,35 @@ const AnnotationEditorV2: React.FC = () => {
           return;
         }
 
-        const payload = (boxes: EditorBox[]) => toApiBoxes(boxes, audio.duration, audio.sampleRate / 2);
-        autosaver = new Autosaver(
-          doc,
+        const toPayload = (boxes: EditorBox[]) => toApiBoxes(boxes, audio.duration, audio.sampleRate / 2);
+        payload = toPayload;
+        const saver = new Autosaver(
+          document,
           async (boxes) => {
-            await api.post(annotationUrl(id), { recording_id: id, bounding_boxes: payload(boxes) });
+            await api.post(annotationUrl(id), { recording_id: id, bounding_boxes: toPayload(boxes) });
+            clearBackup(id);
           },
           setSaveStatus,
         );
-        const saver = autosaver;
+        autosaver = saver;
 
         created = new EditorEngine(
           { root, spectrogram, overlay, freqAxis, ruler, lane, waveform, minimap, playhead, hoverLine },
           audio,
-          doc,
+          document,
         );
         input = new EditorInput(created, { plotArea, spectrogram: spectrogramZone, lane, minimap, ruler, freqAxis }, {
           save: () => void saver.flush(),
           editLabel: () => setLabelTarget("selection"),
         });
 
-        // Closing the tab: send pending changes with a request that outlives the page.
+        // Closing the tab: keep a local copy, and send the changes with a
+        // request that outlives the page (unless that exact save is running).
         onBeforeUnload = () => {
-          if (doc.isDirty) saveOnUnload(id, payload(doc.boxes));
+          if (!document.isDirty) return;
+          const boxes = toPayload(document.committed);
+          writeBackup(id, boxes);
+          if (!saver.isSending(document.committed)) saveOnUnload(id, boxes);
         };
         window.addEventListener("beforeunload", onBeforeUnload);
 
@@ -161,10 +192,17 @@ const AnnotationEditorV2: React.FC = () => {
       if (onBeforeUnload) window.removeEventListener("beforeunload", onBeforeUnload);
       input?.destroy();
       created?.destroy();
-      // Leaving the editor inside the app: finish saving in the background.
-      if (autosaver) {
-        const pending = autosaver;
-        void pending.flush().finally(() => pending.destroy());
+      // Leaving the recording inside the app: finish saving in the background.
+      if (autosaver && doc && payload) {
+        const [leftDoc, toPayload] = [doc, payload];
+        const done = autosaver.detach().then((saved) => {
+          if (saved) return;
+          writeBackup(id, toPayload(leftDoc.committed));
+          toast.error("Some changes could not be saved. They are kept in this browser and restored when you reopen the recording.", {
+            duration: 10000,
+          });
+        });
+        trackPendingSave(id, done);
       }
       setEngine(null);
     };
@@ -268,14 +306,16 @@ const AnnotationEditorV2: React.FC = () => {
 
 /** Last-chance save when the tab closes (a keepalive request survives page unload). */
 function saveOnUnload(recordingId: number, boxes: ApiBoxPayload[]): void {
+  const body = JSON.stringify({ recording_id: recordingId, bounding_boxes: boxes });
+  if (body.length > KEEPALIVE_LIMIT_BYTES) return; // too big — the local backup covers it
   const token = localStorage.getItem("token");
   const base = process.env.REACT_APP_API_URL || "";
   void fetch(`${base}${annotationUrl(recordingId)}`, {
     method: "POST",
     keepalive: true,
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify({ recording_id: recordingId, bounding_boxes: boxes }),
-  });
+    body,
+  }).catch(() => undefined);
 }
 
 const LoadingOverlay: React.FC<{ state: LoadState }> = ({ state }) => (

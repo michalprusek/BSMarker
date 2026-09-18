@@ -15,14 +15,14 @@ export function moveBoxes(
 ): Map<string, EditorBox> {
   const minStart = Math.min(...boxes.map((b) => b.start));
   const maxEnd = Math.max(...boxes.map((b) => b.end));
-  const t = Math.min(duration - maxEnd, Math.max(-minStart, dt));
+  const t = clampDelta(dt, -minStart, duration - maxEnd);
 
   const banded = boxes.filter((b) => !isTimeSegment(b));
   let f = df;
   if (banded.length > 0) {
     const minLow = Math.min(...banded.map((b) => b.fLow!));
     const maxHigh = Math.max(...banded.map((b) => b.fHigh!));
-    f = Math.min(nyquist - maxHigh, Math.max(-minLow, df));
+    f = clampDelta(df, -minLow, nyquist - maxHigh);
   }
 
   const moved = new Map<string, EditorBox>();
@@ -36,6 +36,15 @@ export function moveBoxes(
     });
   }
   return moved;
+}
+
+/**
+ * Clamp a move so boxes don't leave the allowed range — but never push boxes
+ * that are already outside it (old data has some) along an axis the user is
+ * not moving: a zero delta always stays zero.
+ */
+function clampDelta(delta: number, min: number, max: number): number {
+  return Math.min(Math.max(0, max), Math.max(Math.min(0, min), delta));
 }
 
 /** Clipboard and keyboard edit commands on the current selection. */

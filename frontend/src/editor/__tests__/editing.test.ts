@@ -4,6 +4,7 @@ import { AnnotationDocument } from "../edit/AnnotationDocument";
 import { Autosaver, SaveStatus } from "../edit/Autosaver";
 import { EditActions, moveBoxes } from "../edit/EditActions";
 import { hitTest, snapTime } from "../edit/geometry";
+import { letterOf, zoomKey } from "../input/EditorInput";
 import { box } from "../testFixtures";
 
 const SR = 48000;
@@ -78,7 +79,7 @@ describe("Autosaver", () => {
     expect(saves).toEqual([2]);
     expect(doc.isDirty).toBe(false);
     expect(statuses).toEqual(["unsaved", "saving", "saved"]);
-    saver.destroy();
+    void saver.detach();
   });
 
   it("does not save in the middle of a drag, only after it", async () => {
@@ -93,7 +94,7 @@ describe("Autosaver", () => {
     jest.advanceTimersByTime(1600);
     await flushPromises();
     expect(save).toHaveBeenCalledTimes(1);
-    saver.destroy();
+    void saver.detach();
   });
 
   it("retries after a failure", async () => {
@@ -115,7 +116,70 @@ describe("Autosaver", () => {
     expect(save).toHaveBeenCalledTimes(2);
     expect(statuses[statuses.length - 1]).toBe("saved");
     spy.mockRestore();
-    saver.destroy();
+    void saver.detach();
+  });
+});
+
+describe("Autosaver safety", () => {
+  it("never sends two saves at once, even with several waiting callers", async () => {
+    const doc = new AnnotationDocument([]);
+    let running = 0;
+    let maxRunning = 0;
+    const release: (() => void)[] = [];
+    const save = jest.fn(() => {
+      running++;
+      maxRunning = Math.max(maxRunning, running);
+      return new Promise<void>((resolve) => release.push(() => { running--; resolve(); }));
+    });
+    const saver = new Autosaver(doc, save, () => undefined);
+    doc.add({ start: 1, end: 2, fLow: null, fHigh: null });
+    const first = saver.flush();
+    doc.add({ start: 3, end: 4, fLow: null, fHigh: null });
+    const waiters = [saver.flush(), saver.flush(), saver.flush()];
+    while (release.length === 0) await Promise.resolve();
+    release.shift()!();
+    for (let i = 0; i < 20 && release.length === 0; i++) await Promise.resolve();
+    release.shift()?.();
+    await Promise.all([first, ...waiters]);
+    expect(maxRunning).toBe(1);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(doc.isDirty).toBe(false);
+    void saver.detach();
+  });
+
+  it("saves the committed state, never a drag in progress", async () => {
+    const doc = new AnnotationDocument([box("1", 1, 2)]);
+    doc.add({ start: 5, end: 6, fLow: null, fHigh: null });
+    const saved: number[][] = [];
+    const saver = new Autosaver(doc, async (boxes) => { saved.push(boxes.map((b) => b.start)); }, () => undefined);
+    doc.begin();
+    doc.update(["1"], (b) => ({ ...b, start: 3, end: 4 }));
+    await saver.flush(); // e.g. leaving the page mid-drag
+    expect(saved).toEqual([[1, 5]]);
+    doc.cancel();
+    void saver.detach();
+  });
+
+  it("keeps retrying after the editor is closed", async () => {
+    jest.useFakeTimers();
+    const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    const doc = new AnnotationDocument([]);
+    let attempts = 0;
+    const saver = new Autosaver(doc, async () => {
+      attempts++;
+      if (attempts < 3) throw new Error("502");
+    }, () => undefined);
+    doc.add({ start: 1, end: 2, fLow: null, fHigh: null });
+    const result = saver.detach();
+    for (let i = 0; i < 10; i++) {
+      await Promise.resolve();
+      jest.advanceTimersByTime(6000);
+      for (let j = 0; j < 10; j++) await Promise.resolve();
+    }
+    await expect(result).resolves.toBe(true);
+    expect(attempts).toBe(3);
+    spy.mockRestore();
+    jest.useRealTimers();
   });
 });
 
@@ -158,6 +222,15 @@ describe("editing actions", () => {
     expect(moved.get("s")).toMatchObject({ start: 2, end: 3, fLow: null, fHigh: null });
   });
 
+  it("never moves boxes along an axis the user is not moving (old out-of-range data)", () => {
+    // Existing data has boxes ending after the recording and below 0 Hz.
+    const odd = [box("late", 8, 12, 1000, 2000), box("low", 1, 2, -50, 500)];
+    const up = moveBoxes(odd, 0, 100, 10, 24000);
+    expect(up.get("late")).toMatchObject({ start: 8, end: 12, fLow: 1100 });
+    const left = moveBoxes(odd, -0.5, 0, 10, 24000);
+    expect(left.get("low")).toMatchObject({ start: 0.5, fLow: -50, fHigh: 500 });
+  });
+
   it("duplicates right after the selection and pastes at a time", () => {
     const doc = new AnnotationDocument([box("a", 1, 2), box("b", 2.5, 3)]);
     const actions = new EditActions(doc, 100, 24000);
@@ -184,5 +257,26 @@ describe("editing actions", () => {
     });
     const [segment] = toApiBoxes([box("s", 2, 4)], 10, 24000);
     expect(segment).toMatchObject({ min_frequency: null, max_frequency: null, y: 0, height: 400 });
+  });
+});
+
+describe("keyboard layouts", () => {
+  const key = (key: string, code: string) => ({ key, code } as KeyboardEvent);
+
+  it("uses the typed letter, so Czech QWERTZ Z/Y are right", () => {
+    // On QWERTZ the key labelled Z sits where US has Y (code KeyY).
+    expect(letterOf(key("z", "KeyY"))).toBe("Z");
+    expect(letterOf(key("y", "KeyZ"))).toBe("Y");
+    // Non-Latin layouts fall back to the physical key.
+    expect(letterOf(key("я", "KeyZ"))).toBe("Z");
+    // Czech number row (ě, š, …) is not a label.
+    expect(letterOf(key("ě", "Digit2"))).toBeNull();
+  });
+
+  it("recognises zoom keys by character", () => {
+    expect(zoomKey(key("+", "Digit1"))).toBe(1); // Czech: + on the 1 key
+    expect(zoomKey(key("=", "Minus"))).toBe(1);
+    expect(zoomKey(key("-", "Slash"))).toBe(-1); // Czech: - next to the dot
+    expect(zoomKey(key("é", "Digit0"))).toBe(0);
   });
 });

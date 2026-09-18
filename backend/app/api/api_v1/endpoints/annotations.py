@@ -65,7 +65,8 @@ def convert_annotation_orm_to_dict(annotation_orm: Any) -> Any:
             "max_frequency": bbox.max_frequency,
             "label": bbox.label,
             "confidence": bbox.confidence,
-            "metadata": bbox.extra_metadata,  # Map extra_metadata to metadata
+            "extra_metadata": bbox.extra_metadata,  # read by the API response schema
+            "metadata": bbox.extra_metadata,  # kept for the export format
         }
         data["bounding_boxes"].append(bbox_data)
 
@@ -85,7 +86,10 @@ def create_annotation(
     current_user: User = Depends(deps.get_current_active_user),  # noqa: B008
 ) -> Any:
     """Create a new annotation or update existing one for a recording."""
-    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    # Lock the recording row so concurrent saves for it run one after another;
+    # otherwise two delete-and-reinsert requests can duplicate boxes or create
+    # two annotations for the same user.
+    recording = db.query(Recording).filter(Recording.id == recording_id).with_for_update().first()
     if not recording:
         raise HTTPException(status_code=404, detail="Recording not found")
 

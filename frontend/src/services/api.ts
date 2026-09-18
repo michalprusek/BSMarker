@@ -580,38 +580,35 @@ export const annotationService = {
     recordingId: number,
     boundingBoxes: unknown[],
   ): Promise<Annotation> => {
-    // Ensure all required fields are present for each bounding box
-    // Round coordinates to prevent floating-point precision issues
+    // Time/frequency are authoritative; pixels are layout only. Validate on
+    // time (a very short box may round to 0 px and must not be dropped) and
+    // keep nulls as nulls (null frequency = full-band time segment).
+    const optionalNumber = (v: unknown): number | null =>
+      v === undefined || v === null ? null : Number(v);
     const validBoxes = boundingBoxes.map((box: unknown) => {
       const b = box as Record<string, unknown>;
       return {
         x: Math.round(Number(b.x) || 0),
         y: Math.round(Number(b.y) || 0),
-        width: Math.round(Number(b.width) || 0),
-        height: Math.round(Number(b.height) || 0),
-        start_time: Number(b.start_time) || 0,
-        end_time: Number(b.end_time) || 0,
-        min_frequency:
-          b.min_frequency !== undefined ? Number(b.min_frequency) : null,
-        max_frequency:
-          b.max_frequency !== undefined ? Number(b.max_frequency) : null,
+        width: Math.max(1, Math.round(Number(b.width) || 0)),
+        height: Math.max(1, Math.round(Number(b.height) || 0)),
+        start_time: Number(b.start_time),
+        end_time: Number(b.end_time),
+        min_frequency: optionalNumber(b.min_frequency),
+        max_frequency: optionalNumber(b.max_frequency),
         label: String(b.label || "None"),
-        confidence: b.confidence !== undefined ? Number(b.confidence) : null,
-        metadata: (b.metadata as Record<string, unknown>) || null,
+        confidence: optionalNumber(b.confidence),
+        extra_metadata:
+          (b.extra_metadata as Record<string, unknown>) ??
+          (b.metadata as Record<string, unknown>) ??
+          null,
       };
     });
 
-    // Filter out invalid boxes (with NaN or invalid values)
     const filteredBoxes = validBoxes.filter(
       (box) =>
-        !isNaN(box.x) &&
-        !isNaN(box.y) &&
-        !isNaN(box.width) &&
-        !isNaN(box.height) &&
-        !isNaN(box.start_time) &&
-        !isNaN(box.end_time) &&
-        box.width > 0 &&
-        box.height > 0 &&
+        Number.isFinite(box.start_time) &&
+        Number.isFinite(box.end_time) &&
         box.end_time > box.start_time,
     );
 

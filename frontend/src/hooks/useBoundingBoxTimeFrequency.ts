@@ -138,10 +138,11 @@ export const useBoundingBoxTimeFrequency = (
   /**
    * Inverse of convertBoxToTimeFrequency: time/frequency are the source of
    * truth, pixels are derived for the current canvas size. Boxes without a
-   * frequency range (time segments from editor v2) span the full height.
+   * frequency range (time segments from editor v2) are drawn full height but
+   * keep their null frequencies.
    */
   const convertTimeFrequencyToBox = useCallback(
-    (box: TimeFrequencyInput): BoundingBoxCoords & TimeFrequencyResult => {
+    (box: TimeFrequencyInput): BoundingBoxCoords => {
       const nyquistFreq = getNyquistFrequency();
       const spectrogramHeight =
         spectrogramDimensions.height *
@@ -157,10 +158,6 @@ export const useBoundingBoxTimeFrequency = (
         y,
         width: xEnd - x,
         height: yEnd - y,
-        start_time: box.start_time,
-        end_time: box.end_time,
-        min_frequency: minFrequency,
-        max_frequency: maxFrequency,
       };
     },
     [spectrogramDimensions, duration, getNyquistFrequency],

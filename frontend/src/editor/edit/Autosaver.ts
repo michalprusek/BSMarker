@@ -7,49 +7,58 @@ export type SaveStatus = "saved" | "unsaved" | "saving" | "error";
 const DEBOUNCE_MS = 1500;
 /** Retry delays after a failed save. */
 const RETRY_MS = [2000, 5000, 15000, 30000];
+/** After leaving a recording, keep retrying this many times before giving up. */
+const BACKGROUND_ATTEMPTS = 6;
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Saves the document automatically: debounced after edits, one request at a
- * time, and again if the user kept editing while a save was in flight.
- * Failed saves are retried with back-off and reported through `onStatus`.
+ * Saves the document automatically: debounced after edits, strictly one
+ * request at a time (the backend replaces all boxes, so overlapping requests
+ * must never happen), and again if the user kept editing meanwhile. Failed
+ * saves are retried with back-off. Only committed changes are saved, never
+ * a drag in progress.
  */
 export class Autosaver {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private inFlight: Promise<void> | null = null;
+  private inFlightSnapshot: EditorBox[] | null = null;
   private failures = 0;
   private status: SaveStatus = "saved";
   private unsubscribe: () => void;
-  private destroyed = false;
+  private detached = false;
 
   constructor(
     private readonly doc: AnnotationDocument,
     private readonly save: (boxes: EditorBox[]) => Promise<void>,
-    private readonly onStatus: (status: SaveStatus) => void,
+    private onStatus: (status: SaveStatus) => void,
   ) {
     this.unsubscribe = doc.subscribe((contentChanged) => {
-      if (!contentChanged) return;
+      if (!contentChanged || doc.inTransaction) return;
       if (doc.isDirty) {
         this.setStatus(this.inFlight ? "saving" : "unsaved");
-        // Don't save half-finished drags; the commit will trigger another change.
-        if (!doc.inTransaction) this.schedule(DEBOUNCE_MS);
+        this.schedule(DEBOUNCE_MS);
       } else if (!this.inFlight) {
         this.setStatus("saved"); // e.g. undo back to the saved state
       }
     });
   }
 
-  get currentStatus(): SaveStatus {
-    return this.status;
+  /** Is exactly this snapshot being sent right now? (Avoids a duplicate keepalive save.) */
+  isSending(snapshot: EditorBox[]): boolean {
+    return this.inFlightSnapshot === snapshot;
   }
 
-  /** Save now (Ctrl+S, leaving the page). Resolves when everything is stored. */
+  /** Save now (Ctrl+S). Resolves when the save attempt finished (successfully or not). */
   async flush(): Promise<void> {
     this.clearTimer();
-    if (this.inFlight) await this.inFlight;
-    if (!this.doc.isDirty || this.destroyed) return;
+    // Several callers may be waiting for the same request; only one may start the next.
+    while (this.inFlight) await this.inFlight;
+    if (!this.doc.isDirty) return;
 
-    const snapshot = this.doc.boxes;
+    const snapshot = this.doc.committed;
     this.setStatus("saving");
+    this.inFlightSnapshot = snapshot;
     this.inFlight = this.save(snapshot)
       .then(() => {
         this.failures = 0;
@@ -69,23 +78,37 @@ export class Autosaver {
       })
       .finally(() => {
         this.inFlight = null;
+        this.inFlightSnapshot = null;
       });
     await this.inFlight;
   }
 
-  destroy(): void {
-    this.destroyed = true;
+  /**
+   * The editor closed (another recording, another page): stop reporting to
+   * the UI and keep trying in the background. Resolves true once everything
+   * is saved, false if it finally gave up.
+   */
+  async detach(): Promise<boolean> {
+    this.detached = true;
+    this.onStatus = () => undefined;
     this.clearTimer();
     this.unsubscribe();
+    for (let attempt = 0; attempt < BACKGROUND_ATTEMPTS; attempt++) {
+      await this.flush();
+      this.clearTimer(); // we drive the retries ourselves now
+      if (!this.doc.isDirty) return true;
+      await delay(RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)]);
+    }
+    return false;
   }
 
-  private schedule(delay: number): void {
+  private schedule(ms: number): void {
     this.clearTimer();
-    if (this.destroyed) return;
+    if (this.detached) return;
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.flush();
-    }, delay);
+    }, ms);
   }
 
   private clearTimer(): void {

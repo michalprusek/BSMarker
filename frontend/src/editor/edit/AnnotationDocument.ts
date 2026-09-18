@@ -53,8 +53,23 @@ export class AnnotationDocument {
     return this.selected.has(id);
   }
 
+  /**
+   * The boxes without the gesture in progress — what may be saved. A half
+   * finished drag is never persisted, even if the page is left mid-drag.
+   */
+  get committed(): EditorBox[] {
+    return this.txBase ?? this.boxesValue;
+  }
+
+  /** Committed changes that are not on the server yet. */
   get isDirty(): boolean {
-    return this.boxesValue !== this.savedBoxes;
+    return this.committed !== this.savedBoxes;
+  }
+
+  /** Replace everything (e.g. restoring a local backup); one undo step. */
+  replaceAll(boxes: EditorBox[]): void {
+    this.setBoxes([...boxes]);
+    this.pruneSelection();
   }
 
   get canUndo(): boolean {
