@@ -80,14 +80,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         >
           {recording?.original_filename ?? "…"}
         </div>
-        <div className="text-[11px] text-gray-500">
-          Editor v2 ·{" "}
-          <Link
-            to={`/recordings/${recording?.id ?? ""}/annotate`}
-            className="underline hover:text-gray-700"
-          >
-            classic editor
-          </Link>
+        <div className="text-[11px] text-gray-500 tabular-nums">
+          {recording?.duration ? formatDuration(recording.duration) : ""}
+          {recording?.sample_rate
+            ? ` · ${recording.sample_rate / 1000} kHz`
+            : ""}
         </div>
       </div>
       {navigation}

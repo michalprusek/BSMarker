@@ -9,7 +9,11 @@
  */
 export class AudioPlayer {
   private ctx: AudioContext | null = null;
+  /** Copy of the audio owned by the playback context (Safari is picky about foreign buffers). */
+  private playBuffer: AudioBuffer | null = null;
   private source: AudioBufferSourceNode | null = null;
+  /** Bumped by every play/stop, so a play waiting for the context to resume can be cancelled. */
+  private playToken = 0;
   /** Playing range; with `loop` it repeats [rangeStart, rangeEnd). */
   private rangeStart = 0;
   private rangeEnd = 0;
@@ -23,7 +27,22 @@ export class AudioPlayer {
 
   onStateChange: (() => void) | null = null;
 
-  constructor(private readonly buffer: AudioBuffer) {}
+  constructor(private readonly buffer: AudioBuffer) {
+    // Browsers only allow audio after a user gesture. Create and resume the
+    // context on the first click or key press anywhere, so the first Play is instant.
+    window.addEventListener("pointerdown", this.unlock, { capture: true });
+    window.addEventListener("keydown", this.unlock, { capture: true });
+  }
+
+  private unlock = (): void => {
+    this.ensureContext();
+    this.removeUnlockListeners();
+  };
+
+  private removeUnlockListeners(): void {
+    window.removeEventListener("pointerdown", this.unlock, { capture: true });
+    window.removeEventListener("keydown", this.unlock, { capture: true });
+  }
 
   get isPlaying(): boolean {
     return this.source !== null;
@@ -67,6 +86,7 @@ export class AudioPlayer {
    */
   play(start = this.cursor, end = this.buffer.duration, loop = false, from = start): void {
     this.stopSource();
+    const token = ++this.playToken;
     const s = clamp(start, 0, this.buffer.duration);
     const e = clamp(end, s, this.buffer.duration);
     const f = clamp(from, s, e);
@@ -77,8 +97,18 @@ export class AudioPlayer {
     }
 
     const ctx = this.ensureContext();
+    if (ctx.state !== "running") {
+      // Starting a source on a suspended/interrupted context plays silence in Safari:
+      // wait until it runs (unless another play/stop came in meanwhile).
+      void ctx.resume().then(() => {
+        if (token === this.playToken && ctx.state === "running") this.play(start, end, loop, from);
+      });
+      this.cursor = s;
+      this.onStateChange?.();
+      return;
+    }
     const source = ctx.createBufferSource();
-    source.buffer = this.buffer;
+    source.buffer = this.playbackBuffer(ctx);
     source.playbackRate.value = this.rate;
     source.connect(ctx.destination);
     if (loop) {
@@ -108,6 +138,7 @@ export class AudioPlayer {
 
   /** Stop and leave the cursor where playback started. */
   stop(): void {
+    this.playToken++;
     if (!this.isPlaying) return;
     this.stopSource();
     this.onStateChange?.();
@@ -115,6 +146,7 @@ export class AudioPlayer {
 
   /** Stop and leave the cursor at the current audible position. */
   pause(): void {
+    this.playToken++;
     if (!this.isPlaying) return;
     const pos = this.position;
     this.stopSource();
@@ -134,6 +166,8 @@ export class AudioPlayer {
   }
 
   destroy(): void {
+    this.playToken++;
+    this.removeUnlockListeners();
     this.stopSource();
     void this.ctx?.close();
     this.ctx = null;
@@ -154,8 +188,19 @@ export class AudioPlayer {
 
   private ensureContext(): AudioContext {
     if (!this.ctx) this.ctx = new AudioContext({ latencyHint: "interactive" });
-    if (this.ctx.state === "suspended") void this.ctx.resume();
+    // Safari also has an "interrupted" state (sleep, output device change).
+    if (this.ctx.state !== "running") void this.ctx.resume().catch(() => undefined);
     return this.ctx;
+  }
+
+  private playbackBuffer(ctx: AudioContext): AudioBuffer {
+    if (!this.playBuffer) {
+      const { numberOfChannels, length, sampleRate } = this.buffer;
+      const copy = ctx.createBuffer(numberOfChannels, length, sampleRate);
+      for (let ch = 0; ch < numberOfChannels; ch++) copy.copyToChannel(this.buffer.getChannelData(ch), ch);
+      this.playBuffer = copy;
+    }
+    return this.playBuffer;
   }
 }
 

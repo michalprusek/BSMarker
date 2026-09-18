@@ -3,6 +3,7 @@ import {
   createBrowserRouter,
   RouterProvider,
   Navigate,
+  useParams,
 } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -11,9 +12,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import LoginPage from "./pages/LoginPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
-import AnnotationEditor from "./pages/AnnotationEditor";
 import AnnotationEditorV2 from "./pages/AnnotationEditorV2";
-import { AnnotationEditorProvider } from "./contexts/AnnotationEditorContext";
 import AdminUsersPage from "./pages/AdminUsersPage";
 
 const router = createBrowserRouter(
@@ -46,12 +45,9 @@ const router = createBrowserRouter(
               element: <ProjectDetailPage />,
             },
             {
+              // Old editor URL (bookmarks, links) — the editor was replaced.
               path: "/recordings/:recordingId/annotate",
-              element: (
-                <AnnotationEditorProvider>
-                  <AnnotationEditor />
-                </AnnotationEditorProvider>
-              ),
+              element: <RedirectToEditor />,
             },
             {
               path: "/admin/users",
@@ -66,6 +62,11 @@ const router = createBrowserRouter(
     future: {},
   },
 );
+
+function RedirectToEditor() {
+  const { recordingId } = useParams<{ recordingId: string }>();
+  return <Navigate to={`/recordings/${recordingId}/annotate-v2`} replace />;
+}
 
 function App() {
   return (

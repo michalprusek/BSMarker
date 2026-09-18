@@ -145,7 +145,10 @@ export const healthCheck = async (): Promise<boolean> => {
     return true;
   } catch (error: unknown) {
     // 401/403 means backend is up but requires auth - this is success for health check
-    if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+    if (
+      axios.isAxiosError(error) &&
+      (error.response?.status === 401 || error.response?.status === 403)
+    ) {
       return true;
     }
     return false;
@@ -192,7 +195,10 @@ export const authService = {
     return response.data;
   },
 
-  changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
+  changePassword: async (
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> => {
     await api.post("/auth/change-password", {
       current_password: currentPassword,
       new_password: newPassword,
@@ -411,135 +417,19 @@ export const recordingService = {
 
   getRecordingUrl: (filePath: string): string => {
     const token = localStorage.getItem("token");
-    const baseUrl = API_URL.replace(/\/api\/v1$/, '');
+    const baseUrl = API_URL.replace(/\/api\/v1$/, "");
     return `${baseUrl}/files/recordings/${filePath}?token=${token}`;
-  },
-
-  getSpectrogramStatus: async (
-    recordingId: number,
-  ): Promise<{
-    status: string;
-    recording_id: number;
-    available: boolean;
-    error_message?: string;
-    processing_time?: number;
-    width?: number;
-    height?: number;
-    created_at?: string;
-    updated_at?: string;
-  }> => {
-    const response = await api.get(
-      `/recordings/${recordingId}/spectrogram/status`,
-    );
-    return response.data;
   },
 
   /**
    * Get spectrogram URL for a recording
    * @returns Object with url (if available), status, and optional error message
    */
-  getSpectrogramUrl: async (recordingId: number): Promise<{
-    url: string | null;
-    status: "completed" | "processing" | "pending" | "failed" | "error";
-    error?: string;
-  }> => {
-    try {
-      const status = await recordingService.getSpectrogramStatus(recordingId);
-
-      if (status.status === "completed" && status.available) {
-        // Return direct API URL for completed spectrograms with cache-busting timestamp
-        const timestamp = Date.now();
-        return {
-          url: `${API_URL}/recordings/${recordingId}/spectrogram?v=${timestamp}`,
-          status: "completed",
-        };
-      }
-
-      if (status.status === "failed") {
-        return {
-          url: null,
-          status: "failed",
-          error: status.error_message || "Spectrogram generation failed",
-        };
-      }
-
-      // Spectrogram not ready yet (processing or pending)
-      return {
-        url: null,
-        status: status.status as "processing" | "pending",
-      };
-    } catch (error: any) {
-      console.error("Failed to get spectrogram URL:", error);
-
-      // Provide specific error messages based on error type
-      let errorMessage = "Failed to check spectrogram status";
-      if (error.response?.status === 401) {
-        errorMessage = "Session expired - please refresh the page";
-      } else if (error.response?.status === 403) {
-        errorMessage = "You don't have permission to access this recording";
-      } else if (error.response?.status === 404) {
-        errorMessage = "Recording not found";
-      } else if (error.code === "ECONNABORTED" || error.code === "ERR_NETWORK") {
-        errorMessage = "Network error - check your connection";
-      }
-
-      return {
-        url: null,
-        status: "error",
-        error: errorMessage,
-      };
-    }
-  },
-
-  getSpectrogramBlob: async (recordingId: number): Promise<Blob | null> => {
-    try {
-      // Add cache-busting timestamp to prevent stale spectrograms
-      const timestamp = Date.now();
-      const response = await api.get(
-        `/recordings/${recordingId}/spectrogram?v=${timestamp}`,
-        {
-          responseType: "blob",
-        },
-      );
-      return response.data;
-    } catch (error: any) {
-      if (error.response?.status === 202) {
-        // Spectrogram is being generated
-        return null;
-      }
-      throw error;
-    }
-  },
-
-  downloadRecording: async (recordingId: number): Promise<Blob> => {
-    const recording = await recordingService.getRecording(recordingId);
-    const token = localStorage.getItem("token");
-    const baseUrl = API_URL.replace(/\/api\/v1$/, '');
-    const response = await fetch(
-      `${baseUrl}/files/recordings/${recording.file_path}?token=${token}`,
-    );
-    if (!response.ok) {
-      throw new Error(`Failed to download recording: ${response.status}`);
-    }
-    return response.blob();
-  },
-
-  getAuthenticatedBlob: async (url: string): Promise<string> => {
-    const token = localStorage.getItem("token");
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch: ${response.status}`);
-    }
-    const blob = await response.blob();
-    return URL.createObjectURL(blob);
-  },
 
   toggleFinished: async (recordingId: number): Promise<Recording> => {
-    const response = await api.patch<Recording>(`/recordings/${recordingId}/finished`);
+    const response = await api.patch<Recording>(
+      `/recordings/${recordingId}/finished`,
+    );
     return response.data;
   },
 };
@@ -547,81 +437,6 @@ export const recordingService = {
 export const annotationService = {
   getAnnotations: async (recordingId: number): Promise<Annotation[]> => {
     const response = await api.get<Annotation[]>(`/annotations/${recordingId}`);
-    return response.data;
-  },
-
-  createAnnotation: async (
-    recordingId: number,
-    annotationData: Partial<Annotation>,
-  ): Promise<Annotation> => {
-    const response = await api.post<Annotation>(
-      `/annotations/${recordingId}`,
-      annotationData,
-    );
-    return response.data;
-  },
-
-  updateAnnotation: async (
-    annotationId: number,
-    annotationData: Partial<Annotation>,
-  ): Promise<Annotation> => {
-    const response = await api.put<Annotation>(
-      `/annotations/${annotationId}`,
-      annotationData,
-    );
-    return response.data;
-  },
-
-  deleteAnnotation: async (annotationId: number): Promise<void> => {
-    await api.delete(`/annotations/${annotationId}`);
-  },
-
-  createOrUpdateAnnotation: async (
-    recordingId: number,
-    boundingBoxes: unknown[],
-  ): Promise<Annotation> => {
-    // Time/frequency are authoritative; pixels are layout only. Validate on
-    // time (a very short box may round to 0 px and must not be dropped) and
-    // keep nulls as nulls (null frequency = full-band time segment).
-    const optionalNumber = (v: unknown): number | null =>
-      v === undefined || v === null ? null : Number(v);
-    const validBoxes = boundingBoxes.map((box: unknown) => {
-      const b = box as Record<string, unknown>;
-      return {
-        x: Math.round(Number(b.x) || 0),
-        y: Math.round(Number(b.y) || 0),
-        width: Math.max(1, Math.round(Number(b.width) || 0)),
-        height: Math.max(1, Math.round(Number(b.height) || 0)),
-        start_time: Number(b.start_time),
-        end_time: Number(b.end_time),
-        min_frequency: optionalNumber(b.min_frequency),
-        max_frequency: optionalNumber(b.max_frequency),
-        label: String(b.label || "None"),
-        confidence: optionalNumber(b.confidence),
-        extra_metadata:
-          (b.extra_metadata as Record<string, unknown>) ??
-          (b.metadata as Record<string, unknown>) ??
-          null,
-      };
-    });
-
-    const filteredBoxes = validBoxes.filter(
-      (box) =>
-        Number.isFinite(box.start_time) &&
-        Number.isFinite(box.end_time) &&
-        box.end_time > box.start_time,
-    );
-
-    // Backend expects AnnotationCreate schema with recording_id and bounding_boxes
-    const payload = {
-      recording_id: recordingId,
-      bounding_boxes: filteredBoxes,
-    };
-
-    const response = await api.post<Annotation>(
-      `/annotations/${recordingId}`,
-      payload,
-    );
     return response.data;
   },
 };

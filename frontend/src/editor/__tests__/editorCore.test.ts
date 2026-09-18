@@ -191,12 +191,14 @@ describe("AudioPlayer", () => {
     sources: FakeSource[] = [];
     constructor() { FakeContext.last = this; }
     createBufferSource() { const s = new FakeSource(); this.sources.push(s); return s; }
+    createBuffer() { return { copyToChannel() {} }; }
     resume() { return Promise.resolve(); }
     close() { return Promise.resolve(); }
   }
   const make = () => {
     (global as any).AudioContext = FakeContext;
-    return new AudioPlayer({ duration: 10 } as AudioBuffer);
+    const buffer = { duration: 10, numberOfChannels: 1, length: 10, sampleRate: 1, getChannelData: () => new Float32Array(10) };
+    return new AudioPlayer(buffer as unknown as AudioBuffer);
   };
 
   it("keeps the loop range across a playback-rate change", () => {
@@ -221,6 +223,23 @@ describe("AudioPlayer", () => {
     expect(ctx.sources[ctx.sources.length - 1].loop).toBe(false);
     expect(player.isPlaying).toBe(true);
     expect(player.position).toBeCloseTo(7);
+  });
+
+  it("waits for a suspended context before starting (Safari plays silence otherwise)", async () => {
+    const player = make();
+    player.play(0, 1); // creates the context
+    const ctx = FakeContext.last;
+    ctx.state = "suspended";
+    let resolveResume: () => void = () => undefined;
+    ctx.resume = () => new Promise<void>((r) => { resolveResume = () => { ctx.state = "running"; r(); }; });
+    const started = ctx.sources.length;
+    player.play(2, 3);
+    expect(ctx.sources.length).toBe(started); // nothing started yet
+    resolveResume();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(ctx.sources.length).toBe(started + 1);
+    expect(ctx.sources[ctx.sources.length - 1].started).toEqual([2]);
   });
 
   it("an empty range just moves the cursor", () => {
