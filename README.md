@@ -5,13 +5,14 @@
 BSMarker is a web application for annotating bird songs using spectrograms. It enables researchers and ornithologists to upload audio recordings, automatically generate spectrograms, and annotate them with bounding boxes to identify different bird species and sound types.
 
 ### Key Features
-- 🎵 Audio file processing (MP3, WAV, FLAC, M4A)
-- 📊 Automatic mel-spectrogram generation
-- 🎯 Precise annotation tools with bounding boxes
-- 🏷️ Label management for bird species and call types
-- 👥 Multi-user collaboration on projects
+- 🎵 Audio upload (MP3, WAV, FLAC, M4A)
+- 🔍 Spectrogram computed in the browser, sharp at any zoom — from the whole recording down to milliseconds, with frequency zoom
+- 🎯 Modeless box editing: draw, move, resize, snap to neighbours; full-band time segments
+- 🔤 One-key labels (A–Z), undo/redo, copy/paste, autosave
+- ⚠️ Live checks of time-axis rules (overlaps, gaps < 10 ms, nested boxes) with one-click fixes
+- 🎧 Sample-accurate playback, slow-down, looping, and a listen-through review box by box
+- 👥 Multi-user projects (each annotator has their own annotation per recording)
 - 💾 Annotation export in JSON format
-- 🔄 Waveform and spectrogram synchronization
 
 ## Quick Start with Docker
 
@@ -325,30 +326,31 @@ docker exec bsmarker_minio_1 mc ls local/
    - Wait for spectrogram generation
 
 4. **Annotate recordings**
-   - Click "Annotate" on a recording
-   - Draw bounding boxes on the spectrogram with mouse
-   - Add labels for bird species
-   - Save annotations (Ctrl+S)
+   - Click a recording to open the editor
+   - Drag on the spectrogram to draw a box, press a letter A–Z to label it
+   - Changes are saved automatically; press `?` in the editor for all controls
 
 5. **Export data**
    - In project overview, click "Download Annotations"
    - Data downloads as ZIP with JSON files
 
-### Keyboard Shortcuts
+### Editor Controls (selection — press `?` in the editor for the full list)
 
-| Shortcut | Action |
-|----------|--------|
-| `Space` | Play/Pause |
-| `A` | Annotation mode |
-| `Delete` | Delete selected box |
-| `Ctrl+S` | Save annotations |
-| `Ctrl+Z` | Undo |
-| `+/-` | Zoom in/out |
+| Input | Action |
+|-------|--------|
+| Drag on empty spectrogram / waveform | New box / new time segment |
+| Drag a box, its edge or corner | Move / resize |
+| `A`–`Z` | Label the selected boxes |
+| `Space` / `Enter` | Play–pause / play the selection |
+| Scroll, `Ctrl`/`⌘` + scroll, `Alt` + scroll | Pan, zoom time, zoom frequency |
+| `Tab`, `F8` | Next box, next conflict |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
+| `Page Up` / `Page Down` | Previous / next recording |
 
 ## Technologies
 
 - **Backend**: FastAPI, PostgreSQL, Redis, MinIO, Celery
-- **Frontend**: React 18, TypeScript, Tailwind CSS, Konva.js, WaveSurfer.js
+- **Frontend**: React 18, TypeScript, Tailwind CSS, WebGL2, Web Workers, Web Audio API
 - **Deployment**: Docker, Docker Compose, Nginx
 
 ## Contact
