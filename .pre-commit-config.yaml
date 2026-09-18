@@ -28,7 +28,9 @@ repos:
         args:
           - --max-line-length=100
           - --extend-ignore=E203,W503,B008,D103,D100,D101,D104,D400,F401
-        exclude: ^(migrations/|alembic/|backend/app/tasks/)
+          # tests: no docstrings required; conftest sets env vars before importing the app
+          - --per-file-ignores=backend/tests/*:D1,D401,E402
+        exclude: ^backend/(migrations|alembic)/
         additional_dependencies:
           - flake8-docstrings
           - flake8-bugbear
@@ -40,12 +42,13 @@ repos:
     rev: v1.9.0
     hooks:
       - id: mypy
-        args: [--ignore-missing-imports, --strict-optional, --disallow-untyped-defs, --follow-imports=silent]
-        exclude: ^(migrations/|alembic/|tests/|backend/scripts/|backend/app/tasks/)
+        args: [--config-file=backend/pyproject.toml, --follow-imports=silent]
+        exclude: ^backend/(migrations|alembic|tests|scripts)/
         additional_dependencies:
           - types-requests
           - types-python-dateutil
-          - sqlalchemy-stubs
+          - sqlalchemy[mypy]==2.0.23  # own type hints + mypy plugin for Column-style models
+          - types-redis
 
   # Security checks
   - repo: https://github.com/PyCQA/bandit
@@ -55,7 +58,7 @@ repos:
         args:
           - --skip
           - B101,B108
-        exclude: ^(tests/|backend/scripts/)
+        exclude: ^backend/(tests|scripts)/
 
   # Check for security vulnerabilities in Python dependencies
   - repo: https://github.com/pypa/pip-audit
@@ -80,12 +83,16 @@ repos:
           --disable=W0613,  # unused-argument
           --disable=W0212,  # protected-access
           --disable=E0401,  # import-error (can't resolve in pre-commit venv)
+          --disable=C,  # conventions: style is covered by black + flake8
+          --disable=R,  # refactoring suggestions (too-many-locals etc.)
+          --disable=W1203,  # logging-fstring-interpolation (f-strings in log calls are fine here)
+          --disable=W0718,  # broad-exception-caught (API handlers deliberately catch and report)
           --load-plugins=pylint.extensions.docparams,
           --accept-no-param-doc=yes,
           --accept-no-return-doc=yes,
           --accept-no-yields-doc=yes,
         ]
-        exclude: ^(migrations/|alembic/|tests/|backend/scripts/|backend/app/tasks/)
+        exclude: ^backend/(migrations|alembic|tests|scripts)/
 
   # YAML linting
   - repo: https://github.com/adrienverge/yamllint

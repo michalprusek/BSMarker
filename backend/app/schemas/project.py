@@ -13,8 +13,10 @@ class ProjectCreate(ProjectBase):
     pass
 
 
-class ProjectUpdate(ProjectBase):
+class ProjectUpdate(BaseModel):
+    # Same fields as ProjectBase, but all optional for partial updates
     name: Optional[str] = None
+    description: Optional[str] = None
 
 
 class ProjectInDBBase(ProjectBase):
@@ -24,6 +26,8 @@ class ProjectInDBBase(ProjectBase):
     updated_at: Optional[datetime] = None
 
     class Config:
+        """Pydantic model configuration."""
+
         from_attributes = True
 
 

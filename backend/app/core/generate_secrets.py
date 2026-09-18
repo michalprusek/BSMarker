@@ -138,7 +138,10 @@ def generate_all_secrets() -> Dict[str, Any]:
 
     return {
         "SECRET_KEY": generate_secret_key(),
-        "DATABASE_URL": f"postgresql://{db_creds['username']}:{db_creds['password']}@localhost:5432/bsmarker_db",
+        "DATABASE_URL": (
+            f"postgresql://{db_creds['username']}:{db_creds['password']}"
+            "@localhost:5432/bsmarker_db"
+        ),
         "DATABASE_USER": db_creds["username"],
         "DATABASE_PASSWORD": db_creds["password"],
         "REDIS_PASSWORD": generate_redis_password(),
@@ -208,11 +211,11 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    secrets_dict = generate_all_secrets()
+    generated_secrets = generate_all_secrets()
 
     logger.info("Generated secrets for BSMarker:")
     logger.info("=" * 40)
-    for key, value in secrets_dict.items():
+    for key, value in generated_secrets.items():
         if "PASSWORD" in key or "SECRET" in key or "KEY" in key:
             logger.info(f"{key}: {'*' * 20}")
         else:
@@ -220,6 +223,6 @@ if __name__ == "__main__":
 
     # Write to .env file
     env_path = Path(__file__).parent.parent.parent / ".env"
-    write_env_file(secrets_dict, env_path)
+    write_env_file(generated_secrets, env_path)
     logger.info(f"\n✓ Secrets written to: {env_path}")
     logger.info("⚠️  Remember to update your database and MinIO with new credentials!")

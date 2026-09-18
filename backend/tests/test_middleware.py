@@ -1,69 +1,93 @@
-"""Tests for middleware functionality."""
+"""Tests for proxy_headers_middleware in app/main.py."""
 
-from typing import Any, Dict
-
+import pytest
 from fastapi import status
 
 
-def test_proxy_headers_middleware_reraises_http_exception(client: Any) -> None:
-    """Test HTTPException is properly re-raised by proxy_headers_middleware."""
-    # Test 404 Not Found - Regression test for TypeError bug
-    response = client.get("/api/v1/recordings/999999", headers={"X-Forwarded-Proto": "https"})
+def test_http_exceptions_pass_through_middleware(client, auth_headers):
+    """Endpoint HTTP exceptions reach the client unchanged (regression: TypeError)."""
+    response = client.get(
+        "/api/v1/recordings/999999", headers={**auth_headers, "X-Forwarded-Proto": "https"}
+    )
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert "detail" in response.json()
+    assert response.json() == {"detail": "Recording not found"}
 
 
-def test_proxy_headers_middleware_handles_unauthorized(client: Any) -> None:
-    """Test that 401 Unauthorized errors are properly handled through middleware."""
-    # Try to access protected endpoint without auth
-    response = client.get("/api/v1/projects", headers={"X-Forwarded-Proto": "https"})
+def test_unauthenticated_request_returns_401(client):
+    response = client.get("/api/v1/projects/", headers={"X-Forwarded-Proto": "https"})
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-def test_proxy_headers_middleware_handles_forbidden(
-    client: Any, auth_headers: Dict[str, str]
-) -> None:
-    """Test that 403 Forbidden errors are properly handled through middleware."""
-    # Try to access admin-only endpoint as regular user
-    response = client.delete(
-        "/api/v1/users/1",  # Assuming this is admin-only
-        headers={**auth_headers, "X-Forwarded-Proto": "https"},
+def test_invalid_token_returns_403(client):
+    response = client.get(
+        "/api/v1/projects/",
+        headers={"Authorization": "Bearer not-a-jwt", "X-Forwarded-Proto": "https"},
     )
-    # Should be either 403 Forbidden or 404 Not Found depending on permissions
-    assert response.status_code in [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND]
+    assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
-def test_proxy_headers_middleware_updates_scheme(client: Any, test_user: Any) -> None:
-    """Test that middleware correctly updates request scheme from proxy headers."""
-    # Login endpoint should work with proper headers
+def test_non_admin_forbidden_on_admin_endpoint(client, auth_headers):
+    response = client.get("/api/v1/users/", headers={**auth_headers, "X-Forwarded-Proto": "https"})
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_login_works_behind_proxy(client, test_user):
     response = client.post(
         "/api/v1/auth/login",
-        json={"username": test_user.email, "password": "testpassword"},
+        data={"username": test_user.email, "password": "testpassword"},
         headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "example.com"},
     )
     assert response.status_code == status.HTTP_200_OK
-    assert "access_token" in response.json()
+    token = response.json()["access_token"]
+
+    me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == status.HTTP_200_OK
+    assert me.json()["email"] == test_user.email
 
 
-def test_proxy_headers_middleware_handles_host_with_port(client: Any) -> None:
-    """Test that middleware correctly strips port from forwarded host."""
-    response = client.get(
-        "/api/v1/health",
-        headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "example.com:443"},
+def test_login_rejects_wrong_password(client, test_user):
+    response = client.post(
+        "/api/v1/auth/login",
+        data={"username": test_user.email, "password": "wrong"},  # pragma: allowlist secret
     )
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_redirect_uses_forwarded_host_without_port(client):
+    """Slash redirects point at the public host (port stripped) over https."""
+    response = client.get(
+        "/api/v1/projects",
+        headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "example.com:8443"},
+        follow_redirects=False,
+    )
+    assert response.status_code == status.HTTP_307_TEMPORARY_REDIRECT
+    assert response.headers["location"] == "https://example.com/api/v1/projects/"
+
+
+def test_redirect_is_upgraded_to_https(client):
+    """Even when the proxy reports plain http, redirect locations are rewritten to https."""
+    response = client.get(
+        "/api/v1/projects",
+        headers={"X-Forwarded-Proto": "http", "X-Forwarded-Host": "example.com"},
+        follow_redirects=False,
+    )
+    assert response.status_code == status.HTTP_307_TEMPORARY_REDIRECT
+    assert response.headers["location"] == "https://example.com/api/v1/projects/"
+
+
+def test_scheme_defaults_to_https_without_forwarded_proto(client):
+    response = client.get("/api/v1/projects", follow_redirects=False)
+    assert response.status_code == status.HTTP_307_TEMPORARY_REDIRECT
+    assert response.headers["location"].startswith("https://")
+
+
+def test_health_endpoint(client):
+    response = client.get("/health", headers={"X-Forwarded-Host": "example.com:443"})
     assert response.status_code == status.HTTP_200_OK
+    assert response.json()["status"] == "ok"
 
 
-def test_proxy_headers_middleware_defaults_to_https(client: Any) -> None:
-    """Test that middleware defaults to HTTPS when X-Forwarded-Proto not provided."""
-    response = client.get("/api/v1/health")
-    assert response.status_code == status.HTTP_200_OK
-
-
-def test_middleware_allows_successful_requests(
-    client: Any, auth_headers: Dict[str, str], test_project: Any
-) -> None:
-    """Test that middleware doesn't interfere with successful requests."""
+def test_successful_request_is_untouched(client, auth_headers, test_project):
     response = client.get(
         f"/api/v1/projects/{test_project.id}",
         headers={**auth_headers, "X-Forwarded-Proto": "https"},

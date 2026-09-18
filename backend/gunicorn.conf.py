@@ -1,6 +1,6 @@
-"""
-Gunicorn configuration for production.
-"""
+"""Gunicorn configuration for production."""
+
+from typing import Any
 
 # Server socket
 bind = "0.0.0.0:8000"
@@ -46,21 +46,21 @@ tmp_upload_dir = None
 # statsd_prefix = "bsmarker"
 
 
-def when_ready(server):
+def when_ready(server: Any) -> None:
     server.log.info("Server is ready. Spawning workers")
 
 
-def worker_int(worker):
+def worker_int(worker: Any) -> None:
     worker.log.info("Worker received INT or QUIT signal")
 
 
-def pre_fork(server, worker):
+def pre_fork(server: Any, worker: Any) -> None:
     server.log.info(f"Worker spawned (pid: {worker.pid})")
 
 
-def pre_exec(server):
+def pre_exec(server: Any) -> None:
     server.log.info("Forked child, re-executing.")
 
 
-def on_exit(server):
+def on_exit(server: Any) -> None:
     server.log.info("Server is shutting down")

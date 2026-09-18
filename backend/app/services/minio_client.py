@@ -1,6 +1,7 @@
 import logging
 import time
 from io import BytesIO
+from typing import Optional
 
 from minio import Minio
 from minio.error import S3Error
@@ -12,12 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 class MinioClient:
-    def __init__(self):
+    """Thin wrapper around the MinIO client with retries and bucket setup."""
+
+    def __init__(self) -> None:
+        """Connect to MinIO and make sure the required buckets exist."""
         self._create_client()
         self._ensure_buckets()
 
-    def _create_client(self):
-        """Create or recreate the MinIO client connection"""
+    def _create_client(self) -> None:
+        """Create or recreate the MinIO client connection."""
         try:
             self.client = Minio(
                 settings.MINIO_ENDPOINT,
@@ -30,7 +34,7 @@ class MinioClient:
             logger.error(f"Error creating MinIO client: {e}")
             raise
 
-    def _ensure_buckets(self):
+    def _ensure_buckets(self) -> None:
         """Ensure required buckets exist. Fails fast if bucket creation fails."""
         buckets = [settings.MINIO_BUCKET_RECORDINGS, settings.MINIO_BUCKET_SPECTROGRAMS]
         for bucket in buckets:
@@ -54,7 +58,11 @@ class MinioClient:
         data: bytes,
         content_type: str = "application/octet-stream",
         max_retries: int = 3,
-    ):
+    ) -> Optional[bool]:
+        """Upload bytes to a bucket, retrying on connection errors.
+
+        Returns True on success (None only if ``max_retries`` <= 0); errors are re-raised.
+        """
         for attempt in range(max_retries):
             try:
                 # Ensure bucket exists before uploading
@@ -73,7 +81,8 @@ class MinioClient:
                 return True
             except (MaxRetryError, ResponseError) as e:
                 logger.warning(
-                    f"Connection error on attempt {attempt + 1}/{max_retries} for {object_name}: {e}"
+                    f"Connection error on attempt {attempt + 1}/{max_retries} "
+                    f"for {object_name}: {e}"
                 )
                 if attempt < max_retries - 1:
                     time.sleep(2**attempt)  # Exponential backoff
@@ -91,6 +100,7 @@ class MinioClient:
             except Exception as e:
                 logger.error(f"Unexpected error uploading file {object_name}: {e}")
                 raise
+        return None  # only reached when max_retries <= 0
 
     def download_file(self, bucket_name: str, object_name: str) -> bytes:
         """
@@ -118,7 +128,8 @@ class MinioClient:
                 response.close()
                 response.release_conn()
 
-    def delete_file(self, bucket_name: str, object_name: str):
+    def delete_file(self, bucket_name: str, object_name: str) -> bool:
+        """Delete an object; return False (and log) on S3 errors."""
         try:
             self.client.remove_object(bucket_name, object_name)
             return True
@@ -126,7 +137,7 @@ class MinioClient:
             logger.error(f"Error deleting file: {e}")
             return False
 
-    def get_file(self, bucket_name: str, object_name: str):
+    def get_file(self, bucket_name: str, object_name: str) -> BytesIO:
         """Get file as a stream for use with StreamingResponse."""
         response = None
         try:
@@ -140,7 +151,10 @@ class MinioClient:
                 response.close()
                 response.release_conn()
 
-    def get_presigned_url(self, bucket_name: str, object_name: str, expiry: int = 3600):
+    def get_presigned_url(
+        self, bucket_name: str, object_name: str, expiry: int = 3600
+    ) -> Optional[str]:
+        """Return a presigned GET URL, or None on S3 errors."""
         try:
             return self.client.presigned_get_object(bucket_name, object_name, expires=expiry)
         except S3Error as e:

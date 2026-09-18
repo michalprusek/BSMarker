@@ -415,17 +415,6 @@ export const recordingService = {
     await api.post(`/recordings/${projectId}/bulk-delete`, recordingIds);
   },
 
-  getRecordingUrl: (filePath: string): string => {
-    const token = localStorage.getItem("token");
-    const baseUrl = API_URL.replace(/\/api\/v1$/, "");
-    return `${baseUrl}/files/recordings/${filePath}?token=${token}`;
-  },
-
-  /**
-   * Get spectrogram URL for a recording
-   * @returns Object with url (if available), status, and optional error message
-   */
-
   toggleFinished: async (recordingId: number): Promise<Recording> => {
     const response = await api.patch<Recording>(
       `/recordings/${recordingId}/finished`,

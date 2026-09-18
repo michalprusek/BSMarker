@@ -1,17 +1,18 @@
 """
 Redis caching service for BSMarker application.
+
 Provides efficient caching for database queries and API responses.
 """
 
 import hashlib
 import json
 import logging
-from datetime import timedelta
-from typing import Any, List, Optional, Union
+from typing import Any, Optional
 
 import redis
-from app.core.config import settings
 from redis.exceptions import RedisError
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,16 +20,17 @@ logger = logging.getLogger(__name__)
 class CacheService:
     """
     Redis-based caching service with automatic serialization and TTL management.
+
     Implements cache-aside pattern for optimal performance with large datasets.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Redis connection with connection pooling."""
-        self.redis_client = None
+        self.redis_client: Optional[redis.Redis] = None
         self.enabled = True
         self._initialize_connection()
 
-    def _initialize_connection(self):
+    def _initialize_connection(self) -> None:
         """Initialize Redis connection with retry logic."""
         try:
             # Parse Redis URL and create connection
@@ -61,7 +63,7 @@ class CacheService:
             logger.warning(f"Redis cache service unavailable: {str(e)}. Running without cache.")
             self.enabled = False
 
-    def _generate_cache_key(self, prefix: str, **kwargs) -> str:
+    def _generate_cache_key(self, prefix: str, **kwargs: Any) -> str:
         """
         Generate a consistent cache key based on prefix and parameters.
 
@@ -77,7 +79,7 @@ class CacheService:
         param_str = json.dumps(sorted_params, sort_keys=True, default=str)
 
         # Create hash for long keys
-        key_hash = hashlib.md5(param_str.encode()).hexdigest()[:16]
+        key_hash = hashlib.md5(param_str.encode(), usedforsecurity=False).hexdigest()[:16]
 
         return f"bsmarker:cache:{prefix}:{key_hash}"
 
@@ -186,8 +188,8 @@ class CacheService:
         min_duration: Optional[float] = None,
         max_duration: Optional[float] = None,
         annotation_status: Optional[str] = None,
-        sort_by: str = "created_at",
-        sort_order: str = "desc",
+        sort_by: Optional[str] = "created_at",
+        sort_order: Optional[str] = "desc",
     ) -> Optional[dict]:
         """
         Get cached recordings for a project.
@@ -219,8 +221,8 @@ class CacheService:
         min_duration: Optional[float] = None,
         max_duration: Optional[float] = None,
         annotation_status: Optional[str] = None,
-        sort_by: str = "created_at",
-        sort_order: str = "desc",
+        sort_by: Optional[str] = "created_at",
+        sort_order: Optional[str] = "desc",
         ttl: int = 300,
     ) -> bool:
         """
@@ -231,6 +233,12 @@ class CacheService:
             skip: Pagination offset
             limit: Pagination limit
             data: Recording data to cache
+            search: Filename search filter
+            min_duration: Minimum duration filter
+            max_duration: Maximum duration filter
+            annotation_status: Annotation status filter
+            sort_by: Sort field
+            sort_order: Sort order
             ttl: Cache TTL in seconds
 
         Returns:
@@ -250,14 +258,14 @@ class CacheService:
         )
         return self.set(key, data, ttl)
 
-    def invalidate_project_recordings(self, project_id: int):
+    def invalidate_project_recordings(self, project_id: int) -> None:
         """
         Invalidate all cached recordings for a project.
 
         Args:
             project_id: Project ID
         """
-        pattern = f"bsmarker:cache:recordings:*"
+        pattern = "bsmarker:cache:recordings:*"
         # More targeted invalidation would require storing project_id in key
         deleted = self.delete_pattern(pattern)
         logger.info(f"Invalidated {deleted} recording cache entries for project {project_id}")
@@ -290,7 +298,7 @@ class CacheService:
         key = f"bsmarker:cache:recording:{recording_id}"
         return self.set(key, data, ttl)
 
-    def invalidate_recording(self, recording_id: int):
+    def invalidate_recording(self, recording_id: int) -> None:
         """
         Invalidate cached data for a specific recording.
 

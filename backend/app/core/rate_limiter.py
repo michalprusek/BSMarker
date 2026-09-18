@@ -6,6 +6,7 @@ and brute force attempts. It uses slowapi with Redis as the storage backend.
 """
 
 import logging
+from typing import Optional
 
 import redis
 from fastapi import Request
@@ -22,14 +23,15 @@ logger = logging.getLogger(__name__)
 RATE_LIMITING_DEGRADED = False
 
 # Initialize Redis connection
+redis_client: Optional["redis.Redis[str]"]
 try:
     redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
     # Test connection
     redis_client.ping()
     logger.info("Redis connection established for rate limiting")
-except Exception as e:
+except Exception as redis_error:
     logger.critical(
-        f"RATE LIMITING DEGRADED: Failed to connect to Redis: {e}. "
+        f"RATE LIMITING DEGRADED: Failed to connect to Redis: {redis_error}. "
         "Using in-memory storage - rate limits will NOT be shared across instances!"
     )
     redis_client = None
@@ -79,7 +81,7 @@ def get_identifier(request: Request) -> str:
 
 def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     """
-    Custom handler for rate limit exceeded exceptions.
+    Handle rate limit exceeded exceptions.
 
     Returns a structured error response with retry information.
 

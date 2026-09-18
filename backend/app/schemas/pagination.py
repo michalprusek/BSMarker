@@ -1,5 +1,6 @@
 """
 Pagination schemas for API responses.
+
 Provides consistent pagination metadata across all endpoints.
 """
 
@@ -31,12 +32,15 @@ class PaginatedResponse(BaseModel, Generic[T]):
     pagination: PaginationMetadata
 
     class Config:
+        """Pydantic model configuration."""
+
         from_attributes = True
 
 
 class PaginationParams(BaseModel):
     """
     Standardized pagination parameters for API endpoints.
+
     Provides consistent validation and defaults.
     """
 

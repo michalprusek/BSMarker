@@ -1,9 +1,10 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, relationship
+from sqlalchemy.sql import func
 
 from app.db.base_class import Base
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 
 if TYPE_CHECKING:
     from app.models.recording import Recording
@@ -20,5 +21,7 @@ class Project(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    owner = relationship("User", back_populates="projects")
-    recordings = relationship("Recording", back_populates="project", cascade="all, delete-orphan")
+    owner: Mapped["User"] = relationship("User", back_populates="projects")
+    recordings: Mapped[List["Recording"]] = relationship(
+        "Recording", back_populates="project", cascade="all, delete-orphan"
+    )
