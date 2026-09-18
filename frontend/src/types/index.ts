@@ -18,8 +18,6 @@ export interface Project {
   updated_at?: string;
 }
 
-export type SpectrogramStatus = 'pending' | 'processing' | 'completed' | 'failed';
-
 export interface Recording {
   id: number;
   filename: string;
@@ -31,19 +29,8 @@ export interface Recording {
   is_finished?: boolean;
   created_at: string;
   annotation_count?: number;
-  spectrogram_status?: SpectrogramStatus | null;
   /** Whether the current user may save annotations (only on single-recording responses). */
   can_edit?: boolean | null;
-}
-
-export interface Spectrogram {
-  id: number;
-  recording_id: number;
-  image_path: string;
-  parameters: any;
-  width: number;
-  height: number;
-  created_at: string;
 }
 
 export interface BoundingBox {

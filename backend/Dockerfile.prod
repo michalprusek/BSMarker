@@ -22,7 +22,8 @@ COPY requirements.txt .
 
 # Install Python dependencies
 # Note: Remove --mount for compatibility with legacy builder
-RUN pip install --upgrade pip setuptools wheel && \
+# setuptools < 81: librosa 0.10 imports pkg_resources, which newer setuptools no longer ships
+RUN pip install --upgrade pip wheel "setuptools<81" && \
     pip install --no-cache-dir -r requirements.txt
 
 # ============================================

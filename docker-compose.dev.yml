@@ -73,46 +73,6 @@ services:
         condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-  celery-worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_dev@postgres:5432/bsmarker_db
-      REDIS_URL: redis://redis:6379
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-      MINIO_BUCKET_NAME: bsmarker
-      LOG_LEVEL: DEBUG
-    volumes:
-      - ./backend:/app  # Hot reload
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    command: celery -A app.core.celery_app worker --loglevel=debug
-
-  celery-beat:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    environment:
-      DATABASE_URL: postgresql://bsmarker:bsmarker_dev@postgres:5432/bsmarker_db
-      REDIS_URL: redis://redis:6379
-      LOG_LEVEL: DEBUG
-    volumes:
-      - ./backend:/app  # Hot reload
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: celery -A app.core.celery_app beat --loglevel=debug
-
   frontend:
     build:
       context: ./frontend
@@ -124,8 +84,8 @@ services:
       VITE_API_BASE_URL: ${API_URL:-http://localhost/api}
       VITE_ML_SERVICE_URL: ${API_URL:-http://localhost/api/ml}
       WDS_SOCKET_URL: ${WDS_SOCKET_URL:-ws://localhost/ws}
-      DANGEROUSLY_DISABLE_HOST_CHECK: true  # Allow any host (dev mode only)
-      WATCHPACK_POLLING: true  # Enable file watching in Docker
+      DANGEROUSLY_DISABLE_HOST_CHECK: "true"  # Allow any host (dev mode only)
+      WATCHPACK_POLLING: "true"  # Enable file watching in Docker
     volumes:
       - ./frontend:/app
       - /app/node_modules  # Prevent overwriting node_modules

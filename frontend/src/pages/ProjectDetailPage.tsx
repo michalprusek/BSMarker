@@ -2,10 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Project, Recording } from "../types";
 import { PaginatedResponse, PaginationMetadata } from "../types/pagination";
-import {
-  projectService,
-  recordingService,
-} from "../services/api";
+import { projectService, recordingService } from "../services/api";
 import toast from "react-hot-toast";
 import { VirtualizedRecordingList } from "../components/VirtualizedRecordingList";
 import UploadRecordingModal from "../components/UploadRecordingModal";
@@ -137,24 +134,6 @@ const ProjectDetailPageOptimized: React.FC = () => {
   useEffect(() => {
     fetchProjectData(1, false);
   }, [fetchProjectData]);
-
-  // Auto-polling for spectrogram generation progress
-  useEffect(() => {
-    const spectrogramGenerating = pagination.spectrogram_generating_count ?? 0;
-    const spectrogramQueued = pagination.spectrogram_queued_count ?? 0;
-    const shouldPoll = (spectrogramGenerating > 0) || (spectrogramQueued > 0);
-
-    if (!shouldPoll) {
-      return; // No polling needed
-    }
-
-    const pollInterval = setInterval(() => {
-      // Poll without showing loading indicator
-      fetchProjectData(pagination.page, false);
-    }, 10000); // Poll every 10 seconds
-
-    return () => clearInterval(pollInterval);
-  }, [pagination.spectrogram_generating_count, pagination.spectrogram_queued_count, pagination.page, fetchProjectData]);
 
   // Handle infinite scroll
   const handleLoadMore = useCallback(
@@ -303,7 +282,9 @@ const ProjectDetailPageOptimized: React.FC = () => {
       toast.success("Annotations downloaded successfully");
     } catch (error) {
       console.error("Failed to download annotations:", error);
-      toast.error("Failed to download annotations. The export may have timed out for large projects.");
+      toast.error(
+        "Failed to download annotations. The export may have timed out for large projects.",
+      );
     } finally {
       setIsDownloading(false);
       setDownloadProgress(0);
@@ -362,7 +343,9 @@ const ProjectDetailPageOptimized: React.FC = () => {
       toast.success("Full project exported successfully");
     } catch (error) {
       console.error("Failed to export project:", error);
-      toast.error("Failed to export project. Large exports may take several minutes.");
+      toast.error(
+        "Failed to export project. Large exports may take several minutes.",
+      );
     } finally {
       setIsDownloadingFull(false);
       setDownloadProgress(0);
@@ -384,10 +367,6 @@ const ProjectDetailPageOptimized: React.FC = () => {
     const finishedCount = pagination.finished_count ?? 0;
     const annotatedCount = pagination.annotated_count ?? 0;
     const totalDuration = pagination.total_duration ?? 0;
-    const spectrogramReady = pagination.spectrogram_ready_count ?? 0;
-    const spectrogramGenerating = pagination.spectrogram_generating_count ?? 0;
-    const spectrogramQueued = pagination.spectrogram_queued_count ?? 0;
-    const spectrogramFailed = pagination.spectrogram_failed_count ?? 0;
 
     return {
       totalRecordings: pagination.total,
@@ -402,10 +381,6 @@ const ProjectDetailPageOptimized: React.FC = () => {
         pagination.total > 0
           ? Math.round((annotatedCount / pagination.total) * 100)
           : 0,
-      spectrogramReady,
-      spectrogramGenerating,
-      spectrogramQueued,
-      spectrogramFailed,
     };
   }, [pagination]);
 
@@ -448,7 +423,7 @@ const ProjectDetailPageOptimized: React.FC = () => {
           )}
 
           {/* Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-6 gap-4 mt-4">
+          <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mt-4">
             <div className="bg-gray-50 rounded p-3">
               <p className="text-sm text-gray-600">Total Recordings</p>
               <p className="text-2xl font-semibold text-gray-900">
@@ -466,29 +441,6 @@ const ProjectDetailPageOptimized: React.FC = () => {
               <p className="text-2xl font-semibold text-yellow-600">
                 {stats.annotatedRecordings}
               </p>
-            </div>
-            <div className="bg-gray-50 rounded p-3">
-              <p className="text-sm text-gray-600">Spectrograms</p>
-              <div className="mt-1 space-y-1">
-                <p className="text-sm text-green-700">
-                  ✓ {stats.spectrogramReady} ready
-                </p>
-                {stats.spectrogramGenerating > 0 && (
-                  <p className="text-sm text-purple-700">
-                    ⟳ {stats.spectrogramGenerating} generating
-                  </p>
-                )}
-                {stats.spectrogramQueued > 0 && (
-                  <p className="text-sm text-blue-700">
-                    ⏱ {stats.spectrogramQueued} queued
-                  </p>
-                )}
-                {stats.spectrogramFailed > 0 && (
-                  <p className="text-sm text-red-700">
-                    ✗ {stats.spectrogramFailed} failed
-                  </p>
-                )}
-              </div>
             </div>
             <div className="bg-gray-50 rounded p-3">
               <p className="text-sm text-gray-600">Total Duration</p>

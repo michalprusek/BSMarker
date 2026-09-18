@@ -146,46 +146,6 @@ class TestRecordingUpload:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "too large" in response.json()["detail"].lower()
 
-    def test_upload_triggers_spectrogram_task(self, client, test_db, test_project, auth_headers):
-        """Test that upload triggers spectrogram generation task."""
-        project_id = test_project.id
-
-        audio_content = b"fake mp3 content"
-        audio_file = io.BytesIO(audio_content)
-
-        # Mock librosa and other dependencies
-        with (
-            patch("app.api.api_v1.endpoints.recordings.librosa") as mock_librosa,
-            patch("app.api.api_v1.endpoints.recordings.minio_client") as mock_minio,
-            patch("app.api.api_v1.endpoints.recordings.secure_temp_file") as mock_temp,
-            patch("builtins.open", create=True),
-        ):
-
-            mock_librosa.load.return_value = (np.random.random(44100), 44100)
-            mock_librosa.get_duration.return_value = 1.0
-            mock_minio.put_file.return_value = True
-            mock_temp.return_value.__enter__.return_value = "/tmp/test.mp3"
-
-            # Mock Celery task
-            with patch(
-                "app.api.api_v1.endpoints.recordings.generate_spectrogram_task"
-            ) as mock_task:
-                mock_task.delay.return_value.id = "test-task-id"
-
-                response = client.post(
-                    f"/api/v1/recordings/{project_id}/upload",
-                    files={"file": ("test.mp3", audio_file, "audio/mpeg")},
-                    headers=auth_headers,
-                )
-
-                assert response.status_code == status.HTTP_200_OK
-
-                # Verify task was queued
-                mock_task.delay.assert_called_once()
-                called_recording_id = mock_task.delay.call_args[0][0]
-                assert isinstance(called_recording_id, int)
-
-
 class TestBackfillDurations:
     """Test backfill missing durations endpoint."""
 

@@ -67,56 +67,6 @@ services:
     restart: unless-stopped
     command: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 
-  celery-worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    environment:
-      DATABASE_URL: postgresql://${DB_USER:-bsmarker}:${DB_PASSWORD:-bsmarker_dev}@postgres:5432/${DB_NAME:-bsmarker_db}
-      REDIS_URL: redis://redis:6379
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKET_NAME: bsmarker
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-production}
-      FIRST_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
-      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
-      LOG_LEVEL: INFO
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    restart: unless-stopped
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
-
-  celery-beat:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    environment:
-      DATABASE_URL: postgresql://${DB_USER:-bsmarker}:${DB_PASSWORD:-bsmarker_dev}@postgres:5432/${DB_NAME:-bsmarker_db}
-      REDIS_URL: redis://redis:6379
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKET_NAME: bsmarker
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-in-production}
-      FIRST_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
-      FIRST_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
-      LOG_LEVEL: INFO
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    command: celery -A app.core.celery_app beat --loglevel=info
-
   nginx:
     build:
       context: ./frontend
