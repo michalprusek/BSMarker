@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useDismiss } from "./useDismiss";
 
 interface LabelEditorProps {
   title: string;
@@ -12,6 +13,9 @@ interface LabelEditorProps {
 export const LabelEditor: React.FC<LabelEditorProps> = ({ title, initial, suggestions, onApply, onClose }) => {
   const [value, setValue] = useState(initial);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // The spectrogram doesn't take focus, so blur alone misses clicks into it.
+  useDismiss(panelRef, onClose);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -19,7 +23,7 @@ export const LabelEditor: React.FC<LabelEditorProps> = ({ title, initial, sugges
   }, []);
 
   return (
-    <div className="absolute left-1/2 top-3 -translate-x-1/2 z-20 bg-white border border-gray-200 shadow-lg rounded-lg p-3 w-72">
+    <div ref={panelRef} className="absolute left-1/2 top-3 -translate-x-1/2 z-30 bg-white border border-gray-200 shadow-lg rounded-lg p-3 w-72">
       <div className="text-xs text-gray-500 mb-1.5">{title}</div>
       <input
         ref={inputRef}

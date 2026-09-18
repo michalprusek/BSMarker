@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Cog6ToothIcon,
@@ -8,6 +8,7 @@ import {
   ArrowUturnRightIcon,
   ArrowsPointingOutIcon,
   CheckIcon,
+  ChevronDoubleRightIcon,
   ExclamationTriangleIcon,
   ListBulletIcon,
   LockClosedIcon,
@@ -17,19 +18,25 @@ import {
 } from "@heroicons/react/24/solid";
 import { Recording } from "../../types";
 import { EditorEngine, EditorSnapshot } from "../EditorEngine";
+import { NO_LABEL } from "../core/boxes";
 import { SaveStatus } from "../edit/Autosaver";
 import { FFT_SIZES, FftSize } from "../dsp/tiles";
 import { PALETTES, PaletteName } from "../render/palettes";
 import { formatDuration, formatTime } from "../render/ticks";
 import { LabelChip } from "./LabelChip";
+import { Tip } from "./Tip";
+import { useDismiss } from "./useDismiss";
 
 const PLAYBACK_RATES = [0.125, 0.25, 0.5, 1, 2];
 
 export const BUTTON =
   "p-1.5 rounded hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-transparent";
+/** A button that switches something on and off: highlighted while on. */
+export const toggleButton = (on: boolean) =>
+  `${BUTTON} flex items-center gap-1 ${on ? "bg-blue-100 text-blue-700 hover:bg-blue-100" : "text-gray-600"}`;
 const SELECT =
   "text-xs border border-gray-300 rounded px-1.5 py-1 bg-white disabled:opacity-50";
-const DIVIDER = <div className="h-6 w-px bg-gray-200 shrink-0" />;
+const DIVIDER = <div className="h-6 w-px bg-gray-200 shrink-0 mx-1" />;
 
 /**
  * Toolbar buttons must not take keyboard focus, otherwise Space would both
@@ -44,6 +51,7 @@ interface ToolbarProps {
   saveStatus: SaveStatus;
   /** Previous/next recording and the Finished switch. */
   navigation: React.ReactNode;
+  helpButtonRef: React.RefObject<HTMLButtonElement>;
   onHelp: () => void;
   onEditActiveLabel: () => void;
   listOpen: boolean;
@@ -56,6 +64,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   snap,
   saveStatus,
   navigation,
+  helpButtonRef,
   onHelp,
   onEditActiveLabel,
   listOpen,
@@ -63,19 +72,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 }) => {
   const disabled = !engine || !snap;
   const [showDisplay, setShowDisplay] = useState(false);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const loop = snap?.loop ?? false;
+  const follow = snap?.settings.followPlayback ?? true;
 
   return (
-    <div className="relative flex items-center gap-3 px-3 h-12 shrink-0">
-      <Link
-        to={recording ? `/projects/${recording.project_id}` : "/projects"}
-        className={BUTTON}
-        title="Back to project"
-      >
-        <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
-      </Link>
-      <div className="min-w-0">
+    <div className="relative flex items-center gap-1 px-3 h-12 shrink-0 whitespace-nowrap">
+      {/* Recording */}
+      <Tip title="Back to project" body="The recording list of this project.">
+        <Link
+          to={recording ? `/projects/${recording.project_id}` : "/projects"}
+          className={BUTTON}
+        >
+          <ArrowLeftIcon className="h-5 w-5 text-gray-600" />
+        </Link>
+      </Tip>
+      <div className="min-w-0 ml-1 mr-2">
         <div
-          className="text-sm font-semibold truncate max-w-[16rem]"
+          className="text-sm font-semibold truncate max-w-[12rem] 2xl:max-w-[20rem]"
           title={recording?.original_filename}
         >
           {recording?.original_filename ?? "…"}
@@ -92,149 +106,224 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       {DIVIDER}
 
       {/* Playback */}
-      <button
-        className={BUTTON}
-        disabled={disabled}
-        onMouseDown={keepFocus}
-        onClick={() => engine?.togglePlay()}
-        title="Play / pause (Space)"
+      <Tip
+        title={snap?.playing ? "Pause" : "Play"}
+        body={
+          snap?.playing
+            ? "Stops playback where it is."
+            : "Plays from the cursor. Enter plays only the selected box."
+        }
+        keys="Space"
       >
-        {snap?.playing ? (
-          <PauseIcon className="h-5 w-5" />
-        ) : (
-          <PlayIcon className="h-5 w-5" />
-        )}
-      </button>
-      <span className="text-xs tabular-nums w-[4.5rem]">
+        <button
+          className={BUTTON}
+          disabled={disabled}
+          onMouseDown={keepFocus}
+          onClick={() => engine?.togglePlay()}
+        >
+          {snap?.playing ? (
+            <PauseIcon className="h-5 w-5" />
+          ) : (
+            <PlayIcon className="h-5 w-5" />
+          )}
+        </button>
+      </Tip>
+      <span className="text-xs tabular-nums w-[4.5rem] text-gray-700">
         {snap ? formatTime(snap.position, 0.001) : "–"}
       </span>
-      <select
-        className={SELECT}
-        disabled={disabled}
-        value={snap?.playbackRate ?? 1}
-        onChange={(e) => engine?.setPlaybackRate(Number(e.target.value))}
-        title="Playback speed (slower = lower pitch)"
+      <Tip
+        title="Playback speed"
+        body="Slower playback also lowers the pitch — handy for fast trills."
       >
-        {PLAYBACK_RATES.map((r) => (
-          <option key={r} value={r}>
-            {r}×
-          </option>
-        ))}
-      </select>
-      <button
-        className={`${BUTTON} ${snap?.loop ? "bg-blue-100 text-blue-700" : ""}`}
-        disabled={disabled}
-        onMouseDown={keepFocus}
-        onClick={() => engine?.toggleLoop()}
-        title="Loop the selection (Shift+Enter plays it looped)"
-      >
-        <ArrowPathRoundedSquareIcon className="h-5 w-5" />
-      </button>
-      <label
-        className="flex items-center gap-1 text-xs text-gray-600"
-        title="Scroll the view with playback"
-      >
-        <input
-          type="checkbox"
+        <select
+          className={`${SELECT} w-16`}
           disabled={disabled}
-          checked={snap?.settings.followPlayback ?? true}
-          onChange={(e) => engine?.setFollowPlayback(e.target.checked)}
-        />
-        Follow
-      </label>
+          value={snap?.playbackRate ?? 1}
+          onChange={(e) => engine?.setPlaybackRate(Number(e.target.value))}
+        >
+          {PLAYBACK_RATES.map((r) => (
+            <option key={r} value={r}>
+              {r}×
+            </option>
+          ))}
+        </select>
+      </Tip>
+      <Tip
+        title={loop ? "Loop: on" : "Loop: off"}
+        body={
+          loop
+            ? "Playback repeats until you stop it. Click to play just once."
+            : "Click to repeat playback in a loop — e.g. to listen to one syllable over and over."
+        }
+        keys="⇧ Enter"
+      >
+        <button
+          className={toggleButton(loop)}
+          disabled={disabled}
+          onMouseDown={keepFocus}
+          onClick={() => engine?.toggleLoop()}
+        >
+          <ArrowPathRoundedSquareIcon className="h-5 w-5" />
+        </button>
+      </Tip>
+      <Tip
+        title={follow ? "Follow playback: on" : "Follow playback: off"}
+        body={
+          follow
+            ? "The view scrolls along so the playhead stays visible. Click to keep the view still while playing."
+            : "The view stays still while playing. Click to let it scroll along with the playhead."
+        }
+      >
+        <button
+          className={`${toggleButton(follow)} pr-2`}
+          disabled={disabled}
+          onMouseDown={keepFocus}
+          onClick={() => engine?.setFollowPlayback(!follow)}
+        >
+          <ChevronDoubleRightIcon className="h-4 w-4" />
+          <span className="text-xs font-medium">Follow</span>
+        </button>
+      </Tip>
 
       {DIVIDER}
 
       {/* Editing */}
       {snap?.readOnly ? (
-        <span
-          className="flex items-center gap-1 px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs font-medium"
-          title="You can view and play this recording, but not change its annotations: the project belongs to another user. Ask an administrator for access."
+        <Tip
+          title="Read-only"
+          body="You can view and play this recording, but not change its annotations: the project belongs to another user. Ask an administrator for access."
         >
-          <LockClosedIcon className="h-4 w-4" /> Read-only
-        </span>
+          <span className="flex items-center gap-1 px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs font-medium">
+            <LockClosedIcon className="h-4 w-4" /> Read-only
+          </span>
+        </Tip>
       ) : (
         <>
-          <button
-            className={BUTTON}
-            disabled={!snap?.canUndo}
-            onMouseDown={keepFocus}
-            onClick={() => engine?.doc.undo()}
-            title="Undo (Ctrl+Z)"
-          >
-            <ArrowUturnLeftIcon className="h-5 w-5" />
-          </button>
-          <button
-            className={BUTTON}
-            disabled={!snap?.canRedo}
-            onMouseDown={keepFocus}
-            onClick={() => engine?.doc.redo()}
-            title="Redo (Ctrl+Shift+Z)"
-          >
-            <ArrowUturnRightIcon className="h-5 w-5" />
-          </button>
-          <div
-            className="flex items-center gap-1.5 text-xs text-gray-600"
-            title="Label for new boxes — press a letter A–Z to change it"
-          >
-            New boxes:
-            <LabelChip
-              label={snap?.activeLabel ?? "None"}
-              onClick={onEditActiveLabel}
-            />
-          </div>
+          <Tip title="Undo" keys="Ctrl Z">
+            <button
+              className={BUTTON}
+              disabled={!snap?.canUndo}
+              onMouseDown={keepFocus}
+              onClick={() => engine?.doc.undo()}
+            >
+              <ArrowUturnLeftIcon className="h-5 w-5" />
+            </button>
+          </Tip>
+          <Tip title="Redo" keys="Ctrl ⇧ Z">
+            <button
+              className={BUTTON}
+              disabled={!snap?.canRedo}
+              onMouseDown={keepFocus}
+              onClick={() => engine?.doc.redo()}
+            >
+              <ArrowUturnRightIcon className="h-5 w-5" />
+            </button>
+          </Tip>
+          <ActiveLabel
+            label={snap?.activeLabel ?? NO_LABEL}
+            onClick={onEditActiveLabel}
+          />
           <SaveIndicator status={saveStatus} />
         </>
       )}
 
       <div className="flex-1" />
 
-      {/* View */}
-      <button
-        className={BUTTON}
-        disabled={disabled}
-        onMouseDown={keepFocus}
-        onClick={() => engine?.fitAll()}
-        title="Show whole recording (0)"
+      {/* View and panels */}
+      <Tip
+        title="Show whole recording"
+        body="Zooms out to fit the recording."
+        keys="0"
       >
-        <ArrowsPointingOutIcon className="h-5 w-5" />
-      </button>
-      <span
-        className="text-xs text-gray-600 tabular-nums w-24"
-        title="Visible time span"
+        <button
+          className={BUTTON}
+          disabled={disabled}
+          onMouseDown={keepFocus}
+          onClick={() => engine?.fitAll()}
+        >
+          <ArrowsPointingOutIcon className="h-5 w-5 text-gray-600" />
+        </button>
+      </Tip>
+      <Tip
+        title="Display settings"
+        body="Frequency floor, FFT window, colours and contrast."
       >
-        {snap ? `view ${formatDuration(snap.t1 - snap.t0)}` : ""}
-      </span>
-      <button
-        className={`${BUTTON} ${showDisplay ? "bg-gray-100" : ""}`}
-        disabled={disabled}
-        onMouseDown={keepFocus}
-        onClick={() => setShowDisplay((v) => !v)}
-        title="Settings: frequency floor, FFT, colours, contrast"
+        <button
+          ref={settingsButtonRef}
+          className={`${BUTTON} ${showDisplay ? "bg-gray-100" : ""}`}
+          disabled={disabled}
+          onMouseDown={keepFocus}
+          onClick={() => setShowDisplay((v) => !v)}
+        >
+          <Cog6ToothIcon className="h-5 w-5 text-gray-600" />
+        </button>
+      </Tip>
+      <Tip
+        title={listOpen ? "Hide box list" : "Show box list"}
+        body="All boxes in time order, label filter, conflicts and listen-through review."
       >
-        <Cog6ToothIcon className="h-5 w-5 text-gray-600" />
-      </button>
-      <button
-        className={`${BUTTON} ${listOpen ? "bg-gray-100" : ""}`}
-        onMouseDown={keepFocus}
-        onClick={onToggleList}
-        title="List of boxes and conflicts"
-      >
-        <ListBulletIcon className="h-5 w-5 text-gray-600" />
-      </button>
-      <button
-        className={BUTTON}
-        onMouseDown={keepFocus}
-        onClick={onHelp}
-        title="Keyboard & mouse controls"
-      >
-        <QuestionMarkCircleIcon className="h-5 w-5 text-gray-500" />
-      </button>
+        <button
+          className={`${BUTTON} ${listOpen ? "bg-gray-100" : ""}`}
+          onMouseDown={keepFocus}
+          onClick={onToggleList}
+        >
+          <ListBulletIcon className="h-5 w-5 text-gray-600" />
+        </button>
+      </Tip>
+      <Tip title="Controls" body="All keyboard and mouse controls.">
+        <button
+          ref={helpButtonRef}
+          className={BUTTON}
+          onMouseDown={keepFocus}
+          onClick={onHelp}
+        >
+          <QuestionMarkCircleIcon className="h-5 w-5 text-gray-500" />
+        </button>
+      </Tip>
 
       {showDisplay && engine && snap && (
-        <DisplayPanel engine={engine} snap={snap} />
+        <DisplayPanel
+          engine={engine}
+          snap={snap}
+          toggleRef={settingsButtonRef}
+          onClose={() => setShowDisplay(false)}
+        />
       )}
     </div>
+  );
+};
+
+/** "New box: [A]" — the label that newly drawn boxes get. */
+const ActiveLabel: React.FC<{ label: string; onClick: () => void }> = ({
+  label,
+  onClick,
+}) => {
+  const none = label === NO_LABEL;
+  return (
+    <Tip
+      title="Label for new boxes"
+      body={
+        none
+          ? "New boxes get no label yet. With nothing selected, press a letter A–Z — or click to type a longer label."
+          : `New boxes get label ${label}. With nothing selected, press another letter A–Z — or click to type a longer label.`
+      }
+    >
+      <span className="flex items-center gap-1.5 text-xs text-gray-500 mx-2">
+        New box
+        {none ? (
+          <button
+            type="button"
+            onMouseDown={keepFocus}
+            onClick={onClick}
+            className="px-1.5 py-0.5 rounded border border-dashed border-gray-400 text-gray-400 text-xs font-semibold min-w-[1.5rem] hover:bg-gray-50"
+          >
+            –
+          </button>
+        ) : (
+          <LabelChip label={label} onClick={onClick} title="" />
+        )}
+      </span>
+    </Tip>
   );
 };
 
@@ -242,63 +331,83 @@ const SaveIndicator: React.FC<{ status: SaveStatus }> = ({ status }) => {
   switch (status) {
     case "saved":
       return (
-        <span
-          className="flex items-center gap-1 text-xs text-gray-500"
-          title="All changes are saved"
-        >
-          <CheckIcon className="h-4 w-4 text-green-600" /> Saved
-        </span>
+        <Tip title="Saved" body="All changes are saved. Saving is automatic.">
+          <span className="flex items-center gap-1 text-xs text-gray-500">
+            <CheckIcon className="h-4 w-4 text-green-600" /> Saved
+          </span>
+        </Tip>
       );
     case "unsaved":
       return (
-        <span
-          className="text-xs text-gray-500"
-          title="Changes are saved automatically"
+        <Tip
+          title="Unsaved changes"
+          body="They are saved automatically in a moment."
+          keys="Ctrl S"
         >
-          ● Unsaved
-        </span>
+          <span className="text-xs text-gray-500">● Unsaved</span>
+        </Tip>
       );
     case "saving":
       return <span className="text-xs text-gray-500">Saving…</span>;
     case "rejected":
       return (
-        <span
-          className="flex items-center gap-1 text-xs text-red-600 font-medium"
-          title="The server refused to save (no permission for this project). Your changes are kept in this browser."
+        <Tip
+          title="Can't save"
+          body="The server refused to save (no permission for this project). Your changes are kept in this browser."
         >
-          <ExclamationTriangleIcon className="h-4 w-4" /> Can't save — no
-          permission
-        </span>
+          <span className="flex items-center gap-1 text-xs text-red-600 font-medium">
+            <ExclamationTriangleIcon className="h-4 w-4" /> Can't save — no
+            permission
+          </span>
+        </Tip>
       );
     case "error":
       return (
-        <span
-          className="flex items-center gap-1 text-xs text-red-600"
-          title="Saving failed — retrying automatically. Ctrl+S to retry now."
+        <Tip
+          title="Not saved"
+          body="Saving failed — retrying automatically. Your changes are kept in this browser meanwhile."
+          keys="Ctrl S"
         >
-          <ExclamationTriangleIcon className="h-4 w-4" /> Not saved — retrying
-        </span>
+          <span className="flex items-center gap-1 text-xs text-red-600">
+            <ExclamationTriangleIcon className="h-4 w-4" /> Not saved — retrying
+          </span>
+        </Tip>
       );
   }
 };
 
+const SectionTitle: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => (
+  <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+    {children}
+  </div>
+);
+
 const DisplayPanel: React.FC<{
   engine: EditorEngine;
   snap: EditorSnapshot;
-}> = ({ engine, snap }) => {
+  toggleRef: React.RefObject<HTMLButtonElement>;
+  onClose: () => void;
+}> = ({ engine, snap, toggleRef, onClose }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useDismiss(ref, onClose, [toggleRef]);
   const { levels } = snap.settings;
   const windowMs = (snap.settings.fftSize / snap.sampleRate) * 1000;
+  const binHz = snap.sampleRate / snap.settings.fftSize;
   return (
-    <div className="absolute right-12 top-11 z-20 w-72 bg-white border border-gray-200 shadow-lg rounded-lg p-3 text-xs text-gray-700 space-y-3">
+    <div
+      ref={ref}
+      className="absolute right-12 top-11 z-30 w-72 whitespace-normal bg-white border border-gray-200 shadow-lg rounded-lg p-3 text-xs text-gray-700 space-y-3"
+    >
+      <SectionTitle>Annotation</SectionTitle>
       <FloorSetting engine={engine} snap={snap} />
+
       <hr className="border-gray-200" />
-      <label
-        className="flex items-center justify-between"
-        title="Smaller = sharper in time, larger = sharper in frequency"
-      >
-        <span>FFT window</span>
-        <span className="flex items-center gap-2">
-          <span className="text-gray-400">{windowMs.toFixed(1)} ms</span>
+      <SectionTitle>Spectrogram</SectionTitle>
+      <div className="space-y-1">
+        <label className="flex items-center justify-between">
+          <span>FFT window</span>
           <select
             className={SELECT}
             value={snap.settings.fftSize}
@@ -312,8 +421,12 @@ const DisplayPanel: React.FC<{
               </option>
             ))}
           </select>
-        </span>
-      </label>
+        </label>
+        <p className="text-[11px] text-gray-400">
+          {windowMs.toFixed(1)} ms · {binHz.toFixed(0)} Hz per row. Smaller =
+          sharper in time, larger = sharper in frequency.
+        </p>
+      </div>
       <label className="flex items-center justify-between">
         <span>Colours</span>
         <select
@@ -328,10 +441,7 @@ const DisplayPanel: React.FC<{
           ))}
         </select>
       </label>
-      <label
-        className="block"
-        title="Everything quieter than this is drawn as background"
-      >
+      <label className="block">
         <div className="flex justify-between">
           <span>Noise floor</span>
           <span className="tabular-nums">{levels.floor} dB</span>
@@ -351,11 +461,11 @@ const DisplayPanel: React.FC<{
             });
           }}
         />
+        <span className="text-[11px] text-gray-400">
+          Quieter than this is drawn as background.
+        </span>
       </label>
-      <label
-        className="block"
-        title="Everything louder than this is drawn at full intensity"
-      >
+      <label className="block">
         <div className="flex justify-between">
           <span>Maximum</span>
           <span className="tabular-nums">{levels.ceil} dB</span>
@@ -375,15 +485,23 @@ const DisplayPanel: React.FC<{
             });
           }}
         />
+        <span className="text-[11px] text-gray-400">
+          Louder than this is drawn at full intensity.
+        </span>
       </label>
-      <button
-        className="w-full py-1 border border-gray-300 rounded hover:bg-gray-50"
-        onMouseDown={keepFocus}
-        onClick={() => engine.autoLevels()}
-        title="Set contrast automatically from the background noise"
+      <Tip
+        className="block"
+        title="Auto contrast"
+        body="Sets noise floor and maximum from the background noise of this recording."
       >
-        Auto contrast
-      </button>
+        <button
+          className="w-full py-1 border border-gray-300 rounded hover:bg-gray-50"
+          onMouseDown={keepFocus}
+          onClick={() => engine.autoLevels()}
+        >
+          Auto contrast
+        </button>
+      </Tip>
     </div>
   );
 };
@@ -396,12 +514,9 @@ const FloorSetting: React.FC<{
   const floor = snap.freqFloor;
   const nyquistKhz = snap.sampleRate / 2000;
   return (
-    <div
-      className="space-y-1.5"
-      title="Boxes can't be drawn, moved or resized below this frequency. Drag the line on the spectrogram to adjust it. Remembered for this recording in this browser."
-    >
+    <div className="space-y-1.5">
       <label className="flex items-center justify-between">
-        <span className="font-medium">Frequency floor</span>
+        <span>Frequency floor</span>
         <input
           type="checkbox"
           checked={floor !== null}
@@ -428,6 +543,11 @@ const FloorSetting: React.FC<{
           </span>
         </label>
       )}
+      <p className="text-[11px] text-gray-400">
+        A line under which boxes can't be drawn, moved or resized — keeps them
+        off low-frequency noise. Drag the dashed line on the spectrogram to move
+        it. Remembered for this recording in this browser.
+      </p>
     </div>
   );
 };

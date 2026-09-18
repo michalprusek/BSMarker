@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
+import { CheckIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
 import { recordingService } from "../../services/api";
 import { Recording } from "../../types";
 import { BUTTON, keepFocus } from "./Toolbar";
+import { Tip } from "./Tip";
 
 /** Same order as the project page's default list (newest first). */
 const LIST_ORDER = { sort_by: "created_at", sort_order: "desc" } as const;
@@ -94,40 +95,60 @@ export const RecordingNav: React.FC<RecordingNavProps> = ({ recording, neighbour
   };
 
   return (
-    <div className="flex items-center gap-1 text-xs text-gray-600">
-      <button
-        className={BUTTON}
-        disabled={!neighbours?.prev}
-        onMouseDown={keepFocus}
-        onClick={() => neighbours?.prev && onNavigate(neighbours.prev)}
-        title="Previous recording (Page Up)"
+    <div className="flex items-center gap-0.5 text-xs text-gray-600">
+      <Tip title="Previous recording" body="Your changes are saved automatically." keys="PgUp">
+        <button
+          className={BUTTON}
+          disabled={!neighbours?.prev}
+          onMouseDown={keepFocus}
+          onClick={() => neighbours?.prev && onNavigate(neighbours.prev)}
+        >
+          <ChevronLeftIcon className="h-4 w-4" />
+        </button>
+      </Tip>
+      <Tip title="Position in the project" body="In the order of the project's recording list.">
+        <span className="tabular-nums min-w-[4.5rem] text-center">
+          {neighbours && neighbours.index >= 0 ? `${neighbours.index + 1} / ${neighbours.total}` : "…"}
+        </span>
+      </Tip>
+      <Tip title="Next recording" body="Your changes are saved automatically." keys="PgDn">
+        <button
+          className={BUTTON}
+          disabled={!neighbours?.next}
+          onMouseDown={keepFocus}
+          onClick={() => neighbours?.next && onNavigate(neighbours.next)}
+        >
+          <ChevronRightIcon className="h-4 w-4" />
+        </button>
+      </Tip>
+      <Tip
+        title={finished ? "Finished" : "Mark as finished"}
+        body={
+          finished
+            ? "This recording is marked as done in the project list. Click to mark it as not finished."
+            : "Click when all syllables are annotated — the project list shows it as done."
+        }
       >
-        <ChevronLeftIcon className="h-4 w-4" />
-      </button>
-      <span className="tabular-nums w-20 text-center">
-        {neighbours && neighbours.index >= 0 ? `${neighbours.index + 1} / ${neighbours.total}` : "…"}
-      </span>
-      <button
-        className={BUTTON}
-        disabled={!neighbours?.next}
-        onMouseDown={keepFocus}
-        onClick={() => neighbours?.next && onNavigate(neighbours.next)}
-        title="Next recording (Page Down)"
-      >
-        <ChevronRightIcon className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onMouseDown={keepFocus}
-        onClick={toggleFinished}
-        disabled={busy}
-        className={`ml-2 px-2 py-1 rounded-full border text-xs font-medium ${
-          finished ? "bg-green-100 border-green-300 text-green-800" : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
-        }`}
-        title="Mark this recording as finished"
-      >
-        {finished ? "✓ Finished" : "Mark finished"}
-      </button>
+        <button
+          type="button"
+          onMouseDown={keepFocus}
+          onClick={toggleFinished}
+          disabled={busy}
+          className={`ml-1.5 flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium ${
+            finished
+              ? "bg-green-600 border-green-600 text-white hover:bg-green-700"
+              : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          {finished ? (
+            <>
+              <CheckIcon className="h-3.5 w-3.5" /> Finished
+            </>
+          ) : (
+            "Mark finished"
+          )}
+        </button>
+      </Tip>
     </div>
   );
 };

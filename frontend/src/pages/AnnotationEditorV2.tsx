@@ -39,7 +39,6 @@ import { LabelEditor } from "../editor/ui/LabelEditor";
 import { RecordingNav, useNeighbours } from "../editor/ui/RecordingNav";
 import { readFreqFloor, writeFreqFloor } from "../editor/edit/recordingPrefs";
 import { BoxList } from "../editor/ui/BoxList";
-import { ConflictCard } from "../editor/ui/ConflictCard";
 import { ReviewBar, ReviewSummaryCard } from "../editor/ui/ReviewBar";
 import { ReviewSession, ReviewState } from "../editor/review/ReviewSession";
 
@@ -105,6 +104,7 @@ const AnnotationEditorV2: React.FC = () => {
   const [showList, setShowList] = useState(true);
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const helpButtonRef = useRef<HTMLButtonElement>(null);
   const plotAreaRef = useRef<HTMLDivElement>(null);
   const spectrogramZoneRef = useRef<HTMLDivElement>(null);
   const glRef = useRef<HTMLCanvasElement>(null);
@@ -414,6 +414,7 @@ const AnnotationEditorV2: React.FC = () => {
         }
         listOpen={showList}
         onToggleList={() => setShowList((v) => !v)}
+        helpButtonRef={helpButtonRef}
         onHelp={() => setShowHelp((v) => !v)}
         onEditActiveLabel={() => setLabelTarget("active")}
       />
@@ -497,23 +498,18 @@ const AnnotationEditorV2: React.FC = () => {
           {snap?.error && (
             <LoadingOverlay state={{ phase: "error", message: snap.error }} />
           )}
-          {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
+          {showHelp && (
+            <HelpPanel
+              onClose={() => setShowHelp(false)}
+              toggleRef={helpButtonRef}
+            />
+          )}
           {review && reviewState?.active && (
             <ReviewBar session={review} state={reviewState} />
           )}
           {review && reviewState?.summary && (
             <ReviewSummaryCard session={review} state={reviewState} />
           )}
-          {engine &&
-            snap?.focusedConflict &&
-            !labelTarget &&
-            !reviewState?.active && (
-              <ConflictCard
-                engine={engine}
-                conflict={snap.focusedConflict}
-                total={snap.conflicts.length}
-              />
-            )}
           {labelTarget && snap && (
             <LabelEditor
               title={
@@ -544,9 +540,10 @@ const AnnotationEditorV2: React.FC = () => {
       </div>
 
       <StatusBar
+        engine={engine}
         snap={snap}
+        showConflict={!labelTarget && !reviewState?.active}
         onEditLabel={() => setLabelTarget("selection")}
-        onNextConflict={() => engine?.focusConflict(1)}
       />
     </div>
   );
