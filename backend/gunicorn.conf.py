@@ -7,9 +7,9 @@ bind = "0.0.0.0:8000"
 backlog = 2048
 
 # Worker processes
-# Optimized for production: 6 workers provides good balance of concurrency
-# and resource usage for a 4-core server with 16GB RAM
-workers = 6
+# Reduced from 6 to 3 (2026-04-09): 6 workers exceeded 2G container limit under load
+# Server: 2 CPUs, container limit 3G. Formula: 2*CPU+1=5 but limited by memory.
+workers = 3
 worker_class = "uvicorn.workers.UvicornWorker"
 worker_connections = 1000
 max_requests = 1000

@@ -498,10 +498,18 @@ def read_recording(
         raise HTTPException(status_code=404, detail="Recording not found")
 
     project = db.query(Project).filter(Project.id == recording.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
     if not current_user.is_admin and project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    return recording
+    # Same rule as saving annotations, so the editor can open read-only up front.
+    try:
+        check_project_edit_permission(db, project, current_user)
+        can_edit = True
+    except HTTPException:
+        can_edit = False
+    return RecordingSchema.model_validate(recording).model_copy(update={"can_edit": can_edit})
 
 
 @router.delete("/{recording_id}")
@@ -626,13 +634,15 @@ async def get_recording_audio(
         }
         content_type = content_type_map.get(ext, "audio/mpeg")
 
-        return StreamingResponse(
-            audio_data,
+        # The file is already in memory; a plain Response sends Content-Length,
+        # so the browser can show download progress.
+        return Response(
+            content=audio_data.getvalue(),
             media_type=content_type,
             headers={"Content-Disposition": f"inline; filename={recording.original_filename}"},
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve audio: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve audio: {str(e)}") from e
 
 
 @router.get("/{recording_id}/spectrogram/status")

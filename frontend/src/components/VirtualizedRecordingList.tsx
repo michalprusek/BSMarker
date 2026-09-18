@@ -37,7 +37,7 @@ const RecordingItem = React.memo<{
     const navigate = useNavigate();
 
     const handleCardClick = useCallback(() => {
-      navigate(`/recordings/${recording.id}/annotate`);
+      navigate(`/recordings/${recording.id}/annotate-v2`);
     }, [navigate, recording.id]);
 
     const handleCheckboxClick = useCallback(
