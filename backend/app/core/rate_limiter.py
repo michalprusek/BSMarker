@@ -127,7 +127,6 @@ RATE_LIMITS = {
     "auth_me": "60 per minute",
     # File upload endpoints - limited due to resource intensity
     "upload": "5 per minute, 20 per hour",
-    "spectrogram": "10 per minute, 50 per hour",
     # Standard CRUD operations
     "crud_read": "100 per minute",  # GET operations
     "crud_write": "30 per minute",  # POST, PUT, DELETE operations

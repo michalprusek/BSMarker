@@ -2,7 +2,7 @@
 
 ## About
 
-BSMarker is a web application for annotating bird songs using spectrograms. It enables researchers and ornithologists to upload audio recordings, automatically generate spectrograms, and annotate them with bounding boxes to identify different bird species and sound types.
+BSMarker is a web application for annotating bird songs using spectrograms. It enables researchers and ornithologists to upload audio recordings and annotate them on a fast, zoomable spectrogram with boxes marking individual syllables.
 
 ### Key Features
 - 🎵 Audio upload (MP3, WAV, FLAC, M4A)
@@ -60,8 +60,6 @@ The application runs as a set of Docker containers:
 | postgres | PostgreSQL database |
 | redis | Cache and message queue |
 | minio | S3-compatible object storage |
-| celery-worker | Background task processing |
-| celery-beat | Scheduled tasks |
 
 ### Basic Management
 
@@ -276,8 +274,6 @@ The application runs in the following Docker containers:
 | postgres | - | PostgreSQL database |
 | redis | - | Cache and session storage |
 | minio | - | Object storage for audio files |
-| celery-worker | - | Asynchronous task processing |
-| celery-beat | - | Scheduled tasks |
 
 ### Troubleshooting
 
@@ -323,7 +319,6 @@ docker exec bsmarker_minio_1 mc ls local/
    - Open the project
    - Click "Upload Recording"
    - Select audio files
-   - Wait for spectrogram generation
 
 4. **Annotate recordings**
    - Click a recording to open the editor
@@ -349,7 +344,7 @@ docker exec bsmarker_minio_1 mc ls local/
 
 ## Technologies
 
-- **Backend**: FastAPI, PostgreSQL, Redis, MinIO, Celery
+- **Backend**: FastAPI, PostgreSQL, Redis, MinIO
 - **Frontend**: React 18, TypeScript, Tailwind CSS, WebGL2, Web Workers, Web Audio API
 - **Deployment**: Docker, Docker Compose, Nginx
 

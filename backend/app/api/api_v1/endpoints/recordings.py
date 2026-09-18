@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,6 @@ from app.core.rate_limiter import RATE_LIMITS, limiter
 from app.models.annotation import Annotation
 from app.models.project import Project
 from app.models.recording import Recording
-from app.models.spectrogram import Spectrogram, SpectrogramStatus
 from app.models.user import User
 from app.schemas.pagination import PaginatedResponse, PaginationMetadata
 from app.schemas.recording import Recording as RecordingSchema
@@ -183,7 +182,7 @@ async def upload_recording(
     # Extract audio metadata using centralized service
     audio_analysis_start = time.time()
     try:
-        audio_metadata = audio_service.extract_audio_metadata(contents, file_extension)
+        audio_metadata = audio_service.extract_audio_metadata_from_bytes(contents, file_extension)
         duration = audio_metadata.duration
         sr = audio_metadata.sample_rate
         logger.info(
@@ -208,18 +207,6 @@ async def upload_recording(
     db.commit()
     db.refresh(recording)
     logger.info(f"Database operations completed in {time.time() - db_start:.2f}s")
-
-    # Trigger asynchronous spectrogram generation
-    try:
-        from app.tasks.spectrogram_tasks import generate_spectrogram_task
-
-        task = generate_spectrogram_task.delay(recording.id)
-        logger.info(f"Spectrogram generation task {task.id} queued for recording {recording.id}")
-    except Exception as e:
-        logger.error(
-            f"Failed to queue spectrogram generation for recording {recording.id}: {str(e)}"
-        )
-        # Don't fail the upload if task queueing fails
 
     # Invalidate cache for this project
     cache_service.invalidate_project_recordings(project_id)
@@ -272,17 +259,12 @@ def read_recordings(
         logger.info(f"Cache hit for project {project_id} recordings")
         return PaginatedResponse(**cached_data)
 
-    # Build query with annotation count and spectrogram status
+    # Build query with annotation count
     query = (
-        db.query(
-            Recording,
-            func.count(Annotation.id).label("annotation_count"),
-            Spectrogram.status.label("spectrogram_status"),
-        )
+        db.query(Recording, func.count(Annotation.id).label("annotation_count"))
         .outerjoin(Annotation, Recording.id == Annotation.recording_id)
-        .outerjoin(Spectrogram, Recording.id == Spectrogram.recording_id)
         .filter(Recording.project_id == project_id)
-        .group_by(Recording.id, Spectrogram.status)
+        .group_by(Recording.id)
     )
 
     # Apply search filter
@@ -395,41 +377,12 @@ def read_recordings(
     annotated_subquery = annotated_count_query.subquery()
     annotated_count = db.query(func.count()).select_from(annotated_subquery).scalar() or 0
 
-    # Calculate spectrogram status counts (apply same filters as duration but NOT annotation_status)
-    spectrogram_base_query = (
-        db.query(Recording.id)
-        .outerjoin(Spectrogram, Recording.id == Spectrogram.recording_id)
-        .filter(Recording.project_id == project_id)
-    )
-    if search:
-        spectrogram_base_query = spectrogram_base_query.filter(
-            Recording.original_filename.ilike(f"%{search}%")
-        )
-    if min_duration is not None:
-        spectrogram_base_query = spectrogram_base_query.filter(Recording.duration >= min_duration)
-    if max_duration is not None:
-        spectrogram_base_query = spectrogram_base_query.filter(Recording.duration <= max_duration)
-
-    # Count each spectrogram status
-    spectrogram_ready_count = spectrogram_base_query.filter(
-        Spectrogram.status == SpectrogramStatus.COMPLETED
-    ).count()
-    spectrogram_generating_count = spectrogram_base_query.filter(
-        Spectrogram.status == SpectrogramStatus.PROCESSING
-    ).count()
-    spectrogram_queued_count = spectrogram_base_query.filter(
-        Spectrogram.status == SpectrogramStatus.PENDING
-    ).count()
-    spectrogram_failed_count = spectrogram_base_query.filter(
-        Spectrogram.status == SpectrogramStatus.FAILED
-    ).count()
-
     # Execute query and build response
     results = query.offset(skip).limit(limit).all()
 
-    # Convert to schema format with annotation count and spectrogram status
+    # Convert to schema format with annotation count
     recordings_with_counts = []
-    for recording, annotation_count, spectrogram_status in results:
+    for recording, annotation_count in results:
         recording_dict = {
             "id": recording.id,
             "filename": recording.filename,
@@ -441,7 +394,6 @@ def read_recordings(
             "is_finished": recording.is_finished,
             "created_at": recording.created_at,
             "annotation_count": annotation_count or 0,
-            "spectrogram_status": spectrogram_status.value if spectrogram_status else None,
         }
         recordings_with_counts.append(RecordingSchema.model_validate(recording_dict))
 
@@ -459,10 +411,6 @@ def read_recordings(
         total_duration=total_duration,
         finished_count=finished_count,
         annotated_count=annotated_count,
-        spectrogram_ready_count=spectrogram_ready_count,
-        spectrogram_generating_count=spectrogram_generating_count,
-        spectrogram_queued_count=spectrogram_queued_count,
-        spectrogram_failed_count=spectrogram_failed_count,
     )
 
     response = PaginatedResponse(items=recordings_with_counts, pagination=pagination_metadata)
@@ -643,135 +591,6 @@ async def get_recording_audio(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve audio: {str(e)}") from e
-
-
-@router.get("/{recording_id}/spectrogram/status")
-@limiter.limit(RATE_LIMITS["crud_read"])
-def get_spectrogram_status(
-    request: Request,
-    recording_id: int,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_active_user),
-) -> Any:
-    """Get spectrogram generation status for a recording."""
-    recording = db.query(Recording).filter(Recording.id == recording_id).first()
-    if not recording:
-        raise HTTPException(status_code=404, detail="Recording not found")
-
-    project = db.query(Project).filter(Project.id == recording.project_id).first()
-    if not current_user.is_admin and project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-
-    # Check spectrogram status
-    spectrogram = db.query(Spectrogram).filter(Spectrogram.recording_id == recording_id).first()
-
-    if not spectrogram:
-        return {"status": "not_started", "recording_id": recording_id, "available": False}
-
-    return {
-        "status": spectrogram.status.value,
-        "recording_id": recording_id,
-        "available": spectrogram.status == SpectrogramStatus.COMPLETED
-        and spectrogram.image_path is not None,
-        "error_message": spectrogram.error_message,
-        "processing_time": spectrogram.processing_time,
-        "width": spectrogram.width,
-        "height": spectrogram.height,
-        "created_at": spectrogram.created_at.isoformat() if spectrogram.created_at else None,
-        "updated_at": spectrogram.updated_at.isoformat() if spectrogram.updated_at else None,
-    }
-
-
-@router.get("/{recording_id}/spectrogram")
-@limiter.limit(RATE_LIMITS["spectrogram"])
-async def get_recording_spectrogram(
-    request: Request,
-    recording_id: int,
-    v: Optional[str] = Query(None, description="Cache busting version"),
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_active_user),
-) -> Any:
-    """Get spectrogram for a recording with proper cache validation."""
-    recording = db.query(Recording).filter(Recording.id == recording_id).first()
-    if not recording:
-        raise HTTPException(status_code=404, detail="Recording not found")
-
-    project = db.query(Project).filter(Project.id == recording.project_id).first()
-    if not current_user.is_admin and project.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-
-    # Check if spectrogram exists
-    spectrogram = db.query(Spectrogram).filter(Spectrogram.recording_id == recording_id).first()
-
-    if not spectrogram:
-        # Return 202 Accepted - processing not started yet
-        raise HTTPException(
-            status_code=202,
-            detail="Spectrogram generation not started. Please check status endpoint.",
-        )
-
-    if spectrogram.status == SpectrogramStatus.FAILED:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Spectrogram generation failed: {spectrogram.error_message or 'Unknown error'}",
-        )
-
-    if spectrogram.status == SpectrogramStatus.PROCESSING:
-        raise HTTPException(
-            status_code=202, detail="Spectrogram is being generated. Please try again later."
-        )
-
-    if spectrogram.status != SpectrogramStatus.COMPLETED:
-        raise HTTPException(
-            status_code=202,
-            detail=f"Spectrogram is not ready yet. Status: {spectrogram.status.value}",
-        )
-
-    # Get the spectrogram path
-    image_path = spectrogram.image_path
-
-    if not image_path:
-        raise HTTPException(status_code=404, detail="Spectrogram file not found")
-
-    # Generate ETag based on spectrogram update time
-    etag = f'"{spectrogram.id}-{int(spectrogram.updated_at.timestamp())}"'
-    last_modified = spectrogram.updated_at.strftime("%a, %d %b %Y %H:%M:%S GMT")
-
-    # Handle conditional requests (unless cache-busting)
-    if not v:
-        if_none_match = request.headers.get("if-none-match")
-        if if_none_match and if_none_match == etag:
-            return Response(status_code=304)
-
-        if_modified_since = request.headers.get("if-modified-since")
-        if if_modified_since == last_modified:
-            return Response(status_code=304)
-
-    # Determine cache control based on version parameter
-    if v:  # Cache-busting mode
-        cache_control = "no-cache, no-store, must-revalidate"
-    else:  # Normal caching with validation
-        cache_control = "public, max-age=300"  # 5 minutes instead of 24 hours
-
-    # Serve the spectrogram image
-    try:
-        spectrogram_data = minio_client.get_file(
-            bucket_name=settings.MINIO_BUCKET_SPECTROGRAMS, object_name=image_path
-        )
-
-        return StreamingResponse(
-            spectrogram_data,
-            media_type="image/png",
-            headers={
-                "Content-Disposition": f"inline; filename=spectrogram_{recording_id}.png",
-                "Cache-Control": cache_control,
-                "ETag": etag,
-                "Last-Modified": last_modified,
-                "Vary": "If-None-Match, If-Modified-Since",
-            },
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve spectrogram: {str(e)}")
 
 
 @router.post("/backfill-durations")
