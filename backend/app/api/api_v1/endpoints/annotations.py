@@ -15,6 +15,7 @@ from app.models.recording import Recording
 from app.models.user import User
 from app.schemas.annotation import Annotation as AnnotationSchema
 from app.schemas.annotation import AnnotationCreate, AnnotationUpdate
+from app.services.cache_service import cache_service
 
 
 def prepare_bounding_box_dict(box_data: Any) -> dict:
@@ -128,6 +129,12 @@ def create_annotation(
         db.add(box)
 
     db.commit()
+
+    # The recording list shows how many recordings are annotated, so its cached
+    # pages would otherwise keep the old counts for up to five minutes.
+    assert recording.project_id is not None  # NOT NULL column
+    cache_service.invalidate_project_recordings(recording.project_id)
+
     db.refresh(annotation)
 
     # Reload with bounding boxes and convert to dict to avoid SQLAlchemy metadata conflict
@@ -259,4 +266,6 @@ def delete_annotation(
 
     db.delete(annotation)
     db.commit()
+    assert project.id is not None  # primary key
+    cache_service.invalidate_project_recordings(project.id)
     return {"message": "Annotation deleted successfully"}

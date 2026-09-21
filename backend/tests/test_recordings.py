@@ -299,6 +299,32 @@ class TestRecordingList:
         )
         assert [r["id"] for r in only_finished["items"]] == [finished.id]
 
+    def test_annotation_status_filter_sums_duration_over_several_recordings(
+        self, client, test_db, test_project, test_user, auth_headers
+    ):
+        """Summed duration with an annotation filter.
+
+        Regression: it used to be grouped per recording, so with more than one
+        annotated recording the endpoint returned 500.
+        """
+        first = add_recording(test_db, test_project, "one.mp3", duration=10.0)
+        second = add_recording(test_db, test_project, "two.mp3", duration=30.0)
+        plain = add_recording(test_db, test_project, "plain.mp3", duration=5.0)
+        add_annotation(test_db, first, test_user)
+        add_annotation(test_db, second, test_user, n_boxes=2)
+
+        annotated = list_recordings(
+            client, test_project.id, auth_headers, annotation_status="annotated"
+        )
+        assert {r["id"] for r in annotated["items"]} == {first.id, second.id}
+        assert annotated["pagination"]["total_duration"] == pytest.approx(40.0)
+
+        unannotated = list_recordings(
+            client, test_project.id, auth_headers, annotation_status="unannotated"
+        )
+        assert {r["id"] for r in unannotated["items"]} == {plain.id}
+        assert unannotated["pagination"]["total_duration"] == pytest.approx(5.0)
+
     def test_list_items_do_not_expose_removed_spectrogram_fields(
         self, client, test_db, test_project, auth_headers
     ):

@@ -7,6 +7,7 @@ Provides efficient caching for database queries and API responses.
 import hashlib
 import json
 import logging
+import urllib.parse
 from typing import Any, Optional
 
 import redis
@@ -15,6 +16,9 @@ from redis.exceptions import RedisError
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Database 0 is used by the rate limiter, so the cache lives in database 1.
+CACHE_DB = 1
 
 
 class CacheService:
@@ -31,27 +35,26 @@ class CacheService:
         self._initialize_connection()
 
     def _initialize_connection(self) -> None:
-        """Initialize Redis connection with retry logic."""
+        """Connect to Redis, or run without a cache if it is unreachable."""
         try:
-            # Parse Redis URL and create connection
-            # URL format: redis://host:port/db
-            import urllib.parse
-
+            # The credentials have to be taken from REDIS_URL by hand: building
+            # the pool from host and port alone silently dropped the password,
+            # and redis.ConnectionPool.from_url would override db with the one
+            # in the URL (that one belongs to the rate limiter).
             parsed_url = urllib.parse.urlparse(settings.REDIS_URL)
+            unquote = urllib.parse.unquote
 
-            # Create connection pool for better performance
             pool = redis.ConnectionPool(
                 host=parsed_url.hostname or "localhost",
                 port=parsed_url.port or 6379,
-                db=1,  # Use db=1 for cache (db=0 for rate limiting)
+                username=unquote(parsed_url.username) if parsed_url.username else None,
+                password=unquote(parsed_url.password) if parsed_url.password else None,
+                db=CACHE_DB,
                 decode_responses=True,
                 max_connections=50,
                 socket_keepalive=True,
-                socket_keepalive_options={
-                    1: 1,  # TCP_KEEPIDLE
-                    2: 3,  # TCP_KEEPINTVL
-                    3: 5,  # TCP_KEEPCNT
-                },
+                socket_connect_timeout=5,
+                socket_timeout=5,
             )
             self.redis_client = redis.Redis(connection_pool=pool)
 
@@ -59,7 +62,7 @@ class CacheService:
             self.redis_client.ping()
             logger.info("Redis cache service initialized successfully")
 
-        except (RedisError, ConnectionError) as e:
+        except (RedisError, OSError, ValueError) as e:
             logger.warning(f"Redis cache service unavailable: {str(e)}. Running without cache.")
             self.enabled = False
 
@@ -168,10 +171,18 @@ class CacheService:
             return 0
 
         try:
-            keys = self.redis_client.keys(pattern)
-            if keys:
-                return self.redis_client.delete(*keys)
-            return 0
+            # SCAN, not KEYS: KEYS walks the whole keyspace and blocks Redis,
+            # and invalidation runs on every annotation save.
+            deleted = 0
+            batch: list = []
+            for key in self.redis_client.scan_iter(match=pattern, count=500):
+                batch.append(key)
+                if len(batch) >= 500:
+                    deleted += self.redis_client.delete(*batch)
+                    batch = []
+            if batch:
+                deleted += self.redis_client.delete(*batch)
+            return deleted
 
         except RedisError as e:
             logger.error(f"Cache delete pattern error for {pattern}: {str(e)}")
@@ -198,7 +209,7 @@ class CacheService:
             Cached recording data or None
         """
         key = self._generate_cache_key(
-            "recordings",
+            f"recordings:p{project_id}",
             project_id=project_id,
             skip=skip,
             limit=limit,
@@ -245,7 +256,7 @@ class CacheService:
             True if cached successfully
         """
         key = self._generate_cache_key(
-            "recordings",
+            f"recordings:p{project_id}",
             project_id=project_id,
             skip=skip,
             limit=limit,
@@ -265,9 +276,9 @@ class CacheService:
         Args:
             project_id: Project ID
         """
-        pattern = "bsmarker:cache:recordings:*"
-        # More targeted invalidation would require storing project_id in key
-        deleted = self.delete_pattern(pattern)
+        # The project id is part of the key prefix, so only this project's
+        # cached pages are dropped.
+        deleted = self.delete_pattern(f"bsmarker:cache:recordings:p{project_id}:*")
         logger.info(f"Invalidated {deleted} recording cache entries for project {project_id}")
 
     def get_recording_detail(self, recording_id: int) -> Optional[dict]:

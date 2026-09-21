@@ -331,16 +331,16 @@ def read_recordings(
         total_duration_query = total_duration_query.filter(Recording.duration <= max_duration)
 
     if annotation_status:
+        # EXISTS rather than a join: a join would multiply a recording by its
+        # annotations, and grouping to undo that makes the sum return one row
+        # per recording, which .scalar() below can't read (it raised 500s).
+        has_annotation = (
+            db.query(Annotation.id).filter(Annotation.recording_id == Recording.id).exists()
+        )
         if annotation_status == "annotated":
-            total_duration_query = (
-                total_duration_query.join(Annotation)
-                .group_by(Recording.id)
-                .having(func.count(Annotation.id) > 0)
-            )
+            total_duration_query = total_duration_query.filter(has_annotation)
         elif annotation_status == "unannotated":
-            total_duration_query = total_duration_query.outerjoin(Annotation).filter(
-                Annotation.id.is_(None)
-            )
+            total_duration_query = total_duration_query.filter(~has_annotation)
         elif annotation_status == "finished":
             total_duration_query = total_duration_query.filter(Recording.is_finished.is_(True))
 
@@ -525,13 +525,16 @@ def bulk_delete_recordings(
 
     deleted_count = 0
     failed_deletions = []
+    deleted_ids: List[int] = []
 
     for recording in recordings:
         try:
             assert recording.file_path is not None  # NOT NULL column
+            assert recording.id is not None  # primary key
             minio_client.delete_file(
                 bucket_name=settings.MINIO_BUCKET_RECORDINGS, object_name=recording.file_path
             )
+            deleted_ids.append(recording.id)
             db.delete(recording)
             deleted_count += 1
         except Exception as e:
@@ -544,6 +547,12 @@ def bulk_delete_recordings(
             )
 
     db.commit()
+
+    # Same as the single delete: without this the list keeps showing the
+    # deleted recordings until the cache expires.
+    cache_service.invalidate_project_recordings(project_id)
+    for deleted_id in deleted_ids:
+        cache_service.invalidate_recording(deleted_id)
 
     response: Dict[str, Any] = {
         "message": f"Deleted {deleted_count} recordings successfully",
@@ -670,6 +679,13 @@ def backfill_missing_durations(
             logger.error(f"Failed to process recording {recording.id}: {str(e)}")
             errors.append(f"Recording {recording.id}: {str(e)}")
             failed_count += 1
+
+    # Durations feed the cached totals and the duration filters.
+    touched_projects = {
+        r.project_id for r in recordings_missing_duration if r.project_id is not None
+    }
+    for touched_project_id in touched_projects:
+        cache_service.invalidate_project_recordings(touched_project_id)
 
     result: Dict[str, Any] = {
         "message": f"Processed {len(recordings_missing_duration)} recordings",
