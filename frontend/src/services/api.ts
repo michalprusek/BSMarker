@@ -8,6 +8,7 @@ import {
   Annotation,
 } from "../types";
 import { PaginatedResponse } from "../types/pagination";
+import { TOKEN_KEY, USER_KEY } from "../utils/storage";
 
 // Use relative URL to automatically use the same protocol as the page
 const API_URL = process.env.REACT_APP_API_URL || "";
@@ -39,7 +40,7 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -59,7 +60,7 @@ const scheduleTokenRefresh = () => {
     clearTimeout(refreshTimer);
   }
 
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem(TOKEN_KEY);
   if (!token) return;
 
   try {
@@ -78,15 +79,15 @@ const scheduleTokenRefresh = () => {
           // Call refresh endpoint (if exists) or re-login
           const response = await api.post("/auth/refresh");
           if (response.data.access_token) {
-            localStorage.setItem("token", response.data.access_token);
+            localStorage.setItem(TOKEN_KEY, response.data.access_token);
             scheduleTokenRefresh(); // Schedule next refresh
           }
         } catch (error) {
           console.error("Token refresh failed:", error);
           // Clear token and redirect to login on refresh failure
           // This prevents users from continuing with an invalid/expired token
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USER_KEY);
 
           // Only redirect if not already on login page
           if (!window.location.pathname.includes("/login")) {
@@ -105,7 +106,7 @@ const scheduleTokenRefresh = () => {
 
 // Call on login success
 export const setAuthToken = (token: string) => {
-  localStorage.setItem("token", token);
+  localStorage.setItem(TOKEN_KEY, token);
   scheduleTokenRefresh();
 };
 
@@ -124,8 +125,8 @@ api.interceptors.response.use(
 
       if (isAuthError) {
         // Clear token and redirect to login
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
 
         // Only redirect if not already on login page
         if (!window.location.pathname.includes("/login")) {

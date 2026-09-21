@@ -111,3 +111,4 @@ birds_research_project/
 
 # Husky internal
 .husky/_/
+!.env.dev.example

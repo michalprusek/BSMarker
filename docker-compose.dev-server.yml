@@ -1,0 +1,164 @@
+version: '3.8'
+
+# DEV stack running next to production on the same server.
+#
+#   scripts/dev-deploy.sh            builds and (re)starts it
+#   scripts/dev-seed.sh              copies production data into it
+#   https://bsmarker.utia.cas.cz/dev the production nginx proxies to it
+#
+# Everything is separate from production: its own database, Redis, MinIO and
+# volumes. The only thing shared is the nginx in front and the network it uses
+# to reach the two app containers.
+#
+# IMPORTANT: every service here is named dev-*, because a compose service is
+# reachable under its own name on every network it joins. A service called
+# "backend" or "postgres" would share that name with production on the shared
+# network, Docker's DNS would hand out both addresses in turn, and production
+# traffic would land in DEV at random. The data services stay off the shared
+# network entirely, as a second line of defence.
+#
+# Always run it through scripts/dev-deploy.sh: docker-compose 1.29 on this
+# server breaks when it recreates an existing container.
+
+services:
+  dev-postgres:
+    container_name: bsmarker_dev_postgres
+    image: postgres:14-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DEV_DB_USER}
+      POSTGRES_PASSWORD: ${DEV_DB_PASSWORD}
+      POSTGRES_DB: ${DEV_DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - devnet
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U ${DEV_DB_USER} -d ${DEV_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dev-redis:
+    container_name: bsmarker_dev_redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass ${DEV_REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - devnet
+    healthcheck:
+      test: [CMD, redis-cli, -a, "${DEV_REDIS_PASSWORD}", ping]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dev-minio:
+    container_name: bsmarker_dev_minio
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${DEV_MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${DEV_MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    networks:
+      - devnet
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  dev-backend:
+    container_name: bsmarker_dev_backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    image: bsmarker/backend:dev
+    restart: unless-stopped
+    environment:
+      # The router is mounted under the public path, so redirects and generated
+      # URLs keep the /dev prefix and can never point at the production API.
+      API_V1_STR: /dev/api/v1
+      DATABASE_URL: postgresql://${DEV_DB_USER}:${DEV_DB_PASSWORD}@dev-postgres:5432/${DEV_DB_NAME}
+      REDIS_URL: redis://:${DEV_REDIS_PASSWORD}@dev-redis:6379/0
+      MINIO_ENDPOINT: dev-minio:9000
+      MINIO_ACCESS_KEY: ${DEV_MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${DEV_MINIO_SECRET_KEY}
+      SECRET_KEY: ${DEV_SECRET_KEY}
+      JWT_SECRET_KEY: ${DEV_JWT_SECRET_KEY}
+      CORS_ORIGINS: '["https://${DOMAIN:-localhost}"]'
+      REDIRECT_HOST: ${DOMAIN:-localhost}
+      FIRST_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL}
+      FIRST_ADMIN_PASSWORD: ${DEV_ADMIN_PASSWORD}
+      LOG_LEVEL: INFO
+      LIBROSA_CACHE_DIR: /tmp/librosa_cache
+      MPLCONFIGDIR: /tmp/matplotlib_cache
+      NUMBA_CACHE_DIR: /tmp
+    depends_on:
+      dev-postgres:
+        condition: service_healthy
+      dev-redis:
+        condition: service_healthy
+      dev-minio:
+        condition: service_healthy
+    networks:
+      - devnet
+      - shared
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/health')
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+
+  dev-frontend:
+    container_name: bsmarker_dev_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        REACT_APP_API_URL: https://${DOMAIN:-localhost}/dev/api/v1
+        PUBLIC_URL: /dev
+    image: bsmarker/frontend:dev
+    restart: unless-stopped
+    depends_on:
+      - dev-backend
+    networks:
+      - devnet
+      - shared
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost/health]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+networks:
+  # Private to the DEV stack; production containers are not on it.
+  devnet:
+  # The production network, so the production nginx can reach dev-backend and
+  # dev-frontend. Only those two join it.
+  shared:
+    external: true
+    name: bsmarker_internal

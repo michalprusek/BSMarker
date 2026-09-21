@@ -31,6 +31,9 @@ COPY . .
 # Build arguments
 ARG REACT_APP_API_URL
 ENV REACT_APP_API_URL=${REACT_APP_API_URL}
+# Sub-path the app is served from ("" in production, "/dev" for the DEV stack).
+ARG PUBLIC_URL=""
+ENV PUBLIC_URL=${PUBLIC_URL}
 ENV NODE_ENV=production
 ENV GENERATE_SOURCEMAP=false
 ENV CI=false

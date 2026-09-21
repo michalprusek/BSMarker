@@ -41,6 +41,7 @@ import { readFreqFloor, writeFreqFloor } from "../editor/edit/recordingPrefs";
 import { BoxList } from "../editor/ui/BoxList";
 import { ReviewBar, ReviewSummaryCard } from "../editor/ui/ReviewBar";
 import { ReviewSession, ReviewState } from "../editor/review/ReviewSession";
+import { TOKEN_KEY } from "../utils/storage";
 
 const FREQ_AXIS_WIDTH = "w-14";
 
@@ -556,7 +557,7 @@ function saveOnUnload(recordingId: number, boxes: ApiBoxPayload[]): void {
     bounding_boxes: boxes,
   });
   if (body.length > KEEPALIVE_LIMIT_BYTES) return; // too big — the local backup covers it
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem(TOKEN_KEY);
   const base = process.env.REACT_APP_API_URL || "";
   void fetch(`${base}${annotationUrl(recordingId)}`, {
     method: "POST",

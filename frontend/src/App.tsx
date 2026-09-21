@@ -59,6 +59,8 @@ const router = createBrowserRouter(
     },
   ],
   {
+    // "" in production, "/dev" in the DEV deployment served under that path.
+    basename: process.env.PUBLIC_URL || undefined,
     future: {},
   },
 );

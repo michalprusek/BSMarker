@@ -8,6 +8,7 @@ import React, {
 import { User, LoginCredentials } from "../types";
 import { authService, setAuthToken } from "../services/api";
 import toast from "react-hot-toast";
+import { TOKEN_KEY, USER_KEY } from "../utils/storage";
 
 interface AuthContextType {
   user: User | null;
@@ -37,7 +38,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const refreshUser = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem(TOKEN_KEY);
 
       if (token) {
         const userData = await authService.getCurrentUser();
@@ -59,8 +60,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               ?.toLowerCase()
               .includes("unauthorized")))
       ) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
       }
       // For network errors, keep token but set user to null temporarily
       setUser(null);
@@ -102,7 +103,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
+    localStorage.removeItem(TOKEN_KEY);
     setUser(null);
     toast.success("Logged out successfully");
   };
