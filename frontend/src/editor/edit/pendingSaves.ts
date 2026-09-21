@@ -1,4 +1,5 @@
 import { ApiBoxPayload } from "../core/boxes";
+import { storageKey } from "../../utils/storage";
 
 /**
  * Safety nets for saving across page changes:
@@ -22,7 +23,8 @@ export function waitForPendingSave(recordingId: number): Promise<unknown> {
   return pending.get(recordingId) ?? Promise.resolve();
 }
 
-const backupKey = (recordingId: number) => `bsmarker:unsaved-boxes:${recordingId}`;
+const backupKey = (recordingId: number) =>
+  storageKey(`bsmarker:unsaved-boxes:${recordingId}`);
 
 export interface LocalBackup {
   savedAt: string;

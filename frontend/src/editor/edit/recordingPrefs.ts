@@ -2,7 +2,10 @@
  * Per-recording view preferences kept in this browser (not in the database).
  */
 
-const floorKey = (recordingId: number) => `bsmarker:freq-floor:${recordingId}`;
+import { storageKey } from "../../utils/storage";
+
+const floorKey = (recordingId: number) =>
+  storageKey(`bsmarker:freq-floor:${recordingId}`);
 
 export function readFreqFloor(recordingId: number): number | null {
   try {
