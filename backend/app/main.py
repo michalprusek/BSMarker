@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.core.rate_limiter import get_rate_limit, limiter, rate_limit_exceeded_handler
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
+from app.services.cache_service import cache_service
 
 # Imported for its side effect: creating the client ensures the MinIO buckets exist.
 from app.services.minio_client import minio_client  # noqa: F401  # pylint: disable=unused-import
@@ -102,7 +103,13 @@ app.add_middleware(
 # Health check endpoint for Docker
 @app.get("/health", response_model=None)  # keep the untyped (no response model) behaviour
 async def health_check() -> Dict[str, str]:
-    return {"status": "ok", "service": "BSMarker API"}
+    # The cache falls back to "disabled" on its own; report it so a silent
+    # Redis outage doesn't go unnoticed again.
+    return {
+        "status": "ok",
+        "service": "BSMarker API",
+        "cache": "on" if cache_service.enabled else "off",
+    }
 
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
