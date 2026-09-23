@@ -16,7 +16,7 @@ v něm dá zkoušet i změna backendu nebo migrace, aniž by se cokoliv stalo os
 Přihlášení do DEV: kterýkoliv produkční e-mail a heslo z `DEV_USER_PASSWORD` v `.env.dev`.
 Seed přepíše všem uživatelům heslo právě na tuhle hodnotu.
 
-Nasazení na produkci je i nadále ruční postup z `CLAUDE.md`, ten se nemění.
+Na produkci se nasazuje `./scripts/prod-deploy.sh backend` (nebo `frontend`), viz `CLAUDE.md`.
 
 ## Jak je to poskládané
 
