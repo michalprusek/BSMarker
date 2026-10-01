@@ -48,6 +48,19 @@ def login_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+@router.post("/refresh", response_model=Token)
+@limiter.limit(get_rate_limit("auth_me"))
+def refresh_access_token(
+    request: Request, current_user: User = Depends(deps.get_current_active_user)
+) -> Any:
+    """Swap a still-valid token for a fresh one, so an open session never expires mid-work."""
+    access_token = security.create_access_token(
+        data={"sub": str(current_user.id)},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
 @router.get("/me", response_model=UserSchema)
 @limiter.limit(get_rate_limit("auth_me"))
 def read_users_me(

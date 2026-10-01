@@ -6,7 +6,7 @@ import React, {
   ReactNode,
 } from "react";
 import { User, LoginCredentials } from "../types";
-import { authService, setAuthToken } from "../services/api";
+import { authService, clearAuthToken, setAuthToken } from "../services/api";
 import toast from "react-hot-toast";
 import { TOKEN_KEY, USER_KEY } from "../utils/storage";
 
@@ -103,7 +103,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem(TOKEN_KEY);
+    clearAuthToken();
     setUser(null);
     toast.success("Logged out successfully");
   };
