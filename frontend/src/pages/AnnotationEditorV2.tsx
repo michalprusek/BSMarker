@@ -305,6 +305,7 @@ const AnnotationEditorV2: React.FC = () => {
             view.recording ?? undefined,
           ),
         );
+        created.setAllowOverlaps(rec.allow_overlaps === true);
         // View settings (colours, FFT, contrast, floor) are kept per user on the server.
         const engineForView = created;
         engineForView.setFreqFloor(

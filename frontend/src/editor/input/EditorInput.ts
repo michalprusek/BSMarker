@@ -258,7 +258,14 @@ export class EditorInput {
     exclude: ReadonlySet<string> = new Set(),
   ) {
     if (e.altKey) return { time: t, guide: null };
-    return snapTime(this.view, this.engine.index, t, exclude, side);
+    return snapTime(
+      this.view,
+      this.engine.index,
+      t,
+      exclude,
+      side,
+      this.engine.snapGap,
+    );
   }
 
   /** While drawing, the moving edge is the start if it is left of the anchor. */
@@ -669,8 +676,16 @@ export class EditorInput {
       const ids = new Set(g.originals.map((b) => b.id));
       const start = Math.min(...g.originals.map((b) => b.start)) + dt;
       const end = Math.max(...g.originals.map((b) => b.end)) + dt;
-      const a = snapTime(this.view, this.engine.index, start, ids, "start");
-      const b = snapTime(this.view, this.engine.index, end, ids, "end");
+      const gap = this.engine.snapGap;
+      const a = snapTime(
+        this.view,
+        this.engine.index,
+        start,
+        ids,
+        "start",
+        gap,
+      );
+      const b = snapTime(this.view, this.engine.index, end, ids, "end", gap);
       const da = a.guide === null ? Infinity : Math.abs(a.time - start);
       const db = b.guide === null ? Infinity : Math.abs(b.time - end);
       if (da <= db && a.guide !== null) {

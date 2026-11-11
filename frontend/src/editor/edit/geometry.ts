@@ -107,8 +107,9 @@ export type EdgeSide = "start" | "end" | "any";
 
 /**
  * Snaps an edge near a neighbouring box to the closest *valid* position:
- * a start edge goes FIX_GAP after the neighbour's end, an end edge FIX_GAP
+ * a start edge goes `gap` after the neighbour's end, an end edge `gap`
  * before the neighbour's start — so snapping never creates a conflict.
+ * (`gap` is 0 in projects that allow overlaps: edges then meet exactly.)
  * Returns the (possibly unchanged) time and the neighbour edge to highlight.
  */
 export function snapTime(
@@ -117,16 +118,17 @@ export function snapTime(
   t: number,
   exclude: ReadonlySet<string>,
   side: EdgeSide = "any",
+  gap: number = FIX_GAP,
 ): { time: number; guide: number | null } {
   const tol = SNAP_PX / view.pxPerSec;
   let best: { time: number; guide: number } | null = null;
   const consider = (time: number, guide: number) => {
     if (Math.abs(time - t) <= tol && (!best || Math.abs(time - t) < Math.abs(best.time - t))) best = { time, guide };
   };
-  index.forEachInRange(t - tol - FIX_GAP, t + tol + FIX_GAP, (box) => {
+  index.forEachInRange(t - tol - gap, t + tol + gap, (box) => {
     if (exclude.has(box.id)) return;
-    if (side !== "end") consider(box.end + FIX_GAP, box.end);
-    if (side !== "start") consider(box.start - FIX_GAP, box.start);
+    if (side !== "end") consider(box.end + gap, box.end);
+    if (side !== "start") consider(box.start - gap, box.start);
   });
   const found = best as { time: number; guide: number } | null;
   return found ? found : { time: t, guide: null };

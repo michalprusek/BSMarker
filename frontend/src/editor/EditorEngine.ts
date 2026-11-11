@@ -4,7 +4,7 @@ import { AudioPlayer } from "./audio/AudioPlayer";
 import { DecodedAudio } from "./audio/loadAudio";
 import { AnnotationDocument } from "./edit/AnnotationDocument";
 import { Draft } from "./edit/draft";
-import { Conflict, conflictedIds, detectConflicts } from "./edit/conflicts";
+import { Conflict, FIX_GAP, conflictedIds, detectConflicts } from "./edit/conflicts";
 import { TileScheduler, ReadyTile } from "./dsp/TileScheduler";
 import { WaveformPeaks } from "./dsp/WaveformPeaks";
 import { ContrastMode, DEFAULT_RANGE_DB, DbLevels, standardLevels } from "./dsp/levels";
@@ -73,6 +73,8 @@ export interface EditorSnapshot {
   readOnly: boolean;
   /** Lowest frequency boxes may reach (Hz), or null for no limit. */
   freqFloor: number | null;
+  /** The project lets syllables overlap: no time-axis conflicts are reported. */
+  allowOverlaps: boolean;
   pendingTiles: number;
   workers: number;
   /** Time resolution of the displayed columns (s) */
@@ -116,6 +118,7 @@ export class EditorEngine {
   private draft: Draft | null = null;
   private snapGuide: number | null = null;
   private floor: number | null = null;
+  private allowOverlapsValue = false;
   private loop = false;
   private settings: EditorSettings;
   /** Set once the levels are moved by hand (custom contrast). */
@@ -455,6 +458,18 @@ export class EditorEngine {
     return this.floor;
   }
 
+  /** The project's overlap rule. Only changes what is reported and how edges snap — never the boxes. */
+  setAllowOverlaps(allow: boolean): void {
+    this.allowOverlapsValue = allow;
+    this.updateConflicts();
+    this.invalidate("overlay");
+  }
+
+  /** Gap left when an edge snaps to a neighbour: none when overlaps are allowed. */
+  get snapGap(): number {
+    return this.allowOverlapsValue ? 0 : FIX_GAP;
+  }
+
   setFreqFloor(hz: number | null): void {
     this.floor = hz === null ? null : Math.min(this.view.nyquist, Math.max(0, hz));
     this.applyStandardLevels(); // rumble below the floor no longer counts as loud
@@ -512,7 +527,7 @@ export class EditorEngine {
   // --------------------------------------------------------------- internals
 
   private updateConflicts(): void {
-    this.conflicts = detectConflicts(this.doc.boxes);
+    this.conflicts = this.allowOverlapsValue ? [] : detectConflicts(this.doc.boxes);
     this.conflicted = conflictedIds(this.conflicts);
   }
 
@@ -757,6 +772,7 @@ export class EditorEngine {
       canUndo: this.doc.canUndo,
       readOnly: this.doc.readOnly,
       freqFloor: this.floor,
+      allowOverlaps: this.allowOverlapsValue,
       canRedo: this.doc.canRedo,
       pendingTiles: this.scheduler.pendingCount,
       workers: this.scheduler.workerCount,

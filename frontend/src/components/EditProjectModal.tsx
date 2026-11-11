@@ -16,6 +16,7 @@ interface EditProjectModalProps {
 interface ProjectFormData {
   name: string;
   description: string;
+  allow_overlaps: boolean;
 }
 
 const EditProjectModal: React.FC<EditProjectModalProps> = ({
@@ -31,6 +32,7 @@ const EditProjectModal: React.FC<EditProjectModalProps> = ({
     defaultValues: {
       name: project.name,
       description: project.description || "",
+      allow_overlaps: project.allow_overlaps ?? false,
     },
   });
 
@@ -146,6 +148,25 @@ const EditProjectModal: React.FC<EditProjectModalProps> = ({
                             rows={3}
                             className="mt-1 block w-full rounded-md border border-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2"
                           />
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <input
+                            id="allow_overlaps"
+                            type="checkbox"
+                            {...register("allow_overlaps")}
+                            className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <label htmlFor="allow_overlaps" className="text-sm">
+                            <span className="font-medium text-gray-700">
+                              Allow overlapping syllables
+                            </span>
+                            <span className="block text-gray-500">
+                              The editor stops reporting overlaps, gaps under 10
+                              ms and boxes inside other boxes as conflicts.
+                              Existing annotations are never changed by this
+                              setting; you can switch it back at any time.
+                            </span>
+                          </label>
                         </div>
                       </div>
                       <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
