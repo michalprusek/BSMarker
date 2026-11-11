@@ -52,62 +52,77 @@ api.interceptors.request.use(
   },
 );
 
-// Token refresh configuration
-let refreshTimer: NodeJS.Timeout | null = null;
+// Session keep-alive: swap the token for a fresh one shortly before it
+// expires, so an open tab never logs the user out mid-work. Only the request
+// interceptor below ends a session (on a real 401/403 auth error); a failed
+// refresh because of the network is simply retried.
+const REFRESH_BEFORE_EXPIRY_MS = 5 * 60 * 1000;
+const REFRESH_RETRY_MS = 30 * 1000;
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-const scheduleTokenRefresh = () => {
-  if (refreshTimer) {
-    clearTimeout(refreshTimer);
-  }
-
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (!token) return;
-
+const tokenExpiry = (token: string): number | null => {
   try {
-    // Decode JWT to get expiry (without verification, just for scheduling)
+    // Decoded without verification, only to schedule the refresh.
     const payload = JSON.parse(atob(token.split(".")[1]));
-    const expiryTime = payload.exp * 1000; // Convert to milliseconds
-    const currentTime = Date.now();
-    const timeUntilExpiry = expiryTime - currentTime;
-
-    // Refresh 5 minutes before expiry
-    const refreshTime = timeUntilExpiry - 5 * 60 * 1000;
-
-    if (refreshTime > 0) {
-      refreshTimer = setTimeout(async () => {
-        try {
-          // Call refresh endpoint (if exists) or re-login
-          const response = await api.post("/auth/refresh");
-          if (response.data.access_token) {
-            localStorage.setItem(TOKEN_KEY, response.data.access_token);
-            scheduleTokenRefresh(); // Schedule next refresh
-          }
-        } catch (error) {
-          console.error("Token refresh failed:", error);
-          // Clear token and redirect to login on refresh failure
-          // This prevents users from continuing with an invalid/expired token
-          localStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem(USER_KEY);
-
-          // Only redirect if not already on login page
-          if (!window.location.pathname.includes("/login")) {
-            // Use a small delay to allow any pending operations to complete
-            setTimeout(() => {
-              window.location.href = "/login?reason=session_expired";
-            }, 100);
-          }
-        }
-      }, refreshTime);
-    }
-  } catch (error) {
-    console.error("Error scheduling token refresh:", error);
+    return typeof payload.exp === "number" ? payload.exp * 1000 : null;
+  } catch {
+    return null;
   }
 };
+
+const refreshToken = async () => {
+  const sent = localStorage.getItem(TOKEN_KEY);
+  if (!sent) return; // logged out meanwhile
+  try {
+    const response = await api.post<AuthToken>("/auth/refresh");
+    // A logout (or a login as someone else) during the request wins.
+    if (localStorage.getItem(TOKEN_KEY) !== sent) return;
+    localStorage.setItem(TOKEN_KEY, response.data.access_token);
+    scheduleTokenRefresh();
+  } catch (error: unknown) {
+    // 401/403 log out via the response interceptor; 400/404 mean an inactive
+    // or deleted user. Anything else (network, 5xx during a deploy, 429) is
+    // transient — keep trying while the token is still valid.
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    if (status !== undefined && [400, 401, 403, 404].includes(status)) return;
+    const expiry = tokenExpiry(sent);
+    if (expiry === null || expiry <= Date.now()) return;
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refreshToken, REFRESH_RETRY_MS);
+  }
+};
+
+const scheduleTokenRefresh = () => {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = null;
+
+  const token = localStorage.getItem(TOKEN_KEY);
+  const expiry = token ? tokenExpiry(token) : null;
+  if (expiry === null || expiry <= Date.now()) return;
+
+  const delay = Math.max(0, expiry - Date.now() - REFRESH_BEFORE_EXPIRY_MS);
+  refreshTimer = setTimeout(refreshToken, delay);
+};
+
+// Also after a page reload, not just after login. Browsers throttle or freeze
+// timers in background tabs and during sleep, so re-check when the tab returns.
+scheduleTokenRefresh();
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") scheduleTokenRefresh();
+});
+window.addEventListener("online", scheduleTokenRefresh);
 
 // Call on login success
 export const setAuthToken = (token: string) => {
   localStorage.setItem(TOKEN_KEY, token);
   scheduleTokenRefresh();
+};
+
+export const clearAuthToken = () => {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = null;
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
 };
 
 api.interceptors.response.use(
@@ -130,7 +145,7 @@ api.interceptors.response.use(
 
         // Only redirect if not already on login page
         if (!window.location.pathname.includes("/login")) {
-          window.location.href = "/login";
+          window.location.href = `${process.env.PUBLIC_URL}/login`;
         }
       }
     }

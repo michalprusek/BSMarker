@@ -170,7 +170,7 @@ def write_env_file(secrets_dict: Dict[str, Any], output_path: Path) -> None:
     lines.append("# Application Settings")
     lines.append(f'SECRET_KEY="{secrets_dict["SECRET_KEY"]}"')
     lines.append("ALGORITHM=HS256")
-    lines.append("ACCESS_TOKEN_EXPIRE_MINUTES=30")
+    lines.append("ACCESS_TOKEN_EXPIRE_MINUTES=480")
     lines.append("")
 
     # Database settings
