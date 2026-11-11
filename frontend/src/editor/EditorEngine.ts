@@ -27,6 +27,8 @@ export interface EditorElements {
   minimap: HTMLCanvasElement;
   playhead: HTMLElement; // spans spectrogram + lane + waveform
   hoverLine: HTMLElement;
+  hoverFreqLine: HTMLElement; // horizontal guide across the spectrogram
+  hoverFreqLabel: HTMLElement; // its kHz readout on the frequency axis
 }
 
 export interface EditorSettings {
@@ -106,6 +108,8 @@ export class EditorEngine {
   private conflicted: ReadonlySet<string> = new Set();
   private hoveredId: string | null = null;
   private hover: { time: number; freq: number | null } | null = null;
+  /** Pointer height over the spectrogram (px), kept to re-label the guide on zoom. */
+  private hoverY: number | null = null;
   private draft: Draft | null = null;
   private snapGuide: number | null = null;
   private floor: number | null = null;
@@ -421,12 +425,19 @@ export class EditorEngine {
       this.el.hoverLine.style.display = "block";
       this.el.hoverLine.style.transform = `translateX(${x}px)`;
     }
+    this.setFreqGuide(overSpectrogram ? y : null);
     if (hoveredId !== this.hoveredId) {
       this.hoveredId = hoveredId;
       this.dirtyOverlay = true;
       this.schedule();
     }
     this.scheduleSnapshot();
+  }
+
+  /** Moves the horizontal frequency guide; also called during drags, when hover is frozen. */
+  setFreqGuide(y: number | null): void {
+    this.hoverY = y;
+    this.positionFreqGuide();
   }
 
   /** Preview of a box being drawn or a selection rectangle. */
@@ -512,6 +523,7 @@ export class EditorEngine {
       this.dirtyView = false;
       this.requestTiles();
       this.drawAxesAndWaveform();
+      this.positionFreqGuide(); // same height, different frequency after a zoom
       this.dirtySpectrogram = true;
       this.dirtyOverlay = true;
     }
@@ -636,6 +648,22 @@ export class EditorEngine {
     const visible = x >= -1 && x <= this.view.width + 1;
     this.el.playhead.style.display = visible ? "block" : "none";
     if (visible) this.el.playhead.style.transform = `translateX(${x}px)`;
+  }
+
+  private positionFreqGuide(): void {
+    const { hoverFreqLine: line, hoverFreqLabel: label } = this.el;
+    const y = this.hoverY;
+    if (y === null || y < 0 || y > this.view.height) {
+      line.style.display = "none";
+      label.style.display = "none";
+      return;
+    }
+    const freq = Math.min(this.view.nyquist, Math.max(0, this.view.yToFreq(y)));
+    line.style.display = "block";
+    line.style.transform = `translateY(${y}px)`;
+    label.style.display = "block";
+    label.style.transform = `translateY(${y}px) translateY(-50%)`;
+    label.textContent = `${(freq / 1000).toFixed(2)} kHz`;
   }
 
   private scheduleSnapshot(): void {

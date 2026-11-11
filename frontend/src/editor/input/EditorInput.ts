@@ -382,6 +382,8 @@ export class EditorInput {
     }
 
     const p = this.locate(e);
+    // The frequency guide keeps following the pointer while drawing or dragging.
+    this.engine.setFreqGuide(p.zone === "spectrogram" ? p.y : null);
     if (g.type === "floor") {
       this.engine.setFreqFloor(this.freqAt(p.y));
       return;
