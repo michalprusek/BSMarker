@@ -37,7 +37,12 @@ import { StatusBar } from "../editor/ui/StatusBar";
 import { HelpPanel } from "../editor/ui/HelpPanel";
 import { LabelEditor } from "../editor/ui/LabelEditor";
 import { RecordingNav, useNeighbours } from "../editor/ui/RecordingNav";
-import { readFreqFloor, writeFreqFloor } from "../editor/edit/recordingPrefs";
+import {
+  ViewSettingsSaver,
+  initialEngineSettings,
+  legacyFreqFloor,
+  loadViewSettings,
+} from "../editor/edit/recordingPrefs";
 import { BoxList } from "../editor/ui/BoxList";
 import { ReviewBar, ReviewSummaryCard } from "../editor/ui/ReviewBar";
 import { ReviewSession, ReviewState } from "../editor/review/ReviewSession";
@@ -117,6 +122,8 @@ const AnnotationEditorV2: React.FC = () => {
   const minimapRef = useRef<HTMLCanvasElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
   const hoverLineRef = useRef<HTMLDivElement>(null);
+  const hoverFreqLineRef = useRef<HTMLDivElement>(null);
+  const hoverFreqLabelRef = useRef<HTMLDivElement>(null);
 
   const navigate = useNavigate();
   const neighbours = useNeighbours(recording);
@@ -154,6 +161,7 @@ const AnnotationEditorV2: React.FC = () => {
     let payload: ((boxes: EditorBox[]) => ApiBoxPayload[]) | null = null;
     let onBeforeUnload: (() => void) | null = null;
     let reviewSession: ReviewSession | null = null;
+    let viewSaver: ViewSettingsSaver | null = null;
     const abort = new AbortController();
     setRecording(null);
     setLoad({ phase: "loading", message: "Loading recording…" });
@@ -163,9 +171,10 @@ const AnnotationEditorV2: React.FC = () => {
       try {
         // If we just left this recording, its last save may still be running.
         await waitForPendingSave(id);
-        const [rec, annotations] = await Promise.all([
+        const [rec, annotations, view] = await Promise.all([
           recordingService.getRecording(id),
           annotationService.getAnnotations(id),
+          loadViewSettings(id),
         ]);
         if (cancelled) return;
         setRecording(rec);
@@ -229,6 +238,8 @@ const AnnotationEditorV2: React.FC = () => {
         const minimap = minimapRef.current;
         const playhead = playheadRef.current;
         const hoverLine = hoverLineRef.current;
+        const hoverFreqLine = hoverFreqLineRef.current;
+        const hoverFreqLabel = hoverFreqLabelRef.current;
         const plotArea = plotAreaRef.current;
         const spectrogramZone = spectrogramZoneRef.current;
         if (
@@ -242,6 +253,8 @@ const AnnotationEditorV2: React.FC = () => {
           !minimap ||
           !playhead ||
           !hoverLine ||
+          !hoverFreqLine ||
+          !hoverFreqLabel ||
           !plotArea ||
           !spectrogramZone
         ) {
@@ -282,19 +295,40 @@ const AnnotationEditorV2: React.FC = () => {
             minimap,
             playhead,
             hoverLine,
+            hoverFreqLine,
+            hoverFreqLabel,
           },
           audio,
           document,
+          initialEngineSettings(
+            view.defaults ?? undefined,
+            view.recording ?? undefined,
+          ),
         );
-        // The frequency floor is remembered per recording (in this browser).
-        const engineForFloor = created;
-        engineForFloor.setFreqFloor(readFreqFloor(id));
-        let savedFloor = engineForFloor.freqFloor;
-        engineForFloor.subscribe(() => {
-          if (engineForFloor.freqFloor === savedFloor) return;
-          savedFloor = engineForFloor.freqFloor;
-          writeFreqFloor(id, savedFloor);
-        });
+        created.setAllowOverlaps(rec.allow_overlaps === true);
+        // View settings (colours, FFT, contrast, floor) are kept per user on the server.
+        const engineForView = created;
+        engineForView.setFreqFloor(
+          view.recording && "freq_floor" in view.recording
+            ? (view.recording.freq_floor ?? null)
+            : legacyFreqFloor(id),
+        );
+        const settingsSaver = new ViewSettingsSaver(
+          id,
+          view.recording,
+          view.defaults,
+          engineForView.getSnapshot(),
+          engineForView.freqFloor,
+          engineForView.levelsByHand,
+        );
+        viewSaver = settingsSaver;
+        engineForView.subscribe(() =>
+          settingsSaver.update(
+            engineForView.getSnapshot(),
+            engineForView.freqFloor,
+            engineForView.levelsByHand,
+          ),
+        );
         const engineForReview = created;
         const session = new ReviewSession({
           doc: document,
@@ -327,6 +361,7 @@ const AnnotationEditorV2: React.FC = () => {
         // Closing the tab: keep a local copy, and send the changes with a
         // request that outlives the page (unless that exact save is running).
         onBeforeUnload = () => {
+          settingsSaver.destroy(); // best effort: a view setting changed just now
           if (!document.isDirty) return;
           const boxes = toPayload(document.committed);
           writeBackup(id, boxes);
@@ -372,6 +407,7 @@ const AnnotationEditorV2: React.FC = () => {
         trackPendingSave(id, done);
       }
       reviewSession?.destroy();
+      viewSaver?.destroy();
       setEngine(null);
       setReview(null);
     };
@@ -450,11 +486,18 @@ const AnnotationEditorV2: React.FC = () => {
           <div className="flex-1 flex min-h-0">
             {/* Frequency axis — mirrors the plot column layout so heights line up */}
             <div className={`${FREQ_AXIS_WIDTH} shrink-0 flex flex-col`}>
-              <canvas
-                ref={freqAxisRef}
-                className="flex-1 min-h-0 w-full block cursor-grab touch-none"
-                title="Drag to pan · scroll to zoom · double-click to reset"
-              />
+              <div className="relative flex-1 min-h-0">
+                <canvas
+                  ref={freqAxisRef}
+                  className="absolute inset-0 w-full h-full block cursor-grab touch-none"
+                  title="Drag to pan · scroll to zoom · double-click to reset"
+                />
+                <div
+                  ref={hoverFreqLabelRef}
+                  className="absolute top-0 right-0 px-1 rounded-sm bg-blue-600 text-white text-[10px] leading-4 tabular-nums whitespace-nowrap pointer-events-none will-change-transform"
+                  style={{ display: "none" }}
+                />
+              </div>
               <div className="h-5" />
               <div className="h-24" />
             </div>
@@ -471,6 +514,11 @@ const AnnotationEditorV2: React.FC = () => {
                 <canvas
                   ref={overlayRef}
                   className="absolute inset-0 w-full h-full block"
+                />
+                <div
+                  ref={hoverFreqLineRef}
+                  className="absolute top-0 left-0 right-0 h-px bg-blue-500/40 pointer-events-none will-change-transform"
+                  style={{ display: "none" }}
                 />
               </div>
               <canvas

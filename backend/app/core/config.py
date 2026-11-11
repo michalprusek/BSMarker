@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = Field(..., description="PostgreSQL connection URL")
     SECRET_KEY: str = Field(..., description="JWT signing secret key")
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 8 * 60  # the frontend refreshes it while a tab is open
 
     # External Services - NO HARDCODED DEFAULTS FOR PRODUCTION SECRETS
     REDIS_URL: str = Field(..., description="Redis connection URL")

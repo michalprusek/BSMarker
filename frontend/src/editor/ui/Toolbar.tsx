@@ -21,6 +21,7 @@ import { EditorEngine, EditorSnapshot } from "../EditorEngine";
 import { NO_LABEL } from "../core/boxes";
 import { SaveStatus } from "../edit/Autosaver";
 import { FFT_SIZES, FftSize } from "../dsp/tiles";
+import { ContrastMode } from "../dsp/levels";
 import { PALETTES, PaletteName } from "../render/palettes";
 import { formatDuration, formatTime } from "../render/ticks";
 import { LabelChip } from "./LabelChip";
@@ -250,6 +251,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       >
         <button
           ref={settingsButtonRef}
+          aria-label="Display settings"
           className={`${BUTTON} ${showDisplay ? "bg-gray-100" : ""}`}
           disabled={disabled}
           onMouseDown={keepFocus}
@@ -405,6 +407,9 @@ const DisplayPanel: React.FC<{
 
       <hr className="border-gray-200" />
       <SectionTitle>Spectrogram</SectionTitle>
+      <p className="text-[11px] text-gray-400 -mt-2">
+        Remembered for this recording (for you, on any computer).
+      </p>
       <div className="space-y-1">
         <label className="flex items-center justify-between">
           <span>FFT window</span>
@@ -427,81 +432,126 @@ const DisplayPanel: React.FC<{
           sharper in time, larger = sharper in frequency.
         </p>
       </div>
-      <label className="flex items-center justify-between">
-        <span>Colours</span>
-        <select
-          className={SELECT}
-          value={snap.settings.palette}
-          onChange={(e) => engine.setPalette(e.target.value as PaletteName)}
-        >
-          {PALETTES.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="block">
-        <div className="flex justify-between">
-          <span>Noise floor</span>
-          <span className="tabular-nums">{levels.floor} dB</span>
-        </div>
-        <input
-          type="range"
-          min={-130}
-          max={-10}
-          step={1}
-          className="w-full"
-          value={levels.floor}
-          onChange={(e) => {
-            const floor = Number(e.target.value);
-            engine.setLevels({
-              floor,
-              ceil: Math.max(levels.ceil, floor + 10),
-            });
-          }}
-        />
-        <span className="text-[11px] text-gray-400">
-          Quieter than this is drawn as background.
-        </span>
-      </label>
-      <label className="block">
-        <div className="flex justify-between">
-          <span>Maximum</span>
-          <span className="tabular-nums">{levels.ceil} dB</span>
-        </div>
-        <input
-          type="range"
-          min={-120}
-          max={0}
-          step={1}
-          className="w-full"
-          value={levels.ceil}
-          onChange={(e) => {
-            const ceil = Number(e.target.value);
-            engine.setLevels({
-              floor: Math.min(levels.floor, ceil - 10),
-              ceil,
-            });
-          }}
-        />
-        <span className="text-[11px] text-gray-400">
-          Louder than this is drawn at full intensity.
-        </span>
-      </label>
-      <Tip
-        className="block"
-        title="Auto contrast"
-        body="Sets noise floor and maximum from the background noise of this recording."
-      >
-        <button
-          className="w-full py-1 border border-gray-300 rounded hover:bg-gray-50"
-          onMouseDown={keepFocus}
-          onClick={() => engine.autoLevels()}
-        >
-          Auto contrast
-        </button>
-      </Tip>
+      <div className="space-y-1">
+        <label className="flex items-center justify-between">
+          <span>Colours</span>
+          <select
+            className={SELECT}
+            value={snap.settings.palette}
+            onChange={(e) => engine.setPalette(e.target.value as PaletteName)}
+          >
+            {PALETTES.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {snap.settings.palette === snap.settings.defaultPalette ? (
+          <p className="text-[11px] text-gray-400">Your default colours.</p>
+        ) : (
+          <button
+            className="text-[11px] text-blue-600 hover:underline"
+            onMouseDown={keepFocus}
+            onClick={() => engine.setDefaultPalette(snap.settings.palette)}
+          >
+            Use as my default for all recordings
+          </button>
+        )}
+      </div>
+      <div className="space-y-1">
+        <label className="flex items-center justify-between">
+          <span>Contrast</span>
+          <select
+            className={SELECT}
+            value={snap.settings.contrast}
+            onChange={(e) =>
+              engine.setContrastMode(e.target.value as ContrastMode)
+            }
+          >
+            <option value="standard">Standardised</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <p className="text-[11px] text-gray-400">
+          {snap.settings.contrast === "standard"
+            ? "Same in every recording: full intensity = the loudest calls, background = a fixed range below them."
+            : "Set by hand for this recording only. Recordings are no longer comparable."}
+        </p>
+      </div>
+      {snap.settings.contrast === "standard" && (
+        <label className="block">
+          <div className="flex justify-between">
+            <span>Range below loudest calls</span>
+            <span className="tabular-nums">{snap.settings.rangeDb} dB</span>
+          </div>
+          <input
+            type="range"
+            min={20}
+            max={90}
+            step={1}
+            className="w-full"
+            value={snap.settings.rangeDb}
+            onChange={(e) => engine.setRangeDb(Number(e.target.value))}
+          />
+          <span className="text-[11px] text-gray-400">
+            Larger shows fainter tails, but also more noise. The same for all
+            your recordings.
+          </span>
+        </label>
+      )}
+      {snap.settings.contrast === "custom" && (
+        <>
+          <label className="block">
+            <div className="flex justify-between">
+              <span>Noise floor</span>
+              <span className="tabular-nums">{levels.floor} dB</span>
+            </div>
+            <input
+              type="range"
+              min={-130}
+              max={-10}
+              step={1}
+              className="w-full"
+              value={levels.floor}
+              onChange={(e) => {
+                const floor = Number(e.target.value);
+                engine.setLevels({
+                  floor,
+                  ceil: Math.max(levels.ceil, floor + 10),
+                });
+              }}
+            />
+            <span className="text-[11px] text-gray-400">
+              Quieter than this is drawn as background.
+            </span>
+          </label>
+          <label className="block">
+            <div className="flex justify-between">
+              <span>Maximum</span>
+              <span className="tabular-nums">{levels.ceil} dB</span>
+            </div>
+            <input
+              type="range"
+              min={-120}
+              max={0}
+              step={1}
+              className="w-full"
+              value={levels.ceil}
+              onChange={(e) => {
+                const ceil = Number(e.target.value);
+                engine.setLevels({
+                  floor: Math.min(levels.floor, ceil - 10),
+                  ceil,
+                });
+              }}
+            />
+            <span className="text-[11px] text-gray-400">
+              Louder than this is drawn at full intensity.
+            </span>
+          </label>
+        </>
+      )}
     </div>
   );
 };
@@ -546,7 +596,7 @@ const FloorSetting: React.FC<{
       <p className="text-[11px] text-gray-400">
         A line under which boxes can't be drawn, moved or resized — keeps them
         off low-frequency noise. Drag the dashed line on the spectrogram to move
-        it. Remembered for this recording in this browser.
+        it. Remembered for this recording.
       </p>
     </div>
   );

@@ -14,6 +14,8 @@ export interface Project {
   name: string;
   description?: string;
   owner_id: number;
+  /** Syllables may overlap in time (the editor then reports no time-axis conflicts). */
+  allow_overlaps?: boolean;
   created_at: string;
   updated_at?: string;
 }
@@ -31,6 +33,7 @@ export interface Recording {
   annotation_count?: number;
   /** Whether the current user may save annotations (only on single-recording responses). */
   can_edit?: boolean | null;
+  allow_overlaps?: boolean | null;
 }
 
 export interface BoundingBox {
