@@ -37,7 +37,12 @@ import { StatusBar } from "../editor/ui/StatusBar";
 import { HelpPanel } from "../editor/ui/HelpPanel";
 import { LabelEditor } from "../editor/ui/LabelEditor";
 import { RecordingNav, useNeighbours } from "../editor/ui/RecordingNav";
-import { readFreqFloor, writeFreqFloor } from "../editor/edit/recordingPrefs";
+import {
+  ViewSettingsSaver,
+  initialEngineSettings,
+  legacyFreqFloor,
+  loadViewSettings,
+} from "../editor/edit/recordingPrefs";
 import { BoxList } from "../editor/ui/BoxList";
 import { ReviewBar, ReviewSummaryCard } from "../editor/ui/ReviewBar";
 import { ReviewSession, ReviewState } from "../editor/review/ReviewSession";
@@ -156,6 +161,7 @@ const AnnotationEditorV2: React.FC = () => {
     let payload: ((boxes: EditorBox[]) => ApiBoxPayload[]) | null = null;
     let onBeforeUnload: (() => void) | null = null;
     let reviewSession: ReviewSession | null = null;
+    let viewSaver: ViewSettingsSaver | null = null;
     const abort = new AbortController();
     setRecording(null);
     setLoad({ phase: "loading", message: "Loading recording…" });
@@ -165,9 +171,10 @@ const AnnotationEditorV2: React.FC = () => {
       try {
         // If we just left this recording, its last save may still be running.
         await waitForPendingSave(id);
-        const [rec, annotations] = await Promise.all([
+        const [rec, annotations, view] = await Promise.all([
           recordingService.getRecording(id),
           annotationService.getAnnotations(id),
+          loadViewSettings(id),
         ]);
         if (cancelled) return;
         setRecording(rec);
@@ -293,16 +300,34 @@ const AnnotationEditorV2: React.FC = () => {
           },
           audio,
           document,
+          initialEngineSettings(
+            view.defaults ?? undefined,
+            view.recording ?? undefined,
+          ),
         );
-        // The frequency floor is remembered per recording (in this browser).
-        const engineForFloor = created;
-        engineForFloor.setFreqFloor(readFreqFloor(id));
-        let savedFloor = engineForFloor.freqFloor;
-        engineForFloor.subscribe(() => {
-          if (engineForFloor.freqFloor === savedFloor) return;
-          savedFloor = engineForFloor.freqFloor;
-          writeFreqFloor(id, savedFloor);
-        });
+        // View settings (colours, FFT, contrast, floor) are kept per user on the server.
+        const engineForView = created;
+        engineForView.setFreqFloor(
+          view.recording && "freq_floor" in view.recording
+            ? (view.recording.freq_floor ?? null)
+            : legacyFreqFloor(id),
+        );
+        const settingsSaver = new ViewSettingsSaver(
+          id,
+          view.recording,
+          view.defaults,
+          engineForView.getSnapshot(),
+          engineForView.freqFloor,
+          engineForView.levelsByHand,
+        );
+        viewSaver = settingsSaver;
+        engineForView.subscribe(() =>
+          settingsSaver.update(
+            engineForView.getSnapshot(),
+            engineForView.freqFloor,
+            engineForView.levelsByHand,
+          ),
+        );
         const engineForReview = created;
         const session = new ReviewSession({
           doc: document,
@@ -335,6 +360,7 @@ const AnnotationEditorV2: React.FC = () => {
         // Closing the tab: keep a local copy, and send the changes with a
         // request that outlives the page (unless that exact save is running).
         onBeforeUnload = () => {
+          settingsSaver.destroy(); // best effort: a view setting changed just now
           if (!document.isDirty) return;
           const boxes = toPayload(document.committed);
           writeBackup(id, boxes);
@@ -380,6 +406,7 @@ const AnnotationEditorV2: React.FC = () => {
         trackPendingSave(id, done);
       }
       reviewSession?.destroy();
+      viewSaver?.destroy();
       setEngine(null);
       setReview(null);
     };

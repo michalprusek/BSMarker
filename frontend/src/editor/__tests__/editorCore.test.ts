@@ -5,7 +5,7 @@ import { TileComputer } from "../dsp/stft";
 import { DB_MAX, DB_MIN } from "../dsp/db";
 import { TILE_COLS, poolChildren, chooseLevel, hopForLevel, maxLevel, minLevel, tileIndexRange, tileTimeRange } from "../dsp/tiles";
 import { WaveformPeaks } from "../dsp/WaveformPeaks";
-import { autoLevels } from "../dsp/levels";
+import { standardLevels } from "../dsp/levels";
 import { formatTime, niceStep } from "../render/ticks";
 import { AudioPlayer } from "../audio/AudioPlayer";
 
@@ -153,12 +153,41 @@ describe("helpers", () => {
     expect(formatTime(75.5, 0.1)).toBe("1:15.5");
   });
 
-  it("sets the floor at the noise level", () => {
-    const tile = new Uint8Array(1000).fill(100);
-    tile.fill(200, 0, 5);
-    const levels = autoLevels([tile]);
-    expect(levels.floor).toBeCloseTo(byteToDb(100), 0);
-    expect(levels.ceil).toBeGreaterThanOrEqual(levels.floor + 30);
+  describe("standardised levels", () => {
+    const BINS = 8;
+    /** Overview with background `noise` everywhere and calls of level `call` in `callCols` columns. */
+    const overview = (noise: number, call: number, callCols: number[], bin = 4) => {
+      const tile = new Uint8Array(BINS * TILE_COLS).fill(noise);
+      for (const c of callCols) tile[bin * TILE_COLS + c] = call;
+      return tile;
+    };
+    const cols = (from: number, n: number) => Array.from({ length: n }, (_, i) => from + i);
+
+    it("anchors the ceiling to the loudest calls and spans a fixed range below", () => {
+      const levels = standardLevels(overview(60, 200, cols(0, 40)), BINS, 0, 50)!;
+      expect(levels.ceil).toBe(Math.round(byteToDb(200)));
+      expect(levels.floor).toBe(levels.ceil - 50);
+    });
+
+    it("gives the same levels whatever the background noise", () => {
+      const quiet = standardLevels(overview(40, 200, cols(0, 40)), BINS, 0, 50);
+      const noisy = standardLevels(overview(120, 200, cols(0, 40)), BINS, 0, 50);
+      expect(noisy).toEqual(quiet);
+    });
+
+    it("is not set by a single click", () => {
+      const tile = overview(60, 200, cols(0, 40));
+      tile[5 * TILE_COLS + 100] = 255;
+      expect(standardLevels(tile, BINS, 0, 50)!.ceil).toBe(Math.round(byteToDb(200)));
+    });
+
+    it("ignores rumble below the frequency floor and padding past the end", () => {
+      const tile = overview(60, 200, cols(0, 40));
+      tile.fill(250, 1 * TILE_COLS, 2 * TILE_COLS); // loud bin 1 everywhere
+      for (let k = 0; k < BINS; k++) tile.fill(0, k * TILE_COLS + 200, (k + 1) * TILE_COLS);
+      expect(standardLevels(tile, BINS, 2, 50)!.ceil).toBe(Math.round(byteToDb(200)));
+      expect(standardLevels(new Uint8Array(BINS * TILE_COLS), BINS, 0, 50)).toBeNull();
+    });
   });
 });
 

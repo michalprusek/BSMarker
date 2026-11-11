@@ -7,7 +7,7 @@ import { Draft } from "./edit/draft";
 import { Conflict, conflictedIds, detectConflicts } from "./edit/conflicts";
 import { TileScheduler, ReadyTile } from "./dsp/TileScheduler";
 import { WaveformPeaks } from "./dsp/WaveformPeaks";
-import { DbLevels, autoLevels } from "./dsp/levels";
+import { ContrastMode, DEFAULT_RANGE_DB, DbLevels, standardLevels } from "./dsp/levels";
 import { FftSize, TileId, chooseLevel, hopForLevel, maxLevel, tileIndexRange } from "./dsp/tiles";
 import { SpectrogramRenderer } from "./render/SpectrogramRenderer";
 import { PaletteName, backgroundColor } from "./render/palettes";
@@ -34,7 +34,12 @@ export interface EditorElements {
 export interface EditorSettings {
   fftSize: FftSize;
   palette: PaletteName;
+  /** The user's palette for recordings without one of their own. */
+  defaultPalette: PaletteName | null;
   levels: DbLevels;
+  contrast: ContrastMode;
+  /** Standardised contrast: how far below the loudest calls is drawn as background. */
+  rangeDb: number;
   followPlayback: boolean;
 }
 
@@ -81,8 +86,6 @@ export interface EditorSnapshot {
 
 /** Tiles to prefetch on each side of the viewport, in viewport widths. */
 const PREFETCH_VIEWPORTS = 1;
-/** How many recent tiles are used to pick automatic contrast levels. */
-const AUTO_LEVEL_SAMPLE_TILES = 8;
 const SNAPSHOT_INTERVAL_MS = 80;
 
 /**
@@ -115,9 +118,10 @@ export class EditorEngine {
   private floor: number | null = null;
   private loop = false;
   private settings: EditorSettings;
-  /** Most recent tile data, kept for automatic contrast. */
-  private recentTiles: Uint8Array[] = [];
+  /** Set once the levels are moved by hand (custom contrast). */
   private levelsChosen = false;
+  /** The whole recording as one max-pooled tile, per FFT size (standardised contrast). */
+  private readonly overviews = new Map<number, Uint8Array>();
   private error: string | null = null;
 
   private dpr = window.devicePixelRatio || 1;
@@ -150,10 +154,15 @@ export class EditorEngine {
     this.settings = {
       fftSize: 1024,
       palette: "inverted-gray",
+      defaultPalette: null,
       levels: { floor: -100, ceil: -30 },
+      contrast: "standard",
+      rangeDb: DEFAULT_RANGE_DB,
       followPlayback: true,
       ...settings,
     };
+    // Levels set by hand last time stay as they were.
+    this.levelsChosen = this.settings.contrast === "custom" && settings.levels !== undefined;
 
     this.unsubscribeDoc = doc.subscribe((contentChanged) => {
       if (contentChanged) {
@@ -211,6 +220,7 @@ export class EditorEngine {
 
   setFftSize(fftSize: FftSize): void {
     this.settings = { ...this.settings, fftSize };
+    this.applyStandardLevels();
     this.lastVersion = -1; // re-request tiles
     this.invalidate("view");
     this.publishSnapshot();
@@ -223,6 +233,16 @@ export class EditorEngine {
     this.invalidate("spectrogram");
   }
 
+  setDefaultPalette(palette: PaletteName): void {
+    this.settings = { ...this.settings, defaultPalette: palette };
+    this.setPalette(palette);
+  }
+
+  /** True once the levels were set by hand (custom contrast). */
+  get levelsByHand(): boolean {
+    return this.levelsChosen;
+  }
+
   setLevels(levels: DbLevels): void {
     this.levelsChosen = true;
     this.settings = { ...this.settings, levels };
@@ -230,9 +250,35 @@ export class EditorEngine {
     this.invalidate("spectrogram");
   }
 
-  /** Pick contrast from the background noise of the recently computed tiles. */
-  autoLevels(): void {
-    this.setLevels(autoLevels(this.recentTiles));
+  /** Custom starts from the standardised levels; back to standard drops hand-set levels. */
+  setContrastMode(contrast: ContrastMode): void {
+    this.settings = { ...this.settings, contrast };
+    if (contrast === "standard") {
+      this.levelsChosen = false;
+      this.applyStandardLevels();
+    }
+    this.publishSnapshot();
+  }
+
+  setRangeDb(rangeDb: number): void {
+    this.settings = { ...this.settings, rangeDb };
+    this.levelsChosen = false;
+    this.applyStandardLevels();
+    this.publishSnapshot();
+  }
+
+  /** Standardised levels from the overview tile, unless levels were set by hand. */
+  private applyStandardLevels(): void {
+    if (this.levelsChosen) return;
+    const { fftSize, rangeDb } = this.settings;
+    const overview = this.overviews.get(fftSize);
+    if (!overview) return; // arrives later, see handleTile
+    const binHz = this.view.sampleRate / fftSize;
+    const levels = standardLevels(overview, fftSize / 2, Math.floor((this.floor ?? 0) / binHz), rangeDb);
+    if (!levels) return;
+    this.settings = { ...this.settings, levels };
+    this.spectrogram.setLevels(levels.floor, levels.ceil);
+    this.invalidate("spectrogram");
   }
 
   setFollowPlayback(followPlayback: boolean): void {
@@ -411,6 +457,7 @@ export class EditorEngine {
 
   setFreqFloor(hz: number | null): void {
     this.floor = hz === null ? null : Math.min(this.view.nyquist, Math.max(0, hz));
+    this.applyStandardLevels(); // rumble below the floor no longer counts as loud
     this.invalidate("overlay");
   }
 
@@ -582,15 +629,19 @@ export class EditorEngine {
       if (last + d <= pl) prefetch.push({ fftSize, level, index: last + d });
       if (first - d >= pf) prefetch.push({ fftSize, level, index: first - d });
     }
-    this.scheduler.request([...visible, ...prefetch]);
+    // Standardised contrast needs the whole recording at a glance; it is one tile.
+    const overview: TileId[] = !this.overviews.has(fftSize)
+        ? [{ fftSize, level: maxLevel(fftSize, this.totalSamples), index: 0 }]
+        : [];
+    this.scheduler.request([...overview, ...visible, ...prefetch]);
   }
 
   private handleTile(tile: ReadyTile): void {
     this.spectrogram.addTile(tile);
-    this.recentTiles.push(tile.data);
-    if (this.recentTiles.length > AUTO_LEVEL_SAMPLE_TILES) this.recentTiles.shift();
-    if (!this.levelsChosen && (this.recentTiles.length >= AUTO_LEVEL_SAMPLE_TILES || this.scheduler.pendingCount === 0)) {
-      this.autoLevels();
+    const { fftSize, level, index } = tile.tile;
+    if (level === maxLevel(fftSize, this.totalSamples) && index === 0) {
+      this.overviews.set(fftSize, tile.data);
+      if (fftSize === this.settings.fftSize) this.applyStandardLevels();
     }
     this.dirtySpectrogram = true;
     this.schedule();
