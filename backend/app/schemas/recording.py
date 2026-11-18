@@ -24,6 +24,8 @@ class RecordingInDBBase(RecordingBase):
     annotation_count: int = 0
     # Whether the current user may save annotations for it (single-recording endpoint only)
     can_edit: Optional[bool] = None
+    # The project's overlap rule, for the editor (single-recording endpoint only)
+    allow_overlaps: Optional[bool] = None
 
     class Config:
         """Pydantic model configuration."""

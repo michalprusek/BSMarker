@@ -462,7 +462,9 @@ def read_recording(
         can_edit = True
     except HTTPException:
         can_edit = False
-    return RecordingSchema.model_validate(recording).model_copy(update={"can_edit": can_edit})
+    return RecordingSchema.model_validate(recording).model_copy(
+        update={"can_edit": can_edit, "allow_overlaps": project.allow_overlaps}
+    )
 
 
 @router.delete("/{recording_id}")

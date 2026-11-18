@@ -218,6 +218,14 @@ describe("geometry", () => {
     expect(snapTime(view, index, 2.2, new Set()).guide).toBeNull();
     expect(snapTime(view, index, 2.04, new Set(["a"])).guide).toBeNull();
   });
+
+  it("snaps edges exactly onto the neighbour when overlaps are allowed", () => {
+    const view = new Viewport(10, SR);
+    view.setSize(1000, 400);
+    const index = new BoxIndex([box("a", 1, 2), box("b", 5, 6)]);
+    expect(snapTime(view, index, 2.004, new Set(), "start", 0)).toEqual({ time: 2, guide: 2 });
+    expect(snapTime(view, index, 4.99, new Set(), "end", 0)).toEqual({ time: 5, guide: 5 });
+  });
 });
 
 describe("editing actions", () => {

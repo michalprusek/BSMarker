@@ -3,6 +3,7 @@
 # Import all models to ensure relationships are properly configured
 # Order matters for SQLAlchemy relationship configuration
 from app.models.annotation import Annotation, BoundingBox
+from app.models.editor_settings import EditorDefaults, RecordingViewSettings
 from app.models.project import Project
 from app.models.recording import Recording
 from app.models.spectrogram import Spectrogram
@@ -15,4 +16,6 @@ __all__ = [
     "Spectrogram",
     "Annotation",
     "BoundingBox",
+    "EditorDefaults",
+    "RecordingViewSettings",
 ]

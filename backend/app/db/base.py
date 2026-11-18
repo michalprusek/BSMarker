@@ -1,5 +1,6 @@
 from app.db.base_class import Base
 from app.models.annotation import Annotation, BoundingBox
+from app.models.editor_settings import EditorDefaults, RecordingViewSettings
 from app.models.project import Project
 from app.models.recording import Recording
 from app.models.spectrogram import Spectrogram
@@ -10,6 +11,8 @@ __all__ = [
     "Base",
     "Annotation",
     "BoundingBox",
+    "EditorDefaults",
+    "RecordingViewSettings",
     "Project",
     "Recording",
     "Spectrogram",

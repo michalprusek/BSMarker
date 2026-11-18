@@ -71,6 +71,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({ engine, snap, showConflict
             ⚠ {conflicts.length} conflict{conflicts.length === 1 ? "" : "s"}
           </button>
         </Tip>
+      ) : snap.allowOverlaps ? (
+        <Tip
+          title="Overlaps allowed"
+          body="This project allows overlapping syllables, so overlaps, small gaps and nested boxes are not reported. Change it in the project settings."
+        >
+          <span className="text-gray-500">overlaps allowed</span>
+        </Tip>
       ) : (
         snap.boxCount > 0 && <span className="text-green-700">✓ no conflicts</span>
       )}
